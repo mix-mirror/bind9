@@ -57,8 +57,7 @@ struct dns_cache {
 	/* Unlocked. */
 	unsigned int magic;
 	isc_mutex_t lock;
-	isc_mem_t *mctx;  /* Memory context for the dns_cache object */
-	isc_mem_t *tmctx; /* Tree memory */
+	isc_mem_t *mctx; /* Memory context for the dns_cache object */
 	char *name;
 	isc_refcount_t references;
 
@@ -77,7 +76,7 @@ struct dns_cache {
  ***/
 
 static void
-cache_create_db(dns_cache_t *cache, qpcache_t **dbp, isc_mem_t **tmctxp) {
+cache_create_db(dns_cache_t *cache, qpcache_t **dbp) {
 	qpcache_t *db = NULL;
 	isc_mem_t *tmctx = NULL;
 
@@ -89,7 +88,7 @@ cache_create_db(dns_cache_t *cache, qpcache_t **dbp, isc_mem_t **tmctxp) {
 	db->maxrrperset = cache->maxrrperset;
 	db->maxtypepername = cache->maxtypepername;
 	*dbp = db;
-	*tmctxp = tmctx;
+	isc_mem_detach(&tmctx);
 }
 
 static void
@@ -97,9 +96,6 @@ cache_destroy(dns_cache_t *cache) {
 	isc_stats_detach(&cache->stats);
 	isc_mutex_destroy(&cache->lock);
 	isc_mem_free(cache->mctx, cache->name);
-	if (cache->tmctx != NULL) {
-		isc_mem_detach(&cache->tmctx);
-	}
 	isc_mem_putanddetach(&cache->mctx, cache, sizeof(*cache));
 }
 
@@ -127,7 +123,7 @@ dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 	/*
 	 * Create the database
 	 */
-	cache_create_db(cache, &cache->db, &cache->tmctx);
+	cache_create_db(cache, &cache->db);
 
 	*cachep = cache;
 	return ISC_R_SUCCESS;
@@ -233,14 +229,11 @@ dns_cache_getservestalerefresh(dns_cache_t *cache) {
 isc_result_t
 dns_cache_flush(dns_cache_t *cache) {
 	qpcache_t *db = NULL, *olddb = NULL;
-	isc_mem_t *tmctx = NULL, *oldtmctx = NULL;
 
-	cache_create_db(cache, &db, &tmctx);
+	cache_create_db(cache, &db);
 
 	LOCK(&cache->lock);
 	size_t size = dns__qpcache_getcachesize(cache->db);
-	oldtmctx = cache->tmctx;
-	cache->tmctx = tmctx;
 	olddb = cache->db;
 	dns__qpcache_setcachesize(olddb, 0);
 	cache->db = db;
@@ -248,7 +241,6 @@ dns_cache_flush(dns_cache_t *cache) {
 	UNLOCK(&cache->lock);
 
 	dns__qpcache_detach(&olddb);
-	isc_mem_detach(&oldtmctx);
 
 	return ISC_R_SUCCESS;
 }
@@ -589,7 +581,7 @@ dns_cache_renderjson(dns_cache_t *cache, void *cstats0) {
 	CHECKMEM(obj);
 	json_object_object_add(cstats, "CacheNodes", obj);
 
-	obj = json_object_new_int64(isc_mem_inuse(cache->tmctx));
+	obj = json_object_new_int64(dns__qpcache_getinuse(cache->db));
 	CHECKMEM(obj);
 	json_object_object_add(cstats, "TreeMemInUse", obj);
 
