@@ -24,6 +24,7 @@
 /*% default configuration */
 constexpr char common_named_defaultconf[] = "\
 options {\n\
+	rate-limit {};\n\
 	answer-cookie true;\n\
 	automatic-interface-scan yes;\n\
 #	blackhole {none;};\n\
