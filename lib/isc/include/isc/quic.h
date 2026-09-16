@@ -130,7 +130,7 @@ struct isc_quic_conn_callbacks {
 	 * \param stream_id ID of the newly opened stream.
 	 */
 	isc_result_t (*stream_opened)(isc_quic_conn_t *conn, void *cbarg,
-				      int64_t stream_id);
+				      void **stream_data, int64_t stream_id);
 
 	/**
 	 * \brief
@@ -182,6 +182,12 @@ struct isc_quic_stream_data_info {
 	 * Stream ID of received data.
 	 */
 	int64_t stream_id;
+
+	/**
+	 * \brief
+	 * Stream-specific data set by the user.
+	 */
+	void *stream_data;
 };
 
 /**
