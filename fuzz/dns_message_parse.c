@@ -33,9 +33,15 @@ static uint8_t *output = NULL;
 static size_t output_len = 1024;
 static uint8_t render_buf[64 * 1024 - 1];
 
+static void
+cleanup_output(void) {
+	isc_mem_put(isc_g_mctx, output, output_len);
+}
+
 int
 LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	output = isc_mem_get(isc_g_mctx, output_len);
+	RUNTIME_CHECK(atexit(cleanup_output) == 0);
 
 	return 0;
 }
