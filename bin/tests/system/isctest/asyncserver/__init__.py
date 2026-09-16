@@ -172,8 +172,15 @@ class AsyncServer:
         await self._listen_udp()
         await self._listen_tcp()
         self._write_pidfile()
+        self._load()
         await self._work_done
         self._cleanup_pidfile()
+
+    def _load(self) -> None:
+        """
+        Load whatever the server serves.  This runs once the server is up, so
+        that a refusal to serve something shows in the server's log.
+        """
 
     def _get_asyncio_loop(self) -> asyncio.AbstractEventLoop:
         try:
@@ -341,6 +348,12 @@ class _ZoneTree:
         Add a zone to the tree and rearrange sub-zones if necessary.
         """
         best_match = self._find_best_match(origin, self._root)
+        if best_match.zone is not None and best_match.zone.origin == origin:
+            raise ValueError(
+                f'zone "{origin}" is defined by more than one zone file; '
+                f"which of them is served would depend on the order the "
+                f"filesystem lists them in"
+            )
         added_node = _ZoneTreeNode(zone)
         self._move_children(best_match, added_node)
         best_match.children.append(added_node)
@@ -444,6 +457,7 @@ class AsyncDnsServer(AsyncServer):
         self._keyring = keyring
         self._acknowledge_manual_dname_handling = acknowledge_manual_dname_handling
 
+    def _load(self) -> None:
         self._load_zones()
         self._load_keys()
 
