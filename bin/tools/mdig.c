@@ -1601,7 +1601,7 @@ plus_option(char *option, struct query *query, bool global) {
 /*%
  * #true returned if value was used
  */
-static const char *single_dash_opts = "46himv";
+static const char *single_dash_opts = "46hiv";
 static const char *dash_opts = "46bcfhiptvx";
 static bool
 dash_option(const char *option, char *next, struct query *query, bool global,
@@ -1817,10 +1817,6 @@ preparse_args(int argc, char **argv) {
 		option = &rv[0][1];
 		while (strpbrk(option, single_dash_opts) == &option[0]) {
 			switch (option[0]) {
-			case 'm':
-				isc_mem_debugon(ISC_MEM_DEBUGTRACE |
-						ISC_MEM_DEBUGRECORD);
-				break;
 			case '4':
 				if (ipv6only) {
 					fatal("only one of -4 and -6 allowed");

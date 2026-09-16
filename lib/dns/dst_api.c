@@ -29,12 +29,10 @@
 
 /*! \file */
 
-#include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <time.h>
 #include <unistd.h>
 
 #include <isc/buffer.h>
@@ -162,7 +160,7 @@ gss_log(int level, const char *fmt, ...) ISC_FORMAT_PRINTF(2, 3);
 static dst_key_t *
 get_key_struct(const dns_name_t *name, unsigned int alg, unsigned int flags,
 	       unsigned int protocol, unsigned int bits,
-	       dns_rdataclass_t rdclass, dns_ttl_t ttl, isc_mem_t *mctx);
+	       dns_rdataclass_t rdclass, dns_ttl_t ttl);
 static isc_result_t
 write_public_key(const dst_key_t *key, int type, const char *directory);
 static isc_result_t
@@ -175,7 +173,7 @@ computeid(dst_key_t *key);
 static isc_result_t
 frombuffer(const dns_name_t *name, unsigned int alg, unsigned int flags,
 	   unsigned int protocol, dns_rdataclass_t rdclass,
-	   isc_buffer_t *source, isc_mem_t *mctx, dst_key_t **keyp);
+	   isc_buffer_t *source, dst_key_t **keyp);
 
 static isc_result_t
 algorithm_status(unsigned int alg);
@@ -270,13 +268,12 @@ dst_ds_digest_supported(unsigned int digest_type) {
 }
 
 isc_result_t
-dst_context_create(dst_key_t *key, isc_mem_t *mctx, isc_logcategory_t category,
+dst_context_create(dst_key_t *key, isc_logcategory_t category,
 		   bool useforsigning, dst_context_t **dctxp) {
 	dst_context_t *dctx;
 	isc_result_t result;
 
 	REQUIRE(VALID_KEY(key));
-	REQUIRE(mctx != NULL);
 	REQUIRE(dctxp != NULL && *dctxp == NULL);
 
 	if (key->func->createctx == NULL) {
@@ -286,20 +283,19 @@ dst_context_create(dst_key_t *key, isc_mem_t *mctx, isc_logcategory_t category,
 		return DST_R_NULLKEY;
 	}
 
-	dctx = isc_mem_get(mctx, sizeof(*dctx));
+	dctx = isc_mem_get(isc_g_mctx, sizeof(*dctx));
 	*dctx = (dst_context_t){
 		.category = category,
 		.use = (useforsigning) ? DO_SIGN : DO_VERIFY,
 	};
 
 	dst_key_attach(key, &dctx->key);
-	isc_mem_attach(mctx, &dctx->mctx);
 	result = key->func->createctx(key, dctx);
 	if (result != ISC_R_SUCCESS) {
 		if (dctx->key != NULL) {
 			dst_key_free(&dctx->key);
 		}
-		isc_mem_putanddetach(&dctx->mctx, dctx, sizeof(dst_context_t));
+		isc_mem_put(isc_g_mctx, dctx, sizeof(dst_context_t));
 		return result;
 	}
 	dctx->magic = CTX_MAGIC;
@@ -321,7 +317,7 @@ dst_context_destroy(dst_context_t **dctxp) {
 		dst_key_free(&dctx->key);
 	}
 	dctx->magic = 0;
-	isc_mem_putanddetach(&dctx->mctx, dctx, sizeof(dst_context_t));
+	isc_mem_put(isc_g_mctx, dctx, sizeof(dst_context_t));
 }
 
 isc_result_t
@@ -437,14 +433,12 @@ dst_key_ismodified(const dst_key_t *key) {
 
 isc_result_t
 dst_key_getfilename(dns_name_t *name, dns_keytag_t id, unsigned int alg,
-		    int type, const char *directory, isc_mem_t *mctx,
-		    isc_buffer_t *buf) {
+		    int type, const char *directory, isc_buffer_t *buf) {
 	isc_result_t result;
 
 	REQUIRE(dns_name_isabsolute(name));
 	REQUIRE((type &
 		 (DST_TYPE_PRIVATE | DST_TYPE_PUBLIC | DST_TYPE_STATE)) != 0);
-	REQUIRE(mctx != NULL);
 	REQUIRE(buf != NULL);
 
 	CHECKALG(alg);
@@ -463,7 +457,7 @@ dst_key_getfilename(dns_name_t *name, dns_keytag_t id, unsigned int alg,
 
 isc_result_t
 dst_key_fromfile(dns_name_t *name, dns_keytag_t id, unsigned int alg, int type,
-		 const char *directory, isc_mem_t *mctx, dst_key_t **keyp) {
+		 const char *directory, dst_key_t **keyp) {
 	isc_result_t result;
 	char filename[NAME_MAX];
 	isc_buffer_t buf;
@@ -471,7 +465,6 @@ dst_key_fromfile(dns_name_t *name, dns_keytag_t id, unsigned int alg, int type,
 
 	REQUIRE(dns_name_isabsolute(name));
 	REQUIRE((type & (DST_TYPE_PRIVATE | DST_TYPE_PUBLIC)) != 0);
-	REQUIRE(mctx != NULL);
 	REQUIRE(keyp != NULL && *keyp == NULL);
 
 	CHECKALG(alg);
@@ -479,8 +472,8 @@ dst_key_fromfile(dns_name_t *name, dns_keytag_t id, unsigned int alg, int type,
 	key = NULL;
 
 	isc_buffer_init(&buf, filename, NAME_MAX);
-	CHECK(dst_key_getfilename(name, id, alg, type, NULL, mctx, &buf));
-	CHECK(dst_key_fromnamedfile(filename, directory, type, mctx, &key));
+	CHECK(dst_key_getfilename(name, id, alg, type, NULL, &buf));
+	CHECK(dst_key_fromnamedfile(filename, directory, type, &key));
 	CHECK(computeid(key));
 
 	if (!dns_name_equal(name, key->key_name) || id != key->key_id ||
@@ -502,7 +495,7 @@ cleanup:
 
 isc_result_t
 dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
-		      isc_mem_t *mctx, dst_key_t **keyp) {
+		      dst_key_t **keyp) {
 	isc_result_t result;
 	dst_key_t *pubkey = NULL, *key = NULL;
 	char *newfilename = NULL, *statefilename = NULL;
@@ -511,7 +504,6 @@ dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
 
 	REQUIRE(filename != NULL);
 	REQUIRE((type & (DST_TYPE_PRIVATE | DST_TYPE_PUBLIC)) != 0);
-	REQUIRE(mctx != NULL);
 	REQUIRE(keyp != NULL && *keyp == NULL);
 
 	/* If an absolute path is specified, don't use the key directory */
@@ -523,13 +515,13 @@ dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
 	if (dirname != NULL) {
 		newfilenamelen += strlen(dirname) + 1;
 	}
-	newfilename = isc_mem_get(mctx, newfilenamelen);
+	newfilename = isc_mem_get(isc_g_mctx, newfilenamelen);
 	result = addsuffix(newfilename, newfilenamelen, dirname, filename,
 			   ".key");
 	INSIST(result == ISC_R_SUCCESS);
 
-	CHECK(dst_key_read_public(newfilename, type, mctx, &pubkey));
-	isc_mem_put(mctx, newfilename, newfilenamelen);
+	CHECK(dst_key_read_public(newfilename, type, &pubkey));
+	isc_mem_put(isc_g_mctx, newfilename, newfilenamelen);
 
 	/*
 	 * Read the state file, if requested by type.
@@ -539,7 +531,7 @@ dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
 		if (dirname != NULL) {
 			statefilenamelen += strlen(dirname) + 1;
 		}
-		statefilename = isc_mem_get(mctx, statefilenamelen);
+		statefilename = isc_mem_get(isc_g_mctx, statefilenamelen);
 		result = addsuffix(statefilename, statefilenamelen, dirname,
 				   filename, ".state");
 		INSIST(result == ISC_R_SUCCESS);
@@ -547,7 +539,7 @@ dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
 
 	pubkey->kasp = false;
 	if ((type & DST_TYPE_STATE) != 0) {
-		result = dst_key_read_state(statefilename, mctx, &pubkey);
+		result = dst_key_read_state(statefilename, &pubkey);
 		if (result == ISC_R_SUCCESS) {
 			pubkey->kasp = true;
 		} else if (result == ISC_R_FILENOTFOUND) {
@@ -570,7 +562,7 @@ dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
 	key = get_key_struct(pubkey->key_name, pubkey->key_alg,
 			     pubkey->key_flags, pubkey->key_proto,
 			     pubkey->key_size, pubkey->key_class,
-			     pubkey->key_ttl, mctx);
+			     pubkey->key_ttl);
 
 	if (key->func->parse == NULL) {
 		CLEANUP(DST_R_UNSUPPORTEDALG);
@@ -580,21 +572,21 @@ dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
 	if (dirname != NULL) {
 		newfilenamelen += strlen(dirname) + 1;
 	}
-	newfilename = isc_mem_get(mctx, newfilenamelen);
+	newfilename = isc_mem_get(isc_g_mctx, newfilenamelen);
 	result = addsuffix(newfilename, newfilenamelen, dirname, filename,
 			   ".private");
 	INSIST(result == ISC_R_SUCCESS);
 
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(isc_g_mctx, 1500, &lex);
 	CHECK(isc_lex_openfile(lex, newfilename));
-	isc_mem_put(mctx, newfilename, newfilenamelen);
+	isc_mem_put(isc_g_mctx, newfilename, newfilenamelen);
 
 	CHECK(key->func->parse(key, lex, pubkey));
 	isc_lex_destroy(&lex);
 
 	key->kasp = false;
 	if ((type & DST_TYPE_STATE) != 0) {
-		result = dst_key_read_state(statefilename, mctx, &key);
+		result = dst_key_read_state(statefilename, &key);
 		if (result == ISC_R_SUCCESS) {
 			key->kasp = true;
 		} else if (result == ISC_R_FILENOTFOUND) {
@@ -613,7 +605,7 @@ dst_key_fromnamedfile(const char *filename, const char *dirname, int type,
 	key->modified = false;
 
 	if (dirname != NULL) {
-		key->directory = isc_mem_strdup(mctx, dirname);
+		key->directory = isc_mem_strdup(isc_g_mctx, dirname);
 	}
 	*keyp = key;
 	key = NULL;
@@ -623,10 +615,10 @@ cleanup:
 		dst_key_free(&pubkey);
 	}
 	if (newfilename != NULL) {
-		isc_mem_put(mctx, newfilename, newfilenamelen);
+		isc_mem_put(isc_g_mctx, newfilename, newfilenamelen);
 	}
 	if (statefilename != NULL) {
-		isc_mem_put(mctx, statefilename, statefilenamelen);
+		isc_mem_put(isc_g_mctx, statefilename, statefilenamelen);
 	}
 	if (lex != NULL) {
 		isc_lex_destroy(&lex);
@@ -665,7 +657,7 @@ dst_key_todns(const dst_key_t *key, isc_buffer_t *target) {
 
 isc_result_t
 dst_key_fromdns(const dns_name_t *name, dns_rdataclass_t rdclass,
-		isc_buffer_t *source, isc_mem_t *mctx, dst_key_t **keyp) {
+		isc_buffer_t *source, dst_key_t **keyp) {
 	uint8_t alg, proto;
 	uint32_t flags;
 	dst_key_t *key = NULL;
@@ -684,8 +676,7 @@ dst_key_fromdns(const dns_name_t *name, dns_rdataclass_t rdclass,
 	id = dst_region_computeid(&r);
 	rid = dst_region_computerid(&r);
 
-	RETERR(frombuffer(name, alg, flags, proto, rdclass, source, mctx,
-			  &key));
+	RETERR(frombuffer(name, alg, flags, proto, rdclass, source, &key));
 	key->key_id = id;
 	key->key_rid = rid;
 
@@ -696,12 +687,11 @@ dst_key_fromdns(const dns_name_t *name, dns_rdataclass_t rdclass,
 isc_result_t
 dst_key_frombuffer(const dns_name_t *name, unsigned int alg, unsigned int flags,
 		   unsigned int protocol, dns_rdataclass_t rdclass,
-		   isc_buffer_t *source, isc_mem_t *mctx, dst_key_t **keyp) {
+		   isc_buffer_t *source, dst_key_t **keyp) {
 	dst_key_t *key = NULL;
 	isc_result_t result;
 
-	RETERR(frombuffer(name, alg, flags, protocol, rdclass, source, mctx,
-			  &key));
+	RETERR(frombuffer(name, alg, flags, protocol, rdclass, source, &key));
 
 	result = computeid(key);
 	if (result != ISC_R_SUCCESS) {
@@ -736,7 +726,7 @@ dst_key_getgssctx(const dst_key_t *key) {
 
 isc_result_t
 dst_key_fromgssapi(const dns_name_t *name, dns_gss_ctx_id_t gssctx,
-		   isc_mem_t *mctx, dst_key_t **keyp, isc_region_t *intoken) {
+		   dst_key_t **keyp, isc_region_t *intoken) {
 	dst_key_t *key;
 	isc_result_t result;
 
@@ -744,14 +734,14 @@ dst_key_fromgssapi(const dns_name_t *name, dns_gss_ctx_id_t gssctx,
 	REQUIRE(keyp != NULL && *keyp == NULL);
 
 	key = get_key_struct(name, DST_ALG_GSSAPI, 0, DNS_KEYPROTO_DNSSEC, 0,
-			     dns_rdataclass_in, 0, mctx);
+			     dns_rdataclass_in, 0);
 
 	if (intoken != NULL) {
 		/*
 		 * Keep the token for use by external ssu rules. They may need
 		 * to examine the PAC in the kerberos ticket.
 		 */
-		isc_buffer_allocate(key->mctx, &key->key_tkeytoken,
+		isc_buffer_allocate(isc_g_mctx, &key->key_tkeytoken,
 				    intoken->length);
 		CHECK(isc_buffer_copyregion(key->key_tkeytoken, intoken));
 	}
@@ -830,19 +820,17 @@ isc_result_t
 dst_key_buildinternal(const dns_name_t *name, unsigned int alg,
 		      unsigned int bits, unsigned int flags,
 		      unsigned int protocol, dns_rdataclass_t rdclass,
-		      void *data, isc_mem_t *mctx, dst_key_t **keyp) {
+		      void *data, dst_key_t **keyp) {
 	dst_key_t *key;
 	isc_result_t result;
 
 	REQUIRE(dns_name_isabsolute(name));
-	REQUIRE(mctx != NULL);
 	REQUIRE(keyp != NULL && *keyp == NULL);
 	REQUIRE(data != NULL);
 
 	CHECKALG(alg);
 
-	key = get_key_struct(name, alg, flags, protocol, bits, rdclass, 0,
-			     mctx);
+	key = get_key_struct(name, alg, flags, protocol, bits, rdclass, 0);
 
 	key->keydata.generic = data;
 
@@ -859,19 +847,17 @@ dst_key_buildinternal(const dns_name_t *name, unsigned int alg,
 isc_result_t
 dst_key_fromlabel(const dns_name_t *name, int alg, unsigned int flags,
 		  unsigned int protocol, dns_rdataclass_t rdclass,
-		  const char *label, const char *pin, isc_mem_t *mctx,
-		  dst_key_t **keyp) {
+		  const char *label, const char *pin, dst_key_t **keyp) {
 	dst_key_t *key;
 	isc_result_t result;
 
 	REQUIRE(dns_name_isabsolute(name));
-	REQUIRE(mctx != NULL);
 	REQUIRE(keyp != NULL && *keyp == NULL);
 	REQUIRE(label != NULL);
 
 	CHECKALG(alg);
 
-	key = get_key_struct(name, alg, flags, protocol, 0, rdclass, 0, mctx);
+	key = get_key_struct(name, alg, flags, protocol, 0, rdclass, 0);
 
 	if (key->func->fromlabel == NULL) {
 		dst_key_free(&key);
@@ -897,22 +883,20 @@ dst_key_fromlabel(const dns_name_t *name, int alg, unsigned int flags,
 isc_result_t
 dst_key_generate(const dns_name_t *name, unsigned int alg, unsigned int bits,
 		 unsigned int param, unsigned int flags, unsigned int protocol,
-		 dns_rdataclass_t rdclass, const char *label, isc_mem_t *mctx,
-		 dst_key_t **keyp, void (*callback)(int)) {
+		 dns_rdataclass_t rdclass, const char *label, dst_key_t **keyp,
+		 void (*callback)(int)) {
 	dst_key_t *key;
 	isc_result_t result;
 
 	REQUIRE(dns_name_isabsolute(name));
-	REQUIRE(mctx != NULL);
 	REQUIRE(keyp != NULL && *keyp == NULL);
 
 	CHECKALG(alg);
 
-	key = get_key_struct(name, alg, flags, protocol, bits, rdclass, 0,
-			     mctx);
+	key = get_key_struct(name, alg, flags, protocol, bits, rdclass, 0);
 
 	if (label != NULL) {
-		key->label = isc_mem_strdup(mctx, label);
+		key->label = isc_mem_strdup(isc_g_mctx, label);
 	}
 
 	if (key->func->generate == NULL) {
@@ -1214,25 +1198,24 @@ dst_key_free(dst_key_t **keyp) {
 
 	if (isc_refcount_decrement(&key->refs) == 1) {
 		isc_refcount_destroy(&key->refs);
-		isc_mem_t *mctx = key->mctx;
 		if (key->keydata.generic != NULL) {
 			INSIST(key->func->destroy != NULL);
 			key->func->destroy(key);
 		}
 		if (key->directory != NULL) {
-			isc_mem_free(mctx, key->directory);
+			isc_mem_free(isc_g_mctx, key->directory);
 		}
 		if (key->label != NULL) {
-			isc_mem_free(mctx, key->label);
+			isc_mem_free(isc_g_mctx, key->label);
 		}
-		dns_name_free(key->key_name, mctx);
-		isc_mem_put(mctx, key->key_name, sizeof(dns_name_t));
+		dns_name_free(key->key_name, isc_g_mctx);
+		isc_mem_put(isc_g_mctx, key->key_name, sizeof(dns_name_t));
 		if (key->key_tkeytoken) {
 			isc_buffer_free(&key->key_tkeytoken);
 		}
 		isc_mutex_destroy(&key->mdlock);
 		isc_safe_memwipe(key, sizeof(*key));
-		isc_mem_putanddetach(&mctx, key, sizeof(*key));
+		isc_mem_put(isc_g_mctx, key, sizeof(*key));
 	}
 }
 
@@ -1334,7 +1317,7 @@ dst_key_format(const dst_key_t *key, char *cp, unsigned int size) {
 }
 
 isc_result_t
-dst_key_dump(dst_key_t *key, isc_mem_t *mctx, char **buffer, int *length) {
+dst_key_dump(dst_key_t *key, char **buffer, int *length) {
 	REQUIRE(buffer != NULL && *buffer == NULL);
 	REQUIRE(length != NULL && *length == 0);
 	REQUIRE(VALID_KEY(key));
@@ -1342,13 +1325,13 @@ dst_key_dump(dst_key_t *key, isc_mem_t *mctx, char **buffer, int *length) {
 	if (key->func->dump == NULL) {
 		return ISC_R_NOTIMPLEMENTED;
 	}
-	return key->func->dump(key, mctx, buffer, length);
+	return key->func->dump(key, buffer, length);
 }
 
 isc_result_t
 dst_key_restore(dns_name_t *name, unsigned int alg, unsigned int flags,
 		unsigned int protocol, dns_rdataclass_t rdclass,
-		isc_mem_t *mctx, const char *keystr, dst_key_t **keyp) {
+		const char *keystr, dst_key_t **keyp) {
 	isc_result_t result;
 	dst_key_t *key;
 
@@ -1362,7 +1345,7 @@ dst_key_restore(dns_name_t *name, unsigned int alg, unsigned int flags,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	key = get_key_struct(name, alg, flags, protocol, 0, rdclass, 0, mctx);
+	key = get_key_struct(name, alg, flags, protocol, 0, rdclass, 0);
 
 	result = (dst_t_func[alg]->restore)(key, keystr);
 	if (result == ISC_R_SUCCESS) {
@@ -1384,12 +1367,12 @@ dst_key_restore(dns_name_t *name, unsigned int alg, unsigned int flags,
 static dst_key_t *
 get_key_struct(const dns_name_t *name, unsigned int alg, unsigned int flags,
 	       unsigned int protocol, unsigned int bits,
-	       dns_rdataclass_t rdclass, dns_ttl_t ttl, isc_mem_t *mctx) {
+	       dns_rdataclass_t rdclass, dns_ttl_t ttl) {
 	dst_key_t *key;
 
-	key = isc_mem_get(mctx, sizeof(dst_key_t));
+	key = isc_mem_get(isc_g_mctx, sizeof(dst_key_t));
 	*key = (dst_key_t){
-		.key_name = isc_mem_get(mctx, sizeof(dns_name_t)),
+		.key_name = isc_mem_get(isc_g_mctx, sizeof(dns_name_t)),
 		.key_alg = alg,
 		.key_flags = flags,
 		.key_proto = protocol,
@@ -1400,10 +1383,9 @@ get_key_struct(const dns_name_t *name, unsigned int alg, unsigned int flags,
 	};
 
 	dns_name_init(key->key_name);
-	dns_name_dup(name, mctx, key->key_name);
+	dns_name_dup(name, isc_g_mctx, key->key_name);
 
 	isc_refcount_init(&key->refs, 1);
-	isc_mem_attach(mctx, &key->mctx);
 
 	isc_mutex_init(&key->mdlock);
 
@@ -1429,8 +1411,7 @@ dst_key_setinactive(dst_key_t *key, bool inactive) {
  * Reads a public key from disk.
  */
 isc_result_t
-dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
-		    dst_key_t **keyp) {
+dst_key_read_public(const char *filename, int type, dst_key_t **keyp) {
 	uint8_t rdatabuf[DNS_RDATA_MAXLENGTH];
 	isc_buffer_t b;
 	dns_fixedname_t name;
@@ -1452,7 +1433,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	 */
 
 	/* Initial token size; the lexer grows it on demand. */
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(isc_g_mctx, 1500, &lex);
 
 	memset(specials, 0, sizeof(specials));
 	specials['('] = 1;
@@ -1525,10 +1506,9 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 
 	isc_buffer_init(&b, rdatabuf, sizeof(rdatabuf));
 	CHECK(dns_rdata_fromtext(&rdata, rdclass, keytype, lex, NULL, false,
-				 mctx, &b, NULL));
+				 isc_g_mctx, &b, NULL));
 
-	CHECK(dst_key_fromdns(dns_fixedname_name(&name), rdclass, &b, mctx,
-			      keyp));
+	CHECK(dst_key_fromdns(dns_fixedname_name(&name), rdclass, &b, keyp));
 
 	dst_key_setttl(*keyp, ttl);
 
@@ -1584,13 +1564,13 @@ keystate_fromtext(const char *s, dst_key_state_t *state) {
  * Reads a key state from disk.
  */
 isc_result_t
-dst_key_read_state(const char *filename, isc_mem_t *mctx, dst_key_t **keyp) {
+dst_key_read_state(const char *filename, dst_key_t **keyp) {
 	isc_lex_t *lex = NULL;
 	isc_token_t token;
 	isc_result_t result;
 	unsigned int opt = ISC_LEXOPT_EOL;
 
-	isc_lex_create(mctx, 1500, &lex);
+	isc_lex_create(isc_g_mctx, 1500, &lex);
 	isc_lex_setcomments(lex, ISC_LEXCOMMENT_DNSMASTERFILE);
 
 	CHECK(isc_lex_openfile(lex, filename));
@@ -2094,13 +2074,12 @@ computeid(dst_key_t *key) {
 static isc_result_t
 frombuffer(const dns_name_t *name, unsigned int alg, unsigned int flags,
 	   unsigned int protocol, dns_rdataclass_t rdclass,
-	   isc_buffer_t *source, isc_mem_t *mctx, dst_key_t **keyp) {
+	   isc_buffer_t *source, dst_key_t **keyp) {
 	dst_key_t *key;
 	isc_result_t result;
 
 	REQUIRE(dns_name_isabsolute(name));
 	REQUIRE(source != NULL);
-	REQUIRE(mctx != NULL);
 	REQUIRE(keyp != NULL && *keyp == NULL);
 
 	if (alg == DNS_KEYALG_PRIVATEDNS) {
@@ -2122,7 +2101,7 @@ frombuffer(const dns_name_t *name, unsigned int alg, unsigned int flags,
 
 	RETERR(algorithm_status(alg));
 
-	key = get_key_struct(name, alg, flags, protocol, 0, rdclass, 0, mctx);
+	key = get_key_struct(name, alg, flags, protocol, 0, rdclass, 0);
 
 	if (isc_buffer_remaininglength(source) > 0) {
 		if (key->func->fromdns == NULL) {

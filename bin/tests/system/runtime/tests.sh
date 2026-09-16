@@ -17,7 +17,7 @@ set -e
 . ../conf.sh
 
 RNDCCMD="$RNDC -c ../_common/rndc.conf -p ${CONTROLPORT} -s"
-NAMED_DEFAULT_ARGS="-m record -d 99 -g"
+NAMED_DEFAULT_ARGS="-d 99 -g"
 
 kill_named() {
   pidfile="${1}"

@@ -294,7 +294,6 @@ struct dns_message {
 	isc_buffer_t   *buffer;
 	dns_compress_t *cctx;
 
-	isc_mem_t     *mctx;
 	isc_mempool_t *namepool;
 	isc_mempool_t *rdspool;
 
@@ -348,9 +347,8 @@ typedef void (*dns_message_cb_t)(void *arg, isc_result_t result);
  ***/
 
 void
-dns_message_create(isc_mem_t *mctx, isc_mempool_t *namepool,
-		   isc_mempool_t *rdspool, dns_message_intent_t intent,
-		   dns_message_t **msgp);
+dns_message_create(isc_mempool_t *namepool, isc_mempool_t *rdspool,
+		   dns_message_intent_t intent, dns_message_t **msgp);
 /*%<
  * Create msg structure.
  *
@@ -1165,8 +1163,7 @@ dns_message_setquerytsig(dns_message_t *msg, isc_buffer_t *querytsig);
  */
 
 isc_result_t
-dns_message_getquerytsig(dns_message_t *msg, isc_mem_t *mctx,
-			 isc_buffer_t **querytsig);
+dns_message_getquerytsig(dns_message_t *msg, isc_buffer_t **querytsig);
 /*%<
  * Gets the tsig from the TSIG from the signed query 'msg'.  This is also used
  * for chained TSIGs in TCP responses.  Unlike dns_message_gettsig, this makes
@@ -1375,14 +1372,14 @@ void
 dns_message_logpacketfrom(dns_message_t *message, const char *description,
 			  const isc_sockaddr_t *address,
 			  isc_logcategory_t category, isc_logmodule_t module,
-			  int level, isc_mem_t *mctx);
+			  int level);
 
 void
 dns_message_logpacketfromto(dns_message_t *message, const char *description,
 			    const isc_sockaddr_t *from,
 			    const isc_sockaddr_t *to,
 			    isc_logcategory_t category, isc_logmodule_t module,
-			    int level, isc_mem_t *mctx);
+			    int level);
 /*%<
  * Log the provided DNS 'message' using the specified logging parameters,
  * prepending it with the given 'description'.
@@ -1490,8 +1487,7 @@ dns_message_response_minttl(dns_message_t *msg, dns_ttl_t *pttl);
  */
 
 void
-dns_message_createpools(isc_mem_t *mctx, isc_mempool_t **namepoolp,
-			isc_mempool_t **rdspoolp);
+dns_message_createpools(isc_mempool_t **namepoolp, isc_mempool_t **rdspoolp);
 void
 dns_message_destroypools(isc_mempool_t **namepoolp, isc_mempool_t **rdspoolp);
 

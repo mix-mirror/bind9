@@ -36,34 +36,34 @@
  * length is 0.
  */
 void
-dns_acl_create(isc_mem_t *mctx, int n, dns_acl_t **target) {
+dns_acl_create(int n, dns_acl_t **target) {
 	REQUIRE(target != NULL && *target == NULL);
 
-	dns_acl_t *acl = isc_mem_get(mctx, sizeof(*acl));
+	dns_acl_t *acl = isc_mem_get(isc_g_mctx, sizeof(*acl));
 	*acl = (dns_acl_t){
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.nextincache = ISC_LINK_INITIALIZER,
-		.elements = isc_mem_cget(mctx, n, sizeof(acl->elements[0])),
+		.elements = isc_mem_cget(isc_g_mctx, n,
+					 sizeof(acl->elements[0])),
 		.alloc = n,
 		.ports_and_transports = ISC_LIST_INITIALIZER,
 		.magic = DNS_ACL_MAGIC,
 	};
 
-	isc_mem_attach(mctx, &acl->mctx);
-	dns_iptable_create(acl->mctx, &acl->iptable);
+	dns_iptable_create(isc_g_mctx, &acl->iptable);
 
 	*target = acl;
 }
 
 void
-dns_acl_any(isc_mem_t *mctx, dns_acl_t **target) {
-	dns_acl_create(mctx, 0, target);
+dns_acl_any(dns_acl_t **target) {
+	dns_acl_create(0, target);
 	dns_iptable_addprefix((*target)->iptable, NULL, 0, RADIX_ALLOW);
 }
 
 void
-dns_acl_none(isc_mem_t *mctx, dns_acl_t **target) {
-	dns_acl_create(mctx, 0, target);
+dns_acl_none(dns_acl_t **target) {
+	dns_acl_create(0, target);
 	dns_iptable_addprefix((*target)->iptable, NULL, 0, RADIX_DENY);
 }
 
@@ -252,7 +252,7 @@ dns_acl_merge(dns_acl_t *dest, dns_acl_t *source, bool pos) {
 			newalloc = 4;
 		}
 
-		dest->elements = isc_mem_creget(dest->mctx, dest->elements,
+		dest->elements = isc_mem_creget(isc_g_mctx, dest->elements,
 						dest->alloc, newalloc,
 						sizeof(dest->elements[0]));
 		dest->alloc = newalloc;
@@ -289,7 +289,7 @@ dns_acl_merge(dns_acl_t *dest, dns_acl_t *source, bool pos) {
 		/* Duplicate key name. */
 		if (source->elements[i].type == dns_aclelementtype_keyname) {
 			dns_name_init(&dest->elements[nelem + i].keyname);
-			dns_name_dup(&source->elements[i].keyname, dest->mctx,
+			dns_name_dup(&source->elements[i].keyname, isc_g_mctx,
 				     &dest->elements[nelem + i].keyname);
 		}
 
@@ -425,7 +425,7 @@ static void
 dns__acl_destroy_port_transports(dns_acl_t *acl) {
 	ISC_LIST_FOREACH(acl->ports_and_transports, port_proto, link) {
 		ISC_LIST_DEQUEUE(acl->ports_and_transports, port_proto, link);
-		isc_mem_put(acl->mctx, port_proto, sizeof(*port_proto));
+		isc_mem_put(isc_g_mctx, port_proto, sizeof(*port_proto));
 	}
 }
 
@@ -439,17 +439,17 @@ dns__acl_destroy(dns_acl_t *dacl) {
 	for (size_t i = 0; i < dacl->length; i++) {
 		dns_aclelement_t *de = &dacl->elements[i];
 		if (de->type == dns_aclelementtype_keyname) {
-			dns_name_free(&de->keyname, dacl->mctx);
+			dns_name_free(&de->keyname, isc_g_mctx);
 		} else if (de->type == dns_aclelementtype_nestedacl) {
 			dns_acl_detach(&de->nestedacl);
 		}
 	}
 	if (dacl->elements != NULL) {
-		isc_mem_cput(dacl->mctx, dacl->elements, dacl->alloc,
+		isc_mem_cput(isc_g_mctx, dacl->elements, dacl->alloc,
 			     sizeof(dacl->elements[0]));
 	}
 	if (dacl->name != NULL) {
-		isc_mem_free(dacl->mctx, dacl->name);
+		isc_mem_free(isc_g_mctx, dacl->name);
 	}
 	if (dacl->iptable != NULL) {
 		dns_iptable_detach(&dacl->iptable);
@@ -457,7 +457,7 @@ dns__acl_destroy(dns_acl_t *dacl) {
 
 	dns__acl_destroy_port_transports(dacl);
 
-	isc_mem_putanddetach(&dacl->mctx, dacl, sizeof(*dacl));
+	isc_mem_put(isc_g_mctx, dacl, sizeof(*dacl));
 }
 
 #if DNS_ACL_TRACE
@@ -592,18 +592,17 @@ dns_acl_allowed(isc_netaddr_t *addr, const dns_name_t *signer, dns_acl_t *acl,
  * Initialize ACL environment, setting up localhost and localnets ACLs
  */
 void
-dns_aclenv_create(isc_mem_t *mctx, dns_aclenv_t **envp) {
-	dns_aclenv_t *env = isc_mem_get(mctx, sizeof(*env));
+dns_aclenv_create(dns_aclenv_t **envp) {
+	dns_aclenv_t *env = isc_mem_get(isc_g_mctx, sizeof(*env));
 	*env = (dns_aclenv_t){
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.magic = DNS_ACLENV_MAGIC,
 	};
 
-	isc_mem_attach(mctx, &env->mctx);
 	isc_refcount_init(&env->references, 1);
 
-	dns_acl_create(mctx, 0, &env->localhost);
-	dns_acl_create(mctx, 0, &env->localnets);
+	dns_acl_create(0, &env->localhost);
+	dns_acl_create(0, &env->localnets);
 
 	*envp = env;
 }
@@ -688,7 +687,7 @@ dns__aclenv_destroy(dns_aclenv_t *aclenv) {
 	dns_acl_detach(&aclenv->localhost);
 	dns_acl_detach(&aclenv->localnets);
 
-	isc_mem_putanddetach(&aclenv->mctx, aclenv, sizeof(*aclenv));
+	isc_mem_put(isc_g_mctx, aclenv, sizeof(*aclenv));
 }
 
 #if DNS_ACL_TRACE
@@ -705,7 +704,7 @@ dns_acl_add_port_transports(dns_acl_t *acl, const in_port_t port,
 	REQUIRE(DNS_ACL_VALID(acl));
 	REQUIRE(port != 0 || transports != 0);
 
-	port_proto = isc_mem_get(acl->mctx, sizeof(*port_proto));
+	port_proto = isc_mem_get(isc_g_mctx, sizeof(*port_proto));
 	*port_proto = (dns_acl_port_transports_t){ .port = port,
 						   .transports = transports,
 						   .encrypted = encrypted,

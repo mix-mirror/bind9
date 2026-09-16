@@ -111,7 +111,7 @@ main(int argc, char **argv) {
 
 	isc_commandline_errprint = false;
 
-	while ((ch = isc_commandline_parse(argc, argv, "a:hk:Mmr:qs:y:z:")) !=
+	while ((ch = isc_commandline_parse(argc, argv, "a:hk:mr:qs:y:z:")) !=
 	       -1)
 	{
 		switch (ch) {
@@ -132,9 +132,6 @@ main(int argc, char **argv) {
 			} else {
 				usage(EXIT_FAILURE);
 			}
-			break;
-		case 'M':
-			isc_mem_debugon(ISC_MEM_DEBUGTRACE);
 			break;
 		case 'm':
 			show_final_mem = true;

@@ -111,8 +111,7 @@ ISC_LOOP_TEST_IMPL(zonemgr_createzone) {
 
 	dns_zonemgr_create(isc_g_mctx, &myzonemgr);
 
-	result = dns_zonemgr_createzone(myzonemgr, &zone);
-	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_zonemgr_createzone(myzonemgr, &zone);
 	assert_non_null(zone);
 
 	result = dns_zonemgr_managezone(myzonemgr, zone);

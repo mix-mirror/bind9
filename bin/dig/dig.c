@@ -2625,7 +2625,7 @@ exit_or_usage:
 /*%
  * #true returned if value was used
  */
-static const char *single_dash_opts = "46dFhimnruv";
+static const char *single_dash_opts = "46dFhinruv";
 static const char *dash_opts = "46bcdFfhikmnpqrtvyx";
 static bool
 dash_option(char *option, char *next, dig_lookup_t **lookup,
@@ -2960,11 +2960,6 @@ preparse_args(int argc, char **argv) {
 				if (isc_crypto_fips_enable() != ISC_R_SUCCESS) {
 					fatal("setting FIPS mode failed");
 				}
-				break;
-			case 'm':
-				memdebugging = true;
-				isc_mem_debugon(ISC_MEM_DEBUGTRACE |
-						ISC_MEM_DEBUGRECORD);
 				break;
 			case 'r':
 				/*

@@ -85,7 +85,6 @@ struct dst_key {
 	uint16_t key_bits;	    /*%< hmac digest bits */
 	dns_rdataclass_t key_class; /*%< class of the key record */
 	dns_ttl_t key_ttl;	    /*%< default/initial dnskey ttl */
-	isc_mem_t *mctx;	    /*%< memory context */
 	char *directory;	    /*%< key directory */
 	char *label;		    /*%< HSM label */
 	union {
@@ -132,7 +131,6 @@ struct dst_context {
 	unsigned int magic;
 	dst_use_t use;
 	dst_key_t *key;
-	isc_mem_t *mctx;
 	isc_logcategory_t category;
 	union {
 		void *generic;
@@ -169,8 +167,7 @@ struct dst_func {
 
 	isc_result_t (*fromlabel)(dst_key_t *key, const char *label,
 				  const char *pin);
-	isc_result_t (*dump)(dst_key_t *key, isc_mem_t *mctx, char **buffer,
-			     int *length);
+	isc_result_t (*dump)(dst_key_t *key, char **buffer, int *length);
 	isc_result_t (*restore)(dst_key_t *key, const char *keystr);
 };
 

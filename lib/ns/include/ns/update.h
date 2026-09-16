@@ -30,6 +30,8 @@
 
 #include <dns/types.h>
 
+#include <ns/client.h>
+
 /***
  *** Types.
  ***/

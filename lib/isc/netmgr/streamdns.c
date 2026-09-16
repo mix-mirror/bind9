@@ -71,11 +71,10 @@ typedef struct streamdns_send_req {
 } streamdns_send_req_t;
 
 static streamdns_send_req_t *
-streamdns_get_send_req(isc_nmsocket_t *sock, isc_mem_t *mctx,
-		       isc__nm_uvreq_t *req);
+streamdns_get_send_req(isc_nmsocket_t *sock, isc__nm_uvreq_t *req);
 
 static void
-streamdns_put_send_req(isc_mem_t *mctx, streamdns_send_req_t *send_req,
+streamdns_put_send_req(streamdns_send_req_t *send_req,
 		       const bool force_destroy);
 
 static void
@@ -279,8 +278,7 @@ streamdns_sock_new(isc__networker_t *worker, const isc_nmsocket_type_t type,
 		sock->client = !is_server;
 		sock->connecting = !is_server;
 		sock->streamdns.input = isc_dnsstream_assembler_new(
-			sock->worker->mctx, streamdns_on_dnsmessage_data_cb,
-			sock);
+			streamdns_on_dnsmessage_data_cb, sock);
 	}
 
 	return sock;
@@ -589,8 +587,7 @@ streamdns_try_close_unused(isc_nmsocket_t *sock) {
 }
 
 static streamdns_send_req_t *
-streamdns_get_send_req(isc_nmsocket_t *sock, isc_mem_t *mctx,
-		       isc__nm_uvreq_t *req) {
+streamdns_get_send_req(isc_nmsocket_t *sock, isc__nm_uvreq_t *req) {
 	streamdns_send_req_t *send_req;
 
 	if (sock->streamdns.send_req != NULL) {
@@ -602,7 +599,7 @@ streamdns_get_send_req(isc_nmsocket_t *sock, isc_mem_t *mctx,
 		sock->streamdns.send_req = NULL;
 	} else {
 		/* Allocate a new object. */
-		send_req = isc_mem_get(mctx, sizeof(*send_req));
+		send_req = isc_mem_get(isc_g_mctx, sizeof(*send_req));
 		*send_req = (streamdns_send_req_t){ 0 };
 	}
 
@@ -617,7 +614,7 @@ streamdns_get_send_req(isc_nmsocket_t *sock, isc_mem_t *mctx,
 }
 
 static void
-streamdns_put_send_req(isc_mem_t *mctx, streamdns_send_req_t *send_req,
+streamdns_put_send_req(streamdns_send_req_t *send_req,
 		       const bool force_destroy) {
 	/*
 	 * Attempt to put the object for reuse later if we are not
@@ -637,13 +634,12 @@ streamdns_put_send_req(isc_mem_t *mctx, streamdns_send_req_t *send_req,
 		}
 	}
 
-	isc_mem_put(mctx, send_req, sizeof(*send_req));
+	isc_mem_put(isc_g_mctx, send_req, sizeof(*send_req));
 }
 
 static void
 streamdns_writecb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	streamdns_send_req_t *send_req = (streamdns_send_req_t *)cbarg;
-	isc_mem_t *mctx;
 	isc_nm_cb_t cb;
 	void *send_cbarg;
 	isc_nmhandle_t *dnshandle = NULL;
@@ -653,13 +649,12 @@ streamdns_writecb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	REQUIRE(VALID_NMSOCK(send_req->dnshandle->sock));
 	REQUIRE(send_req->dnshandle->sock->tid == isc_tid());
 
-	mctx = send_req->dnshandle->sock->worker->mctx;
 	cb = send_req->cb;
 	send_cbarg = send_req->cbarg;
 
 	isc_nmhandle_attach(send_req->dnshandle, &dnshandle);
 	/* try to keep the send request object for reuse */
-	streamdns_put_send_req(mctx, send_req, false);
+	streamdns_put_send_req(send_req, false);
 	cb(dnshandle, result, send_cbarg);
 	streamdns_try_close_unused(dnshandle->sock);
 	isc_nmhandle_detach(&dnshandle);
@@ -851,9 +846,7 @@ isc__nm_streamdns_cleanup_data(isc_nmsocket_t *sock) {
 		isc_dnsstream_assembler_free(&sock->streamdns.input);
 		INSIST(sock->streamdns.nsending == 0);
 		if (sock->streamdns.send_req != NULL) {
-			isc_mem_t *mctx = sock->worker->mctx;
-			streamdns_put_send_req(mctx,
-					       (streamdns_send_req_t *)
+			streamdns_put_send_req((streamdns_send_req_t *)
 						       sock->streamdns.send_req,
 					       true);
 		}
@@ -971,7 +964,6 @@ isc__nm_streamdns_send(isc_nmhandle_t *handle, const isc_region_t *region,
 	isc__nm_uvreq_t *uvreq = NULL;
 	isc_nmsocket_t *sock = NULL;
 	streamdns_send_req_t *send_req;
-	isc_mem_t *mctx;
 	isc_region_t data = { 0 };
 
 	REQUIRE(VALID_NMHANDLE(handle));
@@ -1000,8 +992,7 @@ isc__nm_streamdns_send(isc_nmhandle_t *handle, const isc_region_t *region,
 	 * transport, we can treat the operation synchronously, as the
 	 * transport code will take care of the asynchronicity if required.
 	 */
-	mctx = sock->worker->mctx;
-	send_req = streamdns_get_send_req(sock, mctx, uvreq);
+	send_req = streamdns_get_send_req(sock, uvreq);
 	data.base = (unsigned char *)uvreq->uvbuf.base;
 	data.length = uvreq->uvbuf.len;
 	isc__nm_senddns(sock->outerhandle, &data, streamdns_writecb,

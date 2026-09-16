@@ -378,7 +378,7 @@ check_data(const dst_private_t *priv, const unsigned int alg, bool old,
 }
 
 void
-dst__privstruct_free(dst_private_t *priv, isc_mem_t *mctx) {
+dst__privstruct_free(dst_private_t *priv) {
 	int i;
 
 	if (priv == NULL) {
@@ -389,14 +389,14 @@ dst__privstruct_free(dst_private_t *priv, isc_mem_t *mctx) {
 			continue;
 		}
 		memset(priv->elements[i].data, 0, MAXFIELDSIZE);
-		isc_mem_put(mctx, priv->elements[i].data, MAXFIELDSIZE);
+		isc_mem_put(isc_g_mctx, priv->elements[i].data, MAXFIELDSIZE);
 	}
 	priv->nelements = 0;
 }
 
 isc_result_t
 dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
-		      isc_mem_t *mctx, dst_private_t *priv) {
+		      dst_private_t *priv) {
 	int n = 0, major, minor;
 	isc_buffer_t b;
 	isc_token_t token;
@@ -551,7 +551,7 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 
 		priv->elements[n].tag = tag;
 
-		data = isc_mem_get(mctx, MAXFIELDSIZE);
+		data = isc_mem_get(isc_g_mctx, MAXFIELDSIZE);
 
 		isc_buffer_init(&b, data, MAXFIELDSIZE);
 		CHECK(isc_base64_tobuffer(lex, &b, isc_zero_or_more));
@@ -579,9 +579,9 @@ done:
 	return ISC_R_SUCCESS;
 
 cleanup:
-	dst__privstruct_free(priv, mctx);
+	dst__privstruct_free(priv);
 	if (data != NULL) {
-		isc_mem_put(mctx, data, MAXFIELDSIZE);
+		isc_mem_put(isc_g_mctx, data, MAXFIELDSIZE);
 	}
 
 	return result;

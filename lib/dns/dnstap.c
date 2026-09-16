@@ -94,14 +94,12 @@ struct dns_dtmsg {
 struct dns_dthandle {
 	dns_dtmode_t mode;
 	struct fstrm_reader *reader;
-	isc_mem_t *mctx;
 };
 
 struct dns_dtenv {
 	unsigned int magic;
 	isc_refcount_t references;
 
-	isc_mem_t *mctx;
 	isc_loop_t *loop;
 
 	struct fstrm_iothr *iothr;
@@ -139,7 +137,7 @@ ISC_REFCOUNT_IMPL(dns_dtenv, destroy);
 #endif /* DNS_DTENV_TRACE */
 
 isc_result_t
-dns_dt_create(isc_mem_t *mctx, dns_dtmode_t mode, const char *path,
+dns_dt_create(dns_dtmode_t mode, const char *path,
 	      struct fstrm_iothr_options **foptp, isc_loop_t *loop,
 	      dns_dtenv_t **envp) {
 	isc_result_t result = ISC_R_SUCCESS;
@@ -159,17 +157,16 @@ dns_dt_create(isc_mem_t *mctx, dns_dtmode_t mode, const char *path,
 
 	atomic_fetch_add_release(&global_generation, 1);
 
-	env = isc_mem_get(mctx, sizeof(*env));
+	env = isc_mem_get(isc_g_mctx, sizeof(*env));
 	*env = (dns_dtenv_t){
 		.loop = loop,
 		.reopen_queued = false,
 	};
 
-	isc_mem_attach(mctx, &env->mctx);
 	isc_mutex_init(&env->reopen_lock);
-	env->path = isc_mem_strdup(env->mctx, path);
+	env->path = isc_mem_strdup(isc_g_mctx, path);
 	isc_refcount_init(&env->references, 1);
-	isc_stats_create(env->mctx, &env->stats, dns_dnstapcounter_max);
+	isc_stats_create(isc_g_mctx, &env->stats, dns_dnstapcounter_max);
 
 	fwopt = fstrm_writer_options_init();
 	if (fwopt == NULL) {
@@ -235,11 +232,11 @@ cleanup:
 
 	if (result != ISC_R_SUCCESS) {
 		isc_mutex_destroy(&env->reopen_lock);
-		isc_mem_free(env->mctx, env->path);
+		isc_mem_free(isc_g_mctx, env->path);
 		if (env->stats != NULL) {
 			isc_stats_detach(&env->stats);
 		}
-		isc_mem_putanddetach(&env->mctx, env, sizeof(dns_dtenv_t));
+		isc_mem_put(isc_g_mctx, env, sizeof(dns_dtenv_t));
 	}
 
 	return result;
@@ -342,7 +339,7 @@ dns_dt_reopen(dns_dtenv_t *env, int roll) {
 		 * Create a temporary isc_logfile_t structure so we can
 		 * take advantage of the logfile rolling facility.
 		 */
-		char *filename = isc_mem_strdup(env->mctx, env->path);
+		char *filename = isc_mem_strdup(isc_g_mctx, env->path);
 		file.name = filename;
 		file.stream = NULL;
 		file.versions = roll;
@@ -350,7 +347,7 @@ dns_dt_reopen(dns_dtenv_t *env, int roll) {
 		file.maximum_reached = false;
 		file.suffix = env->suffix;
 		result = isc_logfile_roll(&file);
-		isc_mem_free(env->mctx, filename);
+		isc_mem_free(isc_g_mctx, filename);
 		CHECK(result);
 	}
 
@@ -385,17 +382,17 @@ cleanup:
 }
 
 static isc_result_t
-toregion(dns_dtenv_t *env, isc_region_t *r, const char *str) {
+toregion(isc_region_t *r, const char *str) {
 	unsigned char *p = NULL;
 
 	REQUIRE(r != NULL);
 
 	if (str != NULL) {
-		p = (unsigned char *)isc_mem_strdup(env->mctx, str);
+		p = (unsigned char *)isc_mem_strdup(isc_g_mctx, str);
 	}
 
 	if (r->base != NULL) {
-		isc_mem_free(env->mctx, r->base);
+		isc_mem_free(isc_g_mctx, r->base);
 		r->length = 0;
 	}
 
@@ -411,14 +408,14 @@ isc_result_t
 dns_dt_setidentity(dns_dtenv_t *env, const char *identity) {
 	REQUIRE(VALID_DTENV(env));
 
-	return toregion(env, &env->identity, identity);
+	return toregion(&env->identity, identity);
 }
 
 isc_result_t
 dns_dt_setversion(dns_dtenv_t *env, const char *version) {
 	REQUIRE(VALID_DTENV(env));
 
-	return toregion(env, &env->version, version);
+	return toregion(&env->version, version);
 }
 
 static void
@@ -478,21 +475,21 @@ destroy(dns_dtenv_t *env) {
 	}
 
 	if (env->identity.base != NULL) {
-		isc_mem_free(env->mctx, env->identity.base);
+		isc_mem_free(isc_g_mctx, env->identity.base);
 		env->identity.length = 0;
 	}
 	if (env->version.base != NULL) {
-		isc_mem_free(env->mctx, env->version.base);
+		isc_mem_free(isc_g_mctx, env->version.base);
 		env->version.length = 0;
 	}
 	if (env->path != NULL) {
-		isc_mem_free(env->mctx, env->path);
+		isc_mem_free(isc_g_mctx, env->path);
 	}
 	if (env->stats != NULL) {
 		isc_stats_detach(&env->stats);
 	}
 
-	isc_mem_putanddetach(&env->mctx, env, sizeof(*env));
+	isc_mem_put(isc_g_mctx, env, sizeof(*env));
 }
 
 static isc_result_t
@@ -902,8 +899,7 @@ dnstap_file(struct fstrm_reader *r) {
 }
 
 isc_result_t
-dns_dt_open(const char *filename, dns_dtmode_t mode, isc_mem_t *mctx,
-	    dns_dthandle_t **handlep) {
+dns_dt_open(const char *filename, dns_dtmode_t mode, dns_dthandle_t **handlep) {
 	isc_result_t result;
 	struct fstrm_file_options *fopt = NULL;
 	fstrm_res res;
@@ -911,10 +907,9 @@ dns_dt_open(const char *filename, dns_dtmode_t mode, isc_mem_t *mctx,
 
 	REQUIRE(handlep != NULL && *handlep == NULL);
 
-	handle = isc_mem_get(mctx, sizeof(*handle));
+	handle = isc_mem_get(isc_g_mctx, sizeof(*handle));
 
 	handle->mode = mode;
-	handle->mctx = NULL;
 
 	switch (mode) {
 	case dns_dtmode_file:
@@ -946,7 +941,6 @@ dns_dt_open(const char *filename, dns_dtmode_t mode, isc_mem_t *mctx,
 		UNREACHABLE();
 	}
 
-	isc_mem_attach(mctx, &handle->mctx);
 	result = ISC_R_SUCCESS;
 	*handlep = handle;
 	handle = NULL;
@@ -960,7 +954,7 @@ cleanup:
 		fstrm_file_options_destroy(&fopt);
 	}
 	if (handle != NULL) {
-		isc_mem_put(mctx, handle, sizeof(*handle));
+		isc_mem_put(isc_g_mctx, handle, sizeof(*handle));
 	}
 	return result;
 }
@@ -1004,11 +998,11 @@ dns_dt_close(dns_dthandle_t **handlep) {
 		fstrm_reader_destroy(&handle->reader);
 		handle->reader = NULL;
 	}
-	isc_mem_putanddetach(&handle->mctx, handle, sizeof(*handle));
+	isc_mem_put(isc_g_mctx, handle, sizeof(*handle));
 }
 
 isc_result_t
-dns_dt_parse(isc_mem_t *mctx, isc_region_t *src, dns_dtdata_t **destp) {
+dns_dt_parse(isc_region_t *src, dns_dtdata_t **destp) {
 	isc_result_t result;
 	Dnstap__Dnstap *frame;
 	Dnstap__Message *m;
@@ -1018,10 +1012,8 @@ dns_dt_parse(isc_mem_t *mctx, isc_region_t *src, dns_dtdata_t **destp) {
 	REQUIRE(src != NULL);
 	REQUIRE(destp != NULL && *destp == NULL);
 
-	d = isc_mem_get(mctx, sizeof(*d));
+	d = isc_mem_get(isc_g_mctx, sizeof(*d));
 	*d = (dns_dtdata_t){ 0 };
-
-	isc_mem_attach(mctx, &d->mctx);
 
 	d->frame = dnstap__dnstap__unpack(NULL, src->length, src->base);
 	if (d->frame == NULL) {
@@ -1106,7 +1098,7 @@ dns_dt_parse(isc_mem_t *mctx, isc_region_t *src, dns_dtdata_t **destp) {
 
 	isc_buffer_init(&b, d->msgdata.base, d->msgdata.length);
 	isc_buffer_add(&b, d->msgdata.length);
-	dns_message_create(mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE, &d->msg);
+	dns_message_create(NULL, NULL, DNS_MESSAGE_INTENTPARSE, &d->msg);
 	result = dns_message_parse(d->msg, &b, 0);
 	if (result != ISC_R_SUCCESS) {
 		if (result != DNS_R_RECOVERABLE) {
@@ -1377,5 +1369,5 @@ dns_dtdata_free(dns_dtdata_t **dp) {
 		dnstap__dnstap__free_unpacked(d->frame, NULL);
 	}
 
-	isc_mem_putanddetach(&d->mctx, d, sizeof(*d));
+	isc_mem_put(isc_g_mctx, d, sizeof(*d));
 }

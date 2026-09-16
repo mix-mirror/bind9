@@ -172,32 +172,7 @@ main(int argc, char *argv[]) {
 
 	isc_commandline_init(argc, argv);
 
-#define CMDLINE_FLAGS "c:E:hJ:m:o:I:qv:Vxz"
-
-	/*
-	 * Process memory debugging argument first.
-	 */
-	while ((ch = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
-		switch (ch) {
-		case 'm':
-			if (strcasecmp(isc_commandline_argument, "record") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGRECORD);
-			}
-			if (strcasecmp(isc_commandline_argument, "trace") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGTRACE);
-			}
-			if (strcasecmp(isc_commandline_argument, "usage") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGUSAGE);
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	isc_commandline_reset = true;
+#define CMDLINE_FLAGS "c:E:hJ:o:I:qv:Vxz"
 
 	isc_commandline_errprint = false;
 

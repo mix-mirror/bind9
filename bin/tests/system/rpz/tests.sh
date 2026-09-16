@@ -31,7 +31,7 @@ ns10=$ns.10 # authoritative server
 
 HAVE_CORE=
 
-NS_PARAMS="-m record -c named.conf -d 99 -g"
+NS_PARAMS="-c named.conf -d 99 -g"
 
 status=0
 t=0

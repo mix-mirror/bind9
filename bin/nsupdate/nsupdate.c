@@ -982,7 +982,7 @@ get_addresses(char *host, in_port_t port, isc_sockaddr_t *sockaddr,
 	return count;
 }
 
-#define PARSE_ARGS_FMT "46A:C:dDE:ghH:iK:lL:MoOk:p:Pr:R:St:Tu:vVy:"
+#define PARSE_ARGS_FMT "46A:C:dDE:ghH:iK:lL:oOk:p:Pr:R:St:Tu:vVy:"
 
 static void
 pre_parse_args(int argc, char **argv) {
@@ -994,14 +994,6 @@ pre_parse_args(int argc, char **argv) {
 
 	while ((ch = isc_commandline_parse(argc, argv, PARSE_ARGS_FMT)) != -1) {
 		switch (ch) {
-		case 'M': /* was -dm */
-			debugging = true;
-			ddebugging = true;
-			memdebugging = true;
-			isc_mem_debugon(ISC_MEM_DEBUGTRACE |
-					ISC_MEM_DEBUGRECORD);
-			break;
-
 		case '4':
 			if (ipv6only) {
 				fatal("only one of -4 and -6 allowed");

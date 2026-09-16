@@ -54,7 +54,7 @@ dns_xfrin_create(dns_zone_t *zone, dns_rdatatype_t xfrtype,
 		 const isc_sockaddr_t *sourceaddr, dns_tsigkey_t *tsigkey,
 		 dns_transport_type_t soa_transport_type,
 		 dns_transport_t *transport, isc_tlsctx_cache_t *tlsctx_cache,
-		 isc_mem_t *mctx, dns_xfrin_t **xfrp);
+		 dns_xfrin_t **xfrp);
 /*%<
  * Create an incoming zone transfer object of 'zone' from
  * 'primaryaddr'.  Attach '*xfrp' to the newly created object.

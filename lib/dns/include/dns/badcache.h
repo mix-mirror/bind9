@@ -56,7 +56,7 @@
  ***/
 
 dns_badcache_t *
-dns_badcache_new(isc_mem_t *mctx);
+dns_badcache_new(void);
 /*%
  * Allocate and initialize a badcache and store it in '*bcp'.
  *

@@ -205,7 +205,6 @@ typedef enum inline_sync_phase {
  * means no sync is running.
  */
 typedef struct zone_inline_sync {
-	isc_mem_t *mctx;
 	dns_zone_t *raw;
 	dns_db_t *db;
 	dns_dbversion_t *oldver;
@@ -221,7 +220,6 @@ typedef struct zone_inline_sync {
 struct dns_checkds {
 	unsigned int magic;
 	dns_notify_flags_t flags;
-	isc_mem_t *mctx;
 	dns_zone_t *zone;
 	dns_adbfind_t *find;
 	dns_request_t *request;
@@ -239,7 +237,6 @@ struct dns_checkds {
  */
 struct dns_forward {
 	unsigned int magic;
-	isc_mem_t *mctx;
 	dns_zone_t *zone;
 	isc_buffer_t *msgbuf;
 	dns_request_t *request;
@@ -313,7 +310,6 @@ struct dns_include {
 };
 
 typedef struct dns_rad {
-	isc_mem_t *mctx;
 	struct rcu_head rcu_head;
 	dns_fixedname_t fname;
 } dns_rad_t;
@@ -328,7 +324,6 @@ typedef struct zone_settimer {
  */
 struct dns_zonemgr {
 	unsigned int magic;
-	isc_mem_t *mctx;
 	isc_refcount_t refs;
 	uint32_t workers;
 	isc_ratelimiter_t *checkdsrl;
@@ -367,7 +362,6 @@ struct dns_zone {
 #ifdef DNS_ZONE_CHECKLOCK
 	bool locked;
 #endif /* ifdef DNS_ZONE_CHECKLOCK */
-	isc_mem_t *mctx;
 	alignas(ISC_OS_CACHELINE_SIZE) isc_refcount_t references;
 	char *masterfile;
 	char *initfile;

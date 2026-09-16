@@ -30,7 +30,6 @@ typedef struct proxyudp_send_req {
 struct isc_nm_proxyudplistener {
 	int magic;
 	isc_refcount_t references;
-	isc_mem_t *mctx;
 	isc_nm_udplistener_t *udp_listener; /* Raw UDP transport listener */
 	bool closing;
 
@@ -94,20 +93,17 @@ static void
 proxyudp_clear_proxy_header_data(isc_nmsocket_t *sock);
 
 static proxyudp_send_req_t *
-proxyudp_get_send_req(isc_mem_t *mctx, isc_nmsocket_t *sock,
-		      isc_nmhandle_t *proxyhandle, isc_region_t *client_data,
-		      isc_nm_cb_t cb, void *cbarg);
+proxyudp_get_send_req(isc_nmsocket_t *sock, isc_nmhandle_t *proxyhandle,
+		      isc_region_t *client_data, isc_nm_cb_t cb, void *cbarg);
 
 static void
-proxyudp_put_send_req(isc_mem_t *mctx, proxyudp_send_req_t *send_req,
-		      const bool force_destroy);
+proxyudp_put_send_req(proxyudp_send_req_t *send_req, const bool force_destroy);
 
 static void
 proxyudp_send_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg);
 
 static void
 proxyudp_listener_destroy(isc_nm_proxyudplistener_t *listener) {
-	isc_mem_t *mctx = listener->mctx;
 	size_t size = sizeof(*listener) +
 		      ISC_CHECKED_MUL(listener->nproxy_sockets,
 				      sizeof(listener->proxy_sockets[0]));
@@ -120,7 +116,7 @@ proxyudp_listener_destroy(isc_nm_proxyudplistener_t *listener) {
 
 	isc_refcount_destroy(&listener->references);
 	listener->magic = 0;
-	isc_mem_putanddetach(&mctx, listener, size);
+	isc_mem_put(isc_g_mctx, listener, size);
 }
 
 ISC_REFCOUNT_IMPL(isc_nm_proxyudplistener, proxyudp_listener_destroy);
@@ -264,7 +260,7 @@ proxyudp_sock_new(isc__networker_t *worker, isc_sockaddr_t *addr,
 	sock->client = !is_server;
 	sock->connecting = !is_server;
 	if (!is_server) {
-		isc_buffer_allocate(worker->mctx, &sock->proxy.proxy2.outbuf,
+		isc_buffer_allocate(isc_g_mctx, &sock->proxy.proxy2.outbuf,
 				    ISC_NM_PROXY2_DEFAULT_BUFFER_SIZE);
 	}
 
@@ -390,11 +386,10 @@ isc_nm_listenproxyudp(uint32_t workers, isc_sockaddr_t *iface,
 		return ISC_R_SHUTTINGDOWN;
 	}
 
-	listener = isc_mem_get(worker->mctx, size);
+	listener = isc_mem_get(isc_g_mctx, size);
 	*listener = (isc_nm_proxyudplistener_t){
 		.magic = PROXYUDP_LISTENER_MAGIC,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.mctx = isc_mem_ref(worker->mctx),
 		.nproxy_sockets = nproxy_sockets,
 	};
 	REQUIRE(listener->nproxy_sockets > 0);
@@ -539,7 +534,6 @@ stop_proxyudp_child_job(void *arg) {
 	proxyudp_child_job_t *job = arg;
 	isc_nm_proxyudplistener_t *listener = job->listener;
 	isc_nmsocket_t *sock = listener->proxy_sockets[job->tid];
-	isc_mem_t *mctx = listener->mctx;
 
 	INSIST(VALID_PROXYUDP_LISTENER(listener));
 	INSIST(VALID_NMSOCK(sock));
@@ -553,7 +547,7 @@ stop_proxyudp_child_job(void *arg) {
 
 	isc__nmsocket_prep_destroy(sock);
 	isc__nmsocket_detach(&listener->proxy_sockets[job->tid]);
-	isc_mem_put(mctx, job, sizeof(*job));
+	isc_mem_put(isc_g_mctx, job, sizeof(*job));
 	isc_nm_proxyudplistener_detach(&listener);
 }
 
@@ -568,7 +562,7 @@ stop_proxyudp_child(isc_nm_proxyudplistener_t *listener, isc_tid_t tid) {
 
 	sock = listener->proxy_sockets[tid];
 	REQUIRE(VALID_NMSOCK(sock));
-	job = isc_mem_get(listener->mctx, sizeof(*job));
+	job = isc_mem_get(isc_g_mctx, sizeof(*job));
 	*job = (proxyudp_child_job_t){ .tid = tid };
 	isc_nm_proxyudplistener_attach(listener, &job->listener);
 
@@ -608,8 +602,7 @@ isc__nm_proxyudp_cleanup_data(isc_nmsocket_t *sock) {
 	switch (sock->type) {
 	case isc_nm_proxyudpsocket:
 		if (sock->proxy.send_req != NULL) {
-			proxyudp_put_send_req(sock->worker->mctx,
-					      sock->proxy.send_req, true);
+			proxyudp_put_send_req(sock->proxy.send_req, true);
 		}
 
 		proxyudp_clear_proxy_header_data(sock);
@@ -763,9 +756,8 @@ isc__nm_proxyudp_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb,
 }
 
 static proxyudp_send_req_t *
-proxyudp_get_send_req(isc_mem_t *mctx, isc_nmsocket_t *sock,
-		      isc_nmhandle_t *proxyhandle, isc_region_t *client_data,
-		      isc_nm_cb_t cb, void *cbarg) {
+proxyudp_get_send_req(isc_nmsocket_t *sock, isc_nmhandle_t *proxyhandle,
+		      isc_region_t *client_data, isc_nm_cb_t cb, void *cbarg) {
 	proxyudp_send_req_t *send_req = NULL;
 
 	if (sock->proxy.send_req != NULL) {
@@ -777,7 +769,7 @@ proxyudp_get_send_req(isc_mem_t *mctx, isc_nmsocket_t *sock,
 		sock->proxy.send_req = NULL;
 	} else {
 		/* Allocate a new object. */
-		send_req = isc_mem_get(mctx, sizeof(*send_req));
+		send_req = isc_mem_get(isc_g_mctx, sizeof(*send_req));
 		*send_req = (proxyudp_send_req_t){ 0 };
 	}
 
@@ -798,7 +790,7 @@ proxyudp_get_send_req(isc_mem_t *mctx, isc_nmsocket_t *sock,
 
 		/* allocate the buffer if it has not been allocated yet */
 		if (send_req->outbuf == NULL) {
-			isc_buffer_allocate(mctx, &send_req->outbuf,
+			isc_buffer_allocate(isc_g_mctx, &send_req->outbuf,
 					    client_data->length +
 						    header_region.length);
 		}
@@ -815,8 +807,7 @@ proxyudp_get_send_req(isc_mem_t *mctx, isc_nmsocket_t *sock,
 }
 
 static void
-proxyudp_put_send_req(isc_mem_t *mctx, proxyudp_send_req_t *send_req,
-		      const bool force_destroy) {
+proxyudp_put_send_req(proxyudp_send_req_t *send_req, const bool force_destroy) {
 	if (send_req->outbuf != NULL) {
 		/* clear the buffer to reuse it further */
 		isc_buffer_clear(send_req->outbuf);
@@ -843,13 +834,12 @@ proxyudp_put_send_req(isc_mem_t *mctx, proxyudp_send_req_t *send_req,
 		}
 	}
 
-	isc_mem_put(mctx, send_req, sizeof(*send_req));
+	isc_mem_put(isc_g_mctx, send_req, sizeof(*send_req));
 }
 
 static void
 proxyudp_send_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	proxyudp_send_req_t *send_req = (proxyudp_send_req_t *)cbarg;
-	isc_mem_t *mctx;
 	isc_nm_cb_t cb;
 	void *send_cbarg;
 	isc_nmhandle_t *proxyhandle = NULL;
@@ -860,7 +850,6 @@ proxyudp_send_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	REQUIRE(VALID_NMSOCK(send_req->proxyhandle->sock));
 	REQUIRE(send_req->proxyhandle->sock->tid == isc_tid());
 
-	mctx = send_req->proxyhandle->sock->worker->mctx;
 	cb = send_req->cb;
 	send_cbarg = send_req->cbarg;
 
@@ -868,7 +857,7 @@ proxyudp_send_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	isc__nmsocket_attach(proxyhandle->sock, &sock);
 
 	/* try to keep the send request object for reuse */
-	proxyudp_put_send_req(mctx, send_req, false);
+	proxyudp_put_send_req(send_req, false);
 	cb(proxyhandle, result, send_cbarg);
 	isc_nmhandle_detach(&proxyhandle);
 
@@ -911,9 +900,8 @@ isc__nm_proxyudp_send(isc_nmhandle_t *handle, isc_region_t *region,
 		return;
 	}
 
-	send_req = proxyudp_get_send_req(sock->worker->mctx, sock, handle,
-					 sock->client ? region : NULL, cb,
-					 cbarg);
+	send_req = proxyudp_get_send_req(
+		sock, handle, sock->client ? region : NULL, cb, cbarg);
 	if (sock->client) {
 		isc_region_t send_data = { 0 };
 		isc_buffer_usedregion(send_req->outbuf, &send_data);

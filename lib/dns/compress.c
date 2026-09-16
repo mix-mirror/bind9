@@ -30,18 +30,16 @@
 #define CCTX_VALID(x) ISC_MAGIC_VALID(x, CCTX_MAGIC)
 
 void
-dns_compress_init(dns_compress_t *cctx, isc_mem_t *mctx,
-		  dns_compress_flags_t flags) {
+dns_compress_init(dns_compress_t *cctx, dns_compress_flags_t flags) {
 	dns_compress_slot_t *set = NULL;
 	uint16_t mask;
 
 	REQUIRE(cctx != NULL);
-	REQUIRE(mctx != NULL);
 
 	if ((flags & DNS_COMPRESS_LARGE) != 0) {
 		size_t count = (1 << DNS_COMPRESS_LARGEBITS);
 		mask = count - 1;
-		set = isc_mem_callocate(mctx, count, sizeof(*set));
+		set = isc_mem_callocate(isc_g_mctx, count, sizeof(*set));
 	} else {
 		mask = ARRAY_SIZE(cctx->smallset) - 1;
 		set = cctx->smallset;
@@ -54,7 +52,6 @@ dns_compress_init(dns_compress_t *cctx, isc_mem_t *mctx,
 	*cctx = (dns_compress_t){
 		.magic = CCTX_MAGIC,
 		.flags = flags | DNS_COMPRESS_PERMITTED,
-		.mctx = mctx,
 		.mask = mask,
 		.set = set,
 		.coff = 0xffff,
@@ -65,7 +62,7 @@ void
 dns_compress_invalidate(dns_compress_t *cctx) {
 	REQUIRE(CCTX_VALID(cctx));
 	if (cctx->set != cctx->smallset) {
-		isc_mem_free(cctx->mctx, cctx->set);
+		isc_mem_free(isc_g_mctx, cctx->set);
 	}
 	*cctx = (dns_compress_t){ 0 };
 }

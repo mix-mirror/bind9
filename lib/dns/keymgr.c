@@ -15,7 +15,6 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <unistd.h>
 
 #include <isc/buffer.h>
@@ -488,10 +487,9 @@ keymgr_keyid_conflict(dst_key_t *newkey, uint16_t min, uint16_t max,
  */
 static isc_result_t
 keymgr_createkey(dns_kasp_key_t *kkey, const dns_name_t *origin,
-		 dns_kasp_t *kasp, dns_rdataclass_t rdclass, isc_mem_t *mctx,
-		 const char *keydir, dns_dnsseckeylist_t *keylist,
-		 isc_stdtime_t now, dns_dnsseckeylist_t *newkeys,
-		 dst_key_t **dst_key) {
+		 dns_kasp_t *kasp, dns_rdataclass_t rdclass, const char *keydir,
+		 dns_dnsseckeylist_t *keylist, isc_stdtime_t now,
+		 dns_dnsseckeylist_t *newkeys, dst_key_t **dst_key) {
 	isc_result_t result = ISC_R_SUCCESS;
 	bool conflict = false;
 	int flags = DNS_KEYOWNER_ZONE;
@@ -512,7 +510,7 @@ keymgr_createkey(dns_kasp_key_t *kkey, const dns_name_t *origin,
 	 * We also need to check against K* files for KEYs.
 	 */
 	result = dns_dnssec_findmatchingkeys(origin, NULL, keydir, NULL, now,
-					     true, mctx, &keykeys);
+					     true, &keykeys);
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
 		goto cleanup;
 	}
@@ -521,11 +519,11 @@ keymgr_createkey(dns_kasp_key_t *kkey, const dns_name_t *origin,
 		if (keystore == NULL) {
 			CHECK(dst_key_generate(origin, alg, size, 0, flags,
 					       DNS_KEYPROTO_DNSSEC, rdclass,
-					       NULL, mctx, &newkey, NULL));
+					       NULL, &newkey, NULL));
 		} else {
 			CHECK(dns_keystore_keygen(
 				keystore, origin, dns_kasp_getname(kasp),
-				rdclass, mctx, alg, size, flags, &newkey));
+				rdclass, alg, size, flags, &newkey));
 		}
 
 		/* Key collision? */
@@ -565,7 +563,7 @@ cleanup:
 	while (!ISC_LIST_EMPTY(keykeys)) {
 		dns_dnsseckey_t *key = ISC_LIST_HEAD(keykeys);
 		ISC_LIST_UNLINK(keykeys, key, link);
-		dns_dnsseckey_destroy(mctx, &key);
+		dns_dnsseckey_destroy(&key);
 	}
 	return result;
 }
@@ -1786,8 +1784,7 @@ keymgr_key_rollover(dns_kasp_key_t *kaspkey, dns_dnsseckey_t *active_key,
 		    dns_dnsseckeylist_t *keyring, dns_dnsseckeylist_t *newkeys,
 		    const dns_name_t *origin, dns_rdataclass_t rdclass,
 		    dns_kasp_t *kasp, const char *keydir, uint32_t lifetime,
-		    uint8_t opts, isc_stdtime_t now, isc_stdtime_t *nexttime,
-		    isc_mem_t *mctx) {
+		    uint8_t opts, isc_stdtime_t now, isc_stdtime_t *nexttime) {
 	char keystr[DST_KEY_FORMATSIZE];
 	char namestr[DNS_NAME_FORMATSIZE];
 	isc_stdtime_t retire = 0, active = 0, prepub = 0;
@@ -1948,15 +1945,15 @@ keymgr_key_rollover(dns_kasp_key_t *kaspkey, dns_dnsseckey_t *active_key,
 		bool csk = (dns_kasp_key_ksk(kaspkey) &&
 			    dns_kasp_key_zsk(kaspkey));
 
-		isc_result_t result = keymgr_createkey(
-			kaspkey, origin, kasp, rdclass, mctx, keydir, keyring,
-			now, newkeys, &dst_key);
+		isc_result_t result = keymgr_createkey(kaspkey, origin, kasp,
+						       rdclass, keydir, keyring,
+						       now, newkeys, &dst_key);
 		if (result != ISC_R_SUCCESS) {
 			return result;
 		}
 		dst_key_setttl(dst_key, dns_kasp_dnskeyttl(kasp));
 		dst_key_settime(dst_key, DST_TIME_CREATED, now);
-		dns_dnsseckey_create(mctx, &dst_key, &new_key);
+		dns_dnsseckey_create(&dst_key, &new_key);
 		dns_keymgr_key_init(new_key, kasp, now, csk);
 		keycreated = true;
 	}
@@ -2176,10 +2173,9 @@ keymgr_zrrsig(dns_dnsseckeylist_t *keyring, isc_stdtime_t now) {
  */
 isc_result_t
 dns_keymgr_run(const dns_name_t *origin, dns_rdataclass_t rdclass,
-	       isc_mem_t *mctx, dns_dnsseckeylist_t *keyring,
-	       dns_dnsseckeylist_t *dnskeys, const char *keydir,
-	       dns_kasp_t *kasp, uint8_t opts, isc_stdtime_t now,
-	       isc_stdtime_t *nexttime) {
+	       dns_dnsseckeylist_t *keyring, dns_dnsseckeylist_t *dnskeys,
+	       const char *keydir, dns_kasp_t *kasp, uint8_t opts,
+	       isc_stdtime_t now, isc_stdtime_t *nexttime) {
 	isc_result_t result = DNS_R_UNCHANGED;
 	dns_dnsseckeylist_t newkeys;
 	int numkeys = 0;
@@ -2187,7 +2183,6 @@ dns_keymgr_run(const dns_name_t *origin, dns_rdataclass_t rdclass,
 	char keystr[DST_KEY_FORMATSIZE];
 
 	REQUIRE(dns_name_isvalid(origin));
-	REQUIRE(mctx != NULL);
 	REQUIRE(keyring != NULL);
 	REQUIRE(DNS_KASP_VALID(kasp));
 
@@ -2354,7 +2349,7 @@ dns_keymgr_run(const dns_name_t *origin, dns_rdataclass_t rdclass,
 		/* See if this key requires a rollover. */
 		CHECK(keymgr_key_rollover(kkey, active_key, keyring, &newkeys,
 					  origin, rdclass, kasp, keydir,
-					  lifetime, opts, now, nexttime, mctx));
+					  lifetime, opts, now, nexttime));
 
 		opts &= ~DNS_KEYMGRATTR_NOROLL;
 	}
@@ -2420,7 +2415,7 @@ cleanup:
 			ISC_LIST_UNLINK(newkeys, newkey, link);
 			INSIST(newkey->key != NULL);
 			dst_key_free(&newkey->key);
-			dns_dnsseckey_destroy(mctx, &newkey);
+			dns_dnsseckey_destroy(&newkey);
 		}
 	}
 

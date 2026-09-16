@@ -92,8 +92,6 @@ typedef struct dns_dthandle dns_dthandle_t;
 
 #ifdef HAVE_DNSTAP
 struct dns_dtdata {
-	isc_mem_t *mctx;
-
 	void *frame;
 
 	bool		     query;
@@ -134,7 +132,7 @@ ISC_REFCOUNT_DECL(dns_dtenv);
  */
 
 isc_result_t
-dns_dt_create(isc_mem_t *mctx, dns_dtmode_t mode, const char *path,
+dns_dt_create(dns_dtmode_t mode, const char *path,
 	      struct fstrm_iothr_options **foptp, isc_loop_t *loop,
 	      dns_dtenv_t **envp);
 /*%<
@@ -272,7 +270,7 @@ dns_dt_send(dns_view_t *view, dns_dtmsgtype_t msgtype, isc_sockaddr_t *qaddr,
  */
 
 isc_result_t
-dns_dt_parse(isc_mem_t *mctx, isc_region_t *src, dns_dtdata_t **destp);
+dns_dt_parse(isc_region_t *src, dns_dtdata_t **destp);
 /*%<
  * Converts a raw dnstap frame in 'src' to a parsed dnstap data structure
  * in '*destp'.
@@ -319,8 +317,7 @@ dns_dtdata_free(dns_dtdata_t **dp);
  */
 
 isc_result_t
-dns_dt_open(const char *filename, dns_dtmode_t mode, isc_mem_t *mctx,
-	    dns_dthandle_t **handlep);
+dns_dt_open(const char *filename, dns_dtmode_t mode, dns_dthandle_t **handlep);
 /*%<
  * Opens a dnstap framestream at 'filename' and stores a pointer to the
  * reader object in a dns_dthandle_t structure.

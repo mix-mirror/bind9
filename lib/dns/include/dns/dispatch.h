@@ -64,7 +64,6 @@
  * round-robin fashion.
  */
 struct dns_dispatchset {
-	isc_mem_t	*mctx;
 	dns_dispatch_t **dispatches;
 	uint32_t	 ndisp;
 };
@@ -80,7 +79,7 @@ typedef enum dns_dispatchtype {
 } dns_dispatchtype_t;
 
 isc_result_t
-dns_dispatchmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t **mgrp);
+dns_dispatchmgr_create(dns_dispatchmgr_t **mgrp);
 /*%<
  * Creates a new dispatchmgr object, and sets the available ports
  * to the default range (1024-65535).
@@ -379,8 +378,8 @@ dns_dispatchset_get(dns_dispatchset_t *dset);
  */
 
 isc_result_t
-dns_dispatchset_create(isc_mem_t *mctx, dns_dispatch_t *source,
-		       dns_dispatchset_t **dsetp, uint32_t n);
+dns_dispatchset_create(dns_dispatch_t *source, dns_dispatchset_t **dsetp,
+		       uint32_t n);
 /*%<
  * Given a valid dispatch 'source', create a dispatch set containing
  * 'n' UDP dispatches, with the remainder filled out by clones of the

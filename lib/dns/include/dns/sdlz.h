@@ -289,7 +289,7 @@ typedef struct dns_sdlzmethods {
 
 isc_result_t
 dns_sdlzregister(const char *drivername, const dns_sdlzmethods_t *methods,
-		 void *driverarg, unsigned int flags, isc_mem_t *mctx,
+		 void *driverarg, unsigned int flags,
 		 dns_sdlzimplementation_t **sdlzimp);
 /*%<
  * Register a dynamically loadable zones (dlz) driver for the database

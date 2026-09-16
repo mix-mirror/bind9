@@ -67,7 +67,6 @@ struct dns_tsigkeyring {
 	isc_hashmap_t *keys;
 	unsigned int   writecount;
 	isc_rwlock_t   lock;
-	isc_mem_t     *mctx;
 
 	unsigned int   generated;
 	isc_refcount_t references;
@@ -78,8 +77,7 @@ struct dns_tsigkeyring {
 struct dns_tsigkey {
 	/* Unlocked */
 	unsigned int	magic; /*%< Magic number. */
-	isc_mem_t      *mctx;
-	dst_key_t      *key; /*%< Key */
+	dst_key_t      *key;   /*%< Key */
 	dns_fixedname_t fn;
 	dns_name_t     *name;	      /*%< Key name */
 	dst_algorithm_t alg;	      /*< Algorithm */
@@ -111,15 +109,13 @@ dns_tsigkey_identity(const dns_tsigkey_t *tsigkey);
 
 isc_result_t
 dns_tsigkey_create(const dns_name_t *name, dst_algorithm_t algorithm,
-		   unsigned char *secret, int length, isc_mem_t *mctx,
-		   dns_tsigkey_t **key);
+		   unsigned char *secret, int length, dns_tsigkey_t **key);
 
 isc_result_t
 dns_tsigkey_createfromkey(const dns_name_t *name, dst_algorithm_t algorithm,
 			  dst_key_t *dstkey, bool generated, bool restored,
 			  const dns_name_t *creator, isc_stdtime_t inception,
-			  isc_stdtime_t expire, isc_mem_t *mctx,
-			  dns_tsigkey_t **key);
+			  isc_stdtime_t expire, dns_tsigkey_t **key);
 /*%<
  *	Creates a tsig key structure and stores it in *keyp.
  *	The key's validity period is specified by (inception, expire),
@@ -248,12 +244,11 @@ dns_tsigkey_algorithm(dns_tsigkey_t *tkey);
  */
 
 void
-dns_tsigkeyring_create(isc_mem_t *mctx, dns_tsigkeyring_t **ringp);
+dns_tsigkeyring_create(dns_tsigkeyring_t **ringp);
 /*%<
  *	Create an empty TSIG key ring.
  *
  *	Requires:
- *\li		'mctx' is not NULL
  *\li		'ringp' is not NULL, and '*ringp' is NULL
  */
 

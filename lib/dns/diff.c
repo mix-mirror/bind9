@@ -42,8 +42,8 @@ rdata_covers(dns_rdata_t *rdata) {
 }
 
 void
-dns_difftuple_create(isc_mem_t *mctx, dns_diffop_t op, const dns_name_t *name,
-		     dns_ttl_t ttl, dns_rdata_t *rdata, dns_difftuple_t **tp) {
+dns_difftuple_create(dns_diffop_t op, const dns_name_t *name, dns_ttl_t ttl,
+		     dns_rdata_t *rdata, dns_difftuple_t **tp) {
 	dns_difftuple_t *t;
 	unsigned int size;
 	unsigned char *datap;
@@ -56,9 +56,7 @@ dns_difftuple_create(isc_mem_t *mctx, dns_diffop_t op, const dns_name_t *name,
 	 * in memory.
 	 */
 	size = sizeof(*t) + name->length + rdata->length;
-	t = isc_mem_allocate(mctx, size);
-	t->mctx = NULL;
-	isc_mem_attach(mctx, &t->mctx);
+	t = isc_mem_allocate(isc_g_mctx, size);
 	t->op = op;
 
 	datap = (unsigned char *)(t + 1);
@@ -93,17 +91,13 @@ dns_difftuple_create(isc_mem_t *mctx, dns_diffop_t op, const dns_name_t *name,
 
 void
 dns_difftuple_free(dns_difftuple_t **tp) {
-	isc_mem_t *mctx;
-
 	REQUIRE(tp != NULL && DNS_DIFFTUPLE_VALID(*tp));
 
 	dns_difftuple_t *t = MOVE_OWNERSHIP(*tp);
 
 	dns_name_invalidate(&t->name);
 	t->magic = 0;
-	mctx = t->mctx;
-	isc_mem_free(mctx, t);
-	isc_mem_detach(&mctx);
+	isc_mem_free(isc_g_mctx, t);
 }
 
 void
@@ -111,13 +105,12 @@ dns_difftuple_copy(dns_difftuple_t *orig, dns_difftuple_t **copyp) {
 	REQUIRE(DNS_DIFFTUPLE_VALID(orig));
 	REQUIRE(copyp != NULL && *copyp == NULL);
 
-	dns_difftuple_create(orig->mctx, orig->op, &orig->name, orig->ttl,
-			     &orig->rdata, copyp);
+	dns_difftuple_create(orig->op, &orig->name, orig->ttl, &orig->rdata,
+			     copyp);
 }
 
 void
-dns_diff_init(isc_mem_t *mctx, dns_diff_t *diff) {
-	diff->mctx = mctx;
+dns_diff_init(dns_diff_t *diff) {
 	ISC_LIST_INIT(diff->tuples);
 	diff->magic = DNS_DIFF_MAGIC;
 	diff->size = 0;
@@ -622,7 +615,7 @@ dns_diff_sort(dns_diff_t *diff, dns_diff_compare_func *compare) {
 	if (length == 0) {
 		return ISC_R_SUCCESS;
 	}
-	v = isc_mem_cget(diff->mctx, length, sizeof(dns_difftuple_t *));
+	v = isc_mem_cget(isc_g_mctx, length, sizeof(dns_difftuple_t *));
 	for (i = 0; i < length; i++) {
 		dns_difftuple_t *p = ISC_LIST_HEAD(diff->tuples);
 		v[i] = p;
@@ -633,7 +626,7 @@ dns_diff_sort(dns_diff_t *diff, dns_diff_compare_func *compare) {
 	for (i = 0; i < length; i++) {
 		ISC_LIST_APPEND(diff->tuples, v[i], link);
 	}
-	isc_mem_cput(diff->mctx, v, length, sizeof(dns_difftuple_t *));
+	isc_mem_cput(isc_g_mctx, v, length, sizeof(dns_difftuple_t *));
 	return ISC_R_SUCCESS;
 }
 
@@ -677,7 +670,7 @@ dns_diff_print(dns_diff_t *diff, FILE *file) {
 	 * text. Avoid it if possible.
 	 */
 	if (isc_log_wouldlog(required_log_level) || file != NULL) {
-		mem = isc_mem_get(diff->mctx, size);
+		mem = isc_mem_get(isc_g_mctx, size);
 
 		ISC_LIST_FOREACH(diff->tuples, t, link) {
 			isc_buffer_t buf;
@@ -694,9 +687,9 @@ dns_diff_print(dns_diff_t *diff, FILE *file) {
 						     false, &buf);
 
 			if (result == ISC_R_NOSPACE) {
-				isc_mem_put(diff->mctx, mem, size);
+				isc_mem_put(isc_g_mctx, mem, size);
 				size += 1024;
-				mem = isc_mem_get(diff->mctx, size);
+				mem = isc_mem_get(isc_g_mctx, size);
 				goto again;
 			}
 
@@ -742,7 +735,7 @@ dns_diff_print(dns_diff_t *diff, FILE *file) {
 	result = ISC_R_SUCCESS;
 cleanup:
 	if (mem != NULL) {
-		isc_mem_put(diff->mctx, mem, size);
+		isc_mem_put(isc_g_mctx, mem, size);
 	}
 	return result;
 }
@@ -760,7 +753,7 @@ dns_diff_applytuple(dns_difftuple_t **tuplep, dns_db_t *db,
 	/*
 	 * Create a singleton diff.
 	 */
-	dns_diff_init(diff->mctx, &temp_diff);
+	dns_diff_init(&temp_diff);
 	dns_diff_append(&temp_diff, &tuple);
 
 	/*

@@ -33,7 +33,7 @@ dns_ipkeylist_init(dns_ipkeylist_t *ipkl) {
 }
 
 void
-dns_ipkeylist_clear(isc_mem_t *mctx, dns_ipkeylist_t *ipkl) {
+dns_ipkeylist_clear(dns_ipkeylist_t *ipkl) {
 	REQUIRE(ipkl != NULL);
 
 	if (ipkl->allocated == 0) {
@@ -41,12 +41,12 @@ dns_ipkeylist_clear(isc_mem_t *mctx, dns_ipkeylist_t *ipkl) {
 	}
 
 	if (ipkl->addrs != NULL) {
-		isc_mem_cput(mctx, ipkl->addrs, ipkl->allocated,
+		isc_mem_cput(isc_g_mctx, ipkl->addrs, ipkl->allocated,
 			     sizeof(ipkl->addrs[0]));
 	}
 
 	if (ipkl->sources != NULL) {
-		isc_mem_cput(mctx, ipkl->sources, ipkl->allocated,
+		isc_mem_cput(isc_g_mctx, ipkl->sources, ipkl->allocated,
 			     sizeof(ipkl->sources[0]));
 	}
 
@@ -54,13 +54,14 @@ dns_ipkeylist_clear(isc_mem_t *mctx, dns_ipkeylist_t *ipkl) {
 		for (size_t i = 0; i < ipkl->allocated; i++) {
 			if (ipkl->keys[i] != NULL) {
 				if (dns_name_dynamic(ipkl->keys[i])) {
-					dns_name_free(ipkl->keys[i], mctx);
+					dns_name_free(ipkl->keys[i],
+						      isc_g_mctx);
 				}
-				isc_mem_put(mctx, ipkl->keys[i],
+				isc_mem_put(isc_g_mctx, ipkl->keys[i],
 					    sizeof(*ipkl->keys[i]));
 			}
 		}
-		isc_mem_cput(mctx, ipkl->keys, ipkl->allocated,
+		isc_mem_cput(isc_g_mctx, ipkl->keys, ipkl->allocated,
 			     sizeof(ipkl->keys[0]));
 	}
 
@@ -68,13 +69,14 @@ dns_ipkeylist_clear(isc_mem_t *mctx, dns_ipkeylist_t *ipkl) {
 		for (size_t i = 0; i < ipkl->allocated; i++) {
 			if (ipkl->tlss[i] != NULL) {
 				if (dns_name_dynamic(ipkl->tlss[i])) {
-					dns_name_free(ipkl->tlss[i], mctx);
+					dns_name_free(ipkl->tlss[i],
+						      isc_g_mctx);
 				}
-				isc_mem_put(mctx, ipkl->tlss[i],
+				isc_mem_put(isc_g_mctx, ipkl->tlss[i],
 					    sizeof(*ipkl->tlss[i]));
 			}
 		}
-		isc_mem_cput(mctx, ipkl->tlss, ipkl->allocated,
+		isc_mem_cput(isc_g_mctx, ipkl->tlss, ipkl->allocated,
 			     sizeof(ipkl->tlss[0]));
 	}
 
@@ -82,13 +84,14 @@ dns_ipkeylist_clear(isc_mem_t *mctx, dns_ipkeylist_t *ipkl) {
 		for (size_t i = 0; i < ipkl->allocated; i++) {
 			if (ipkl->labels[i] != NULL) {
 				if (dns_name_dynamic(ipkl->labels[i])) {
-					dns_name_free(ipkl->labels[i], mctx);
+					dns_name_free(ipkl->labels[i],
+						      isc_g_mctx);
 				}
-				isc_mem_put(mctx, ipkl->labels[i],
+				isc_mem_put(isc_g_mctx, ipkl->labels[i],
 					    sizeof(*ipkl->labels[i]));
 			}
 		}
-		isc_mem_cput(mctx, ipkl->labels, ipkl->allocated,
+		isc_mem_cput(isc_g_mctx, ipkl->labels, ipkl->allocated,
 			     sizeof(ipkl->labels[0]));
 	}
 
@@ -96,8 +99,7 @@ dns_ipkeylist_clear(isc_mem_t *mctx, dns_ipkeylist_t *ipkl) {
 }
 
 isc_result_t
-dns_ipkeylist_copy(isc_mem_t *mctx, const dns_ipkeylist_t *src,
-		   dns_ipkeylist_t *dst) {
+dns_ipkeylist_copy(const dns_ipkeylist_t *src, dns_ipkeylist_t *dst) {
 	uint32_t i;
 
 	REQUIRE(dst != NULL);
@@ -108,7 +110,7 @@ dns_ipkeylist_copy(isc_mem_t *mctx, const dns_ipkeylist_t *src,
 		return ISC_R_SUCCESS;
 	}
 
-	dns_ipkeylist_resize(mctx, dst, src->count);
+	dns_ipkeylist_resize(dst, src->count);
 
 	memmove(dst->addrs, src->addrs, src->count * sizeof(isc_sockaddr_t));
 
@@ -120,10 +122,11 @@ dns_ipkeylist_copy(isc_mem_t *mctx, const dns_ipkeylist_t *src,
 	if (src->keys != NULL) {
 		for (i = 0; i < src->count; i++) {
 			if (src->keys[i] != NULL) {
-				dst->keys[i] = isc_mem_get(mctx,
+				dst->keys[i] = isc_mem_get(isc_g_mctx,
 							   sizeof(dns_name_t));
 				dns_name_init(dst->keys[i]);
-				dns_name_dup(src->keys[i], mctx, dst->keys[i]);
+				dns_name_dup(src->keys[i], isc_g_mctx,
+					     dst->keys[i]);
 			} else {
 				dst->keys[i] = NULL;
 			}
@@ -133,10 +136,11 @@ dns_ipkeylist_copy(isc_mem_t *mctx, const dns_ipkeylist_t *src,
 	if (src->tlss != NULL) {
 		for (i = 0; i < src->count; i++) {
 			if (src->tlss[i] != NULL) {
-				dst->tlss[i] = isc_mem_get(mctx,
+				dst->tlss[i] = isc_mem_get(isc_g_mctx,
 							   sizeof(dns_name_t));
 				dns_name_init(dst->tlss[i]);
-				dns_name_dup(src->tlss[i], mctx, dst->tlss[i]);
+				dns_name_dup(src->tlss[i], isc_g_mctx,
+					     dst->tlss[i]);
 			} else {
 				dst->tlss[i] = NULL;
 			}
@@ -146,10 +150,10 @@ dns_ipkeylist_copy(isc_mem_t *mctx, const dns_ipkeylist_t *src,
 	if (src->labels != NULL) {
 		for (i = 0; i < src->count; i++) {
 			if (src->labels[i] != NULL) {
-				dst->labels[i] =
-					isc_mem_get(mctx, sizeof(dns_name_t));
+				dst->labels[i] = isc_mem_get(
+					isc_g_mctx, sizeof(dns_name_t));
 				dns_name_init(dst->labels[i]);
-				dns_name_dup(src->labels[i], mctx,
+				dns_name_dup(src->labels[i], isc_g_mctx,
 					     dst->labels[i]);
 			} else {
 				dst->labels[i] = NULL;
@@ -161,7 +165,7 @@ dns_ipkeylist_copy(isc_mem_t *mctx, const dns_ipkeylist_t *src,
 }
 
 void
-dns_ipkeylist_resize(isc_mem_t *mctx, dns_ipkeylist_t *ipkl, unsigned int n) {
+dns_ipkeylist_resize(dns_ipkeylist_t *ipkl, unsigned int n) {
 	REQUIRE(ipkl != NULL);
 	REQUIRE(n > ipkl->count);
 
@@ -169,16 +173,17 @@ dns_ipkeylist_resize(isc_mem_t *mctx, dns_ipkeylist_t *ipkl, unsigned int n) {
 		return;
 	}
 
-	ipkl->addrs = isc_mem_creget(mctx, ipkl->addrs, ipkl->allocated, n,
-				     sizeof(ipkl->addrs[0]));
-	ipkl->sources = isc_mem_creget(mctx, ipkl->sources, ipkl->allocated, n,
+	ipkl->addrs = isc_mem_creget(isc_g_mctx, ipkl->addrs, ipkl->allocated,
+				     n, sizeof(ipkl->addrs[0]));
+	ipkl->sources = isc_mem_creget(isc_g_mctx, ipkl->sources,
+				       ipkl->allocated, n,
 				       sizeof(ipkl->sources[0]));
-	ipkl->keys = isc_mem_creget(mctx, ipkl->keys, ipkl->allocated, n,
+	ipkl->keys = isc_mem_creget(isc_g_mctx, ipkl->keys, ipkl->allocated, n,
 				    sizeof(ipkl->keys[0]));
-	ipkl->tlss = isc_mem_creget(mctx, ipkl->tlss, ipkl->allocated, n,
+	ipkl->tlss = isc_mem_creget(isc_g_mctx, ipkl->tlss, ipkl->allocated, n,
 				    sizeof(ipkl->tlss[0]));
-	ipkl->labels = isc_mem_creget(mctx, ipkl->labels, ipkl->allocated, n,
-				      sizeof(ipkl->labels[0]));
+	ipkl->labels = isc_mem_creget(isc_g_mctx, ipkl->labels, ipkl->allocated,
+				      n, sizeof(ipkl->labels[0]));
 
 	ipkl->allocated = n;
 }

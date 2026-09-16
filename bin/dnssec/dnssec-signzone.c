@@ -3318,34 +3318,9 @@ main(int argc, char *argv[]) {
 	 * Unused letters: Bb G J l q Yy (and F is reserved).
 	 * l was previously used for DLV lookaside.
 	 */
-#define CMDLINE_FLAGS                                                        \
-	"3:AaCc:Dd:E:e:f:FgG:hH:i:I:j:J:K:k:L:m:M:n:N:o:O:PpQqRr:s:ST:tuUv:" \
+#define CMDLINE_FLAGS                                                      \
+	"3:AaCc:Dd:E:e:f:FgG:hH:i:I:j:J:K:k:L:M:n:N:o:O:PpQqRr:s:ST:tuUv:" \
 	"VX:xzZ:"
-
-	/*
-	 * Process memory debugging argument first.
-	 */
-	while ((ch = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
-		switch (ch) {
-		case 'm':
-			if (strcasecmp(isc_commandline_argument, "record") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGRECORD);
-			}
-			if (strcasecmp(isc_commandline_argument, "trace") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGTRACE);
-			}
-			if (strcasecmp(isc_commandline_argument, "usage") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGUSAGE);
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	isc_commandline_reset = true;
 
 	masterstyle = &dns_master_style_explicitttl;
 

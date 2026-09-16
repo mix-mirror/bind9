@@ -541,7 +541,7 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 	return result;
 }
 
-static const char *optstring = "46aAc:dilnm:p:rst:vVwCDN:R:TUW:";
+static const char *optstring = "46aAc:dilnp:rst:vVwCDN:R:TUW:";
 
 static void
 pre_parse_args(int argc, char **argv) {
@@ -549,22 +549,6 @@ pre_parse_args(int argc, char **argv) {
 
 	while ((c = isc_commandline_parse(argc, argv, optstring)) != -1) {
 		switch (c) {
-		case 'm':
-			memdebugging = true;
-			if (strcasecmp("trace", isc_commandline_argument) == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGTRACE);
-			} else if (strcasecmp("record",
-					      isc_commandline_argument) == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGRECORD);
-			} else if (strcasecmp("usage",
-					      isc_commandline_argument) == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGUSAGE);
-			}
-			break;
-
 		case '4':
 			if (ipv6only) {
 				fatal("only one of -4 and -6 allowed");

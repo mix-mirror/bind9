@@ -239,7 +239,7 @@ Version: %s\n",
 	exit(status);
 }
 
-#define CMDLINE_FLAGS "46b:c:hk:Mmp:qrs:t:Vy:"
+#define CMDLINE_FLAGS "46b:c:hk:mp:qrs:t:Vy:"
 
 static void
 preparse_args(int argc, char **argv) {
@@ -868,10 +868,6 @@ main(int argc, char **argv) {
 
 		case 'k':
 			admin_keyfile = isc_commandline_argument;
-			break;
-
-		case 'M':
-			isc_mem_debugon(ISC_MEM_DEBUGTRACE);
 			break;
 
 		case 'm':

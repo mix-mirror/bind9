@@ -76,7 +76,6 @@ udp_timer_close_cb(uv_handle_t *handle);
 struct isc_nm_udplistener {
 	int magic;
 	isc_refcount_t references;
-	isc_mem_t *mctx;
 	isc_sockaddr_t iface;
 	isc_nm_recv_cb_t recv_cb;
 	void *recv_cbarg;
@@ -124,7 +123,6 @@ udp_uv_handle_detach(uv_handle_t *handle) {
 
 static void
 udp_listener_destroy(isc_nm_udplistener_t *listener) {
-	isc_mem_t *mctx = listener->mctx;
 	size_t size = sizeof(*listener) +
 		      ISC_CHECKED_MUL(listener->nchildren,
 				      sizeof(listener->children[0]));
@@ -138,7 +136,7 @@ udp_listener_destroy(isc_nm_udplistener_t *listener) {
 	isc_barrier_destroy(&listener->stop_barrier);
 	isc_refcount_destroy(&listener->references);
 	listener->magic = 0;
-	isc_mem_putanddetach(&mctx, listener, size);
+	isc_mem_put(isc_g_mctx, listener, size);
 }
 
 ISC_REFCOUNT_IMPL(isc_nm_udplistener, udp_listener_destroy);
@@ -174,7 +172,6 @@ start_udp_child_job(void *arg) {
 	isc_nm_udplistener_t *listener = job->listener;
 	isc__networker_t *worker = isc__networker_current();
 	isc_nmsocket_t *sock = NULL;
-	isc_mem_t *mctx = listener->mctx;
 
 	REQUIRE(VALID_UDP_LISTENER(listener));
 	REQUIRE(job->tid == isc_tid());
@@ -269,7 +266,7 @@ done:
 		isc_barrier_wait(&listener->listen_barrier);
 	}
 
-	isc_mem_put(mctx, job, sizeof(*job));
+	isc_mem_put(isc_g_mctx, job, sizeof(*job));
 	isc_nm_udplistener_detach(&listener);
 }
 
@@ -277,7 +274,7 @@ static void
 start_udp_child(isc_nm_udplistener_t *listener, uv_os_sock_t fd,
 		isc_tid_t tid) {
 	isc__networker_t *worker = isc__networker_get(tid);
-	udp_child_job_t *job = isc_mem_get(listener->mctx, sizeof(*job));
+	udp_child_job_t *job = isc_mem_get(isc_g_mctx, sizeof(*job));
 
 	*job = (udp_child_job_t){ .tid = tid, .fd = fd };
 	isc_nm_udplistener_attach(listener, &job->listener);
@@ -309,11 +306,10 @@ isc_nm_listenudp(uint32_t workers, isc_sockaddr_t *iface, isc_nm_recv_cb_t cb,
 		return ISC_R_SHUTTINGDOWN;
 	}
 
-	listener = isc_mem_get(worker->mctx, size);
+	listener = isc_mem_get(isc_g_mctx, size);
 	*listener = (isc_nm_udplistener_t){
 		.magic = UDP_LISTENER_MAGIC,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.mctx = isc_mem_ref(worker->mctx),
 		.nchildren = nchildren,
 		.iface = *iface,
 		.recv_cb = cb,
@@ -491,7 +487,6 @@ stop_udp_child_job(void *arg) {
 	udp_child_job_t *job = arg;
 	isc_nm_udplistener_t *listener = job->listener;
 	isc_nmsocket_t *sock = listener->children[job->tid];
-	isc_mem_t *mctx = listener->mctx;
 
 	REQUIRE(VALID_UDP_LISTENER(listener));
 	REQUIRE(VALID_NMSOCK(sock));
@@ -506,14 +501,14 @@ stop_udp_child_job(void *arg) {
 	REQUIRE(!sock->worker->loop->paused);
 	isc_barrier_wait(&listener->stop_barrier);
 
-	isc_mem_put(mctx, job, sizeof(*job));
+	isc_mem_put(isc_g_mctx, job, sizeof(*job));
 	isc_nm_udplistener_detach(&listener);
 }
 
 static void
 stop_udp_child(isc_nm_udplistener_t *listener, isc_tid_t tid) {
 	isc_nmsocket_t *sock = listener->children[tid];
-	udp_child_job_t *job = isc_mem_get(listener->mctx, sizeof(*job));
+	udp_child_job_t *job = isc_mem_get(isc_g_mctx, sizeof(*job));
 
 	REQUIRE(VALID_NMSOCK(sock));
 	*job = (udp_child_job_t){ .tid = tid };

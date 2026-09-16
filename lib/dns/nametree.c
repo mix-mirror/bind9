@@ -31,7 +31,6 @@
 
 struct dns_nametree {
 	unsigned int magic;
-	isc_mem_t *mctx;
 	isc_refcount_t references;
 	dns_nametree_type_t type;
 	dns_qpmulti_t *table;
@@ -39,7 +38,6 @@ struct dns_nametree {
 };
 
 struct dns_ntnode {
-	isc_mem_t *mctx;
 	isc_refcount_t references;
 	dns_name_t name;
 	bool set;
@@ -66,11 +64,11 @@ static dns_qpmethods_t qpmethods = {
 static void
 destroy_ntnode(dns_ntnode_t *node) {
 	if (node->bits != NULL) {
-		isc_mem_cput(node->mctx, node->bits, node->bits[0],
+		isc_mem_cput(isc_g_mctx, node->bits, node->bits[0],
 			     sizeof(char));
 	}
-	dns_name_free(&node->name, node->mctx);
-	isc_mem_putanddetach(&node->mctx, node, sizeof(dns_ntnode_t));
+	dns_name_free(&node->name, isc_g_mctx);
+	isc_mem_put(isc_g_mctx, node, sizeof(dns_ntnode_t));
 }
 
 #if DNS_NAMETREE_TRACE
@@ -80,25 +78,24 @@ ISC_REFCOUNT_IMPL(dns_ntnode, destroy_ntnode);
 #endif
 
 void
-dns_nametree_create(isc_mem_t *mctx, dns_nametree_type_t type, const char *name,
+dns_nametree_create(dns_nametree_type_t type, const char *name,
 		    dns_nametree_t **ntp) {
 	dns_nametree_t *nametree = NULL;
 
 	REQUIRE(ntp != NULL && *ntp == NULL);
 
-	nametree = isc_mem_get(mctx, sizeof(*nametree));
+	nametree = isc_mem_get(isc_g_mctx, sizeof(*nametree));
 	*nametree = (dns_nametree_t){
 		.magic = NAMETREE_MAGIC,
 		.type = type,
 	};
-	isc_mem_attach(mctx, &nametree->mctx);
 	isc_refcount_init(&nametree->references, 1);
 
 	if (name != NULL) {
 		strlcpy(nametree->name, name, sizeof(nametree->name));
 	}
 
-	dns_qpmulti_create(mctx, &qpmethods, nametree, &nametree->table);
+	dns_qpmulti_create(isc_g_mctx, &qpmethods, nametree, &nametree->table);
 	*ntp = nametree;
 }
 
@@ -108,7 +105,7 @@ destroy_nametree(dns_nametree_t *nametree) {
 
 	dns_qpmulti_destroy(&nametree->table);
 
-	isc_mem_putanddetach(&nametree->mctx, nametree, sizeof(*nametree));
+	isc_mem_put(isc_g_mctx, nametree, sizeof(*nametree));
 }
 
 #if DNS_NAMETREE_TRACE
@@ -118,15 +115,14 @@ ISC_REFCOUNT_IMPL(dns_nametree, destroy_nametree);
 #endif
 
 static dns_ntnode_t *
-newnode(isc_mem_t *mctx, const dns_name_t *name) {
-	dns_ntnode_t *node = isc_mem_get(mctx, sizeof(*node));
+newnode(const dns_name_t *name) {
+	dns_ntnode_t *node = isc_mem_get(isc_g_mctx, sizeof(*node));
 	*node = (dns_ntnode_t){
 		.name = DNS_NAME_INITEMPTY,
 	};
-	isc_mem_attach(mctx, &node->mctx);
 	isc_refcount_init(&node->references, 1);
 
-	dns_name_dup(name, mctx, &node->name);
+	dns_name_dup(name, isc_g_mctx, &node->name);
 
 	return node;
 }
@@ -157,12 +153,12 @@ dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
 
 	switch (nametree->type) {
 	case DNS_NAMETREE_BOOL:
-		new = newnode(nametree->mctx, name);
+		new = newnode(name);
 		new->set = value;
 		break;
 
 	case DNS_NAMETREE_COUNT:
-		new = newnode(nametree->mctx, name);
+		new = newnode(name);
 		new->set = true;
 		result = dns_qp_deletename(qp, name, DNS_DBNAMESPACE_NORMAL,
 					   (void **)&old, &count);
@@ -185,8 +181,8 @@ dns_nametree_add(dns_nametree_t *nametree, const dns_name_t *name,
 			size = old->bits[0];
 		}
 
-		new = newnode(nametree->mctx, name);
-		new->bits = isc_mem_cget(nametree->mctx, size, sizeof(char));
+		new = newnode(name);
+		new->bits = isc_mem_cget(isc_g_mctx, size, sizeof(char));
 		if (result == ISC_R_SUCCESS) {
 			memmove(new->bits, old->bits, old->bits[0]);
 			result = dns_qp_deletename(
@@ -234,7 +230,7 @@ dns_nametree_delete(dns_nametree_t *nametree, const dns_name_t *name) {
 
 	case DNS_NAMETREE_COUNT:
 		if (result == ISC_R_SUCCESS && count-- != 0) {
-			dns_ntnode_t *new = newnode(nametree->mctx, name);
+			dns_ntnode_t *new = newnode(name);
 			new->set = true;
 			result = dns_qp_insert(qp, new, count);
 			INSIST(result == ISC_R_SUCCESS);

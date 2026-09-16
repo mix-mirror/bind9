@@ -108,11 +108,11 @@ struct dst_private {
 typedef struct dst_private dst_private_t;
 
 void
-dst__privstruct_free(dst_private_t *priv, isc_mem_t *mctx);
+dst__privstruct_free(dst_private_t *priv);
 
 isc_result_t
 dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
-		      isc_mem_t *mctx, dst_private_t *priv);
+		      dst_private_t *priv);
 
 isc_result_t
 dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,

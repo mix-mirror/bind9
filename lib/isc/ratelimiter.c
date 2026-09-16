@@ -61,21 +61,18 @@ isc__ratelimiter_doshutdown(void *arg);
 void
 isc_ratelimiter_create(isc_loop_t *loop, isc_ratelimiter_t **rlp) {
 	isc_ratelimiter_t *rl = NULL;
-	isc_mem_t *mctx;
 
 	REQUIRE(loop != NULL);
 	REQUIRE(rlp != NULL && *rlp == NULL);
 
-	mctx = isc_loop_getmctx(loop);
-
-	rl = isc_mem_get(mctx, sizeof(*rl));
+	rl = isc_mem_get(isc_g_mctx, sizeof(*rl));
 	*rl = (isc_ratelimiter_t){
 		.pertic = 1,
 		.state = isc_ratelimiter_idle,
 		.magic = RATELIMITER_MAGIC,
 	};
 
-	isc_mem_attach(mctx, &rl->mctx);
+	isc_mem_attach(isc_g_mctx, &rl->mctx);
 	isc_loop_attach(loop, &rl->loop);
 	isc_refcount_init(&rl->references, 1);
 	isc_interval_set(&rl->interval, 0, 0);
@@ -174,7 +171,7 @@ isc_ratelimiter_enqueue(isc_ratelimiter_t *restrict rl,
 		rl->state = isc_ratelimiter_ratelimited;
 		FALLTHROUGH;
 	case isc_ratelimiter_ratelimited:
-		rle = isc_mem_get(isc_loop_getmctx(loop), sizeof(*rle));
+		rle = isc_mem_get(isc_g_mctx, sizeof(*rle));
 		*rle = (isc_rlevent_t){
 			.cb = cb,
 			.arg = arg,
@@ -315,13 +312,12 @@ isc_rlevent_free(isc_rlevent_t **rlep) {
 	REQUIRE(rlep != NULL && *rlep != NULL);
 
 	isc_rlevent_t *rle = *rlep;
-	isc_mem_t *mctx = isc_loop_getmctx(rle->loop);
 
 	*rlep = NULL;
 
 	isc_loop_detach(&rle->loop);
 	isc_ratelimiter_detach(&rle->rl);
-	isc_mem_put(mctx, rle, sizeof(*rle));
+	isc_mem_put(isc_g_mctx, rle, sizeof(*rle));
 }
 
 ISC_REFCOUNT_IMPL(isc_ratelimiter, ratelimiter_destroy);

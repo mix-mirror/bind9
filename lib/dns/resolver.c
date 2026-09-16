@@ -328,7 +328,6 @@ typedef enum {
 typedef struct fctxcount fctxcount_t;
 struct fctxcount {
 	unsigned int magic;
-	isc_mem_t *mctx;
 	isc_mutex_t lock;
 	dns_fixedname_t dfname;
 	dns_name_t *domain;
@@ -348,7 +347,6 @@ struct fetchctx {
 	unsigned int options;
 	fctxcount_t *counter;
 	char *info;
-	isc_mem_t *mctx;
 	isc_stdtime_t now;
 
 	isc_loop_t *loop;
@@ -565,7 +563,6 @@ typedef struct {
 
 struct dns_fetch {
 	unsigned int magic;
-	isc_mem_t *mctx;
 	dns_resolver_t *res;
 	fetchctx_t *private;
 };
@@ -588,7 +585,6 @@ typedef struct alternate {
 struct dns_resolver {
 	/* Unlocked. */
 	unsigned int magic;
-	isc_mem_t *mctx;
 	isc_mutex_t lock;
 	isc_mutex_t primelock;
 	dns_rdataclass_t rdclass;
@@ -931,7 +927,6 @@ get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 typedef struct respctx {
 	resquery_t *query;
 	fetchctx_t *fctx;
-	isc_mem_t *mctx;
 	isc_result_t result;
 	isc_buffer_t buffer;
 	unsigned int retryopts; /* updated options to pass to
@@ -1116,7 +1111,7 @@ valcreate(fetchctx_t *fctx, dns_message_t *message, dns_adbaddrinfo_t *addrinfo,
 	unsigned int valoptions = 0;
 	isc_result_t result;
 
-	valarg = isc_mem_get(fctx->mctx, sizeof(*valarg));
+	valarg = isc_mem_get(isc_g_mctx, sizeof(*valarg));
 	*valarg = (dns_valarg_t){
 		.addrinfo = addrinfo,
 	};
@@ -1180,7 +1175,7 @@ resquery_destroy(resquery_t *query) {
 		dns_message_detach(&query->rmessage);
 	}
 
-	isc_mem_put(fctx->mctx, query, sizeof(*query));
+	isc_mem_put(isc_g_mctx, query, sizeof(*query));
 
 	fetchctx_detach(&fctx);
 }
@@ -1549,11 +1544,10 @@ fcount_incr(fetchctx_t *fctx, bool force) {
 	case ISC_R_SUCCESS:
 		break;
 	case ISC_R_NOTFOUND:
-		counter = isc_mem_get(fctx->mctx, sizeof(*counter));
+		counter = isc_mem_get(isc_g_mctx, sizeof(*counter));
 		*counter = (fctxcount_t){
 			.magic = FCTXCOUNT_MAGIC,
 		};
-		isc_mem_attach(fctx->mctx, &counter->mctx);
 		isc_mutex_init(&counter->lock);
 		counter->domain = dns_fixedname_initname(&counter->dfname);
 		dns_name_copy(fctx->domain, counter->domain);
@@ -1565,8 +1559,7 @@ fcount_incr(fetchctx_t *fctx, bool force) {
 					 counter->domain, counter, &found);
 		if (result == ISC_R_EXISTS) {
 			isc_mutex_destroy(&counter->lock);
-			isc_mem_putanddetach(&counter->mctx, counter,
-					     sizeof(*counter));
+			isc_mem_put(isc_g_mctx, counter, sizeof(*counter));
 			counter = found;
 			result = ISC_R_SUCCESS;
 		}
@@ -1637,7 +1630,7 @@ fcount_decr(fetchctx_t *fctx) {
 	UNLOCK(&counter->lock);
 
 	isc_mutex_destroy(&counter->lock);
-	isc_mem_putanddetach(&counter->mctx, counter, sizeof(*counter));
+	isc_mem_put(isc_g_mctx, counter, sizeof(*counter));
 
 	RWUNLOCK(&fctx->res->counters_lock, isc_rwlocktype_write);
 }
@@ -2183,7 +2176,7 @@ fctx_query(fetchctx_t *fctx, dns_adbaddrinfo_t *addrinfo,
 
 	INSIST(ISC_LIST_EMPTY(fctx->validators));
 
-	query = isc_mem_get(fctx->mctx, sizeof(*query));
+	query = isc_mem_get(isc_g_mctx, sizeof(*query));
 	*query = (resquery_t){
 		.options = options,
 		.addrinfo = addrinfo,
@@ -2201,7 +2194,7 @@ fctx_query(fetchctx_t *fctx, dns_adbaddrinfo_t *addrinfo,
 	 * remain valid until this query is canceled.
 	 */
 
-	dns_message_create(fctx->mctx, fctx->res->namepools[fctx->tid],
+	dns_message_create(fctx->res->namepools[fctx->tid],
 			   fctx->res->rdspools[fctx->tid],
 			   DNS_MESSAGE_INTENTPARSE, &query->rmessage);
 	query->start = isc_time_now();
@@ -2364,7 +2357,7 @@ cleanup_dispatch:
 cleanup_query:
 	query->magic = 0;
 	dns_message_detach(&query->rmessage);
-	isc_mem_put(fctx->mctx, query, sizeof(*query));
+	isc_mem_put(isc_g_mctx, query, sizeof(*query));
 
 	return result;
 }
@@ -2388,7 +2381,7 @@ add_triededns(fetchctx_t *fctx, isc_sockaddr_t *address) {
 		return;
 	}
 
-	tried = isc_mem_get(fctx->mctx, sizeof(*tried));
+	tried = isc_mem_get(isc_g_mctx, sizeof(*tried));
 	tried->addr = *address;
 	tried->count = 1;
 	ISC_LIST_INITANDAPPEND(fctx->edns, tried, link);
@@ -2580,7 +2573,7 @@ resquery_send(resquery_t *query) {
 	/*
 	 * Convert the question to wire format.
 	 */
-	dns_compress_init(&cctx, fctx->mctx, 0);
+	dns_compress_init(&cctx, 0);
 
 	isc_buffer_init(&buffer, query->data, sizeof(query->data));
 	result = dns_message_renderbegin(fctx->qmessage, &cctx, &buffer);
@@ -2876,8 +2869,7 @@ resquery_send(resquery_t *query) {
 	if (dns_message_gettsigkey(fctx->qmessage) != NULL) {
 		dns_tsigkey_attach(dns_message_gettsigkey(fctx->qmessage),
 				   &query->tsigkey);
-		result = dns_message_getquerytsig(fctx->qmessage, fctx->mctx,
-						  &query->tsig);
+		result = dns_message_getquerytsig(fctx->qmessage, &query->tsig);
 		if (result != ISC_R_SUCCESS) {
 			goto cleanup_message;
 		}
@@ -2891,10 +2883,10 @@ resquery_send(resquery_t *query) {
 		la = &localaddr;
 	}
 
-	dns_message_logpacketfromto(
-		fctx->qmessage, "sending packet", la,
-		&query->addrinfo->sockaddr, DNS_LOGCATEGORY_RESOLVER,
-		DNS_LOGMODULE_PACKETS, ISC_LOG_DEBUG(11), fctx->mctx);
+	dns_message_logpacketfromto(fctx->qmessage, "sending packet", la,
+				    &query->addrinfo->sockaddr,
+				    DNS_LOGCATEGORY_RESOLVER,
+				    DNS_LOGMODULE_PACKETS, ISC_LOG_DEBUG(11));
 
 	/*
 	 * We're now done with the query message.
@@ -3273,7 +3265,7 @@ add_bad(fetchctx_t *fctx, dns_message_t *rmessage, dns_adbaddrinfo_t *addrinfo,
 
 	FCTXTRACE("add_bad");
 
-	sa = isc_mem_get(fctx->mctx, sizeof(*sa));
+	sa = isc_mem_get(isc_g_mctx, sizeof(*sa));
 	*sa = *address;
 	ISC_LIST_INITANDAPPEND(fctx->bad, sa, link);
 
@@ -4705,7 +4697,7 @@ fctx_destroy_rcu(struct rcu_head *rcu_head) {
 
 	isc_mutex_destroy(&fctx->lock);
 
-	isc_mem_putanddetach(&fctx->mctx, fctx, sizeof(*fctx));
+	isc_mem_put(isc_g_mctx, fctx, sizeof(*fctx));
 }
 
 static void
@@ -4745,12 +4737,12 @@ fctx__destroy(fetchctx_t *fctx, const char *func, const char *file,
 	/* Free bad */
 	ISC_LIST_FOREACH(fctx->bad, sa, link) {
 		ISC_LIST_UNLINK(fctx->bad, sa, link);
-		isc_mem_put(fctx->mctx, sa, sizeof(*sa));
+		isc_mem_put(isc_g_mctx, sa, sizeof(*sa));
 	}
 
 	ISC_LIST_FOREACH(fctx->edns, tried, link) {
 		ISC_LIST_UNLINK(fctx->edns, tried, link);
-		isc_mem_put(fctx->mctx, tried, sizeof(*tried));
+		isc_mem_put(isc_g_mctx, tried, sizeof(*tried));
 	}
 
 	if (fctx->nfails != NULL) {
@@ -4785,7 +4777,7 @@ fctx__destroy(fetchctx_t *fctx, const char *func, const char *file,
 	dns_rdataset_cleanup(&fctx->resp.rdataset);
 	dns_rdataset_cleanup(&fctx->resp.sigrdataset);
 
-	isc_mem_free(fctx->mctx, fctx->info);
+	isc_mem_free(isc_g_mctx, fctx->info);
 
 	call_rcu(&fctx->rcu_head, fctx_destroy_rcu);
 }
@@ -4863,7 +4855,7 @@ fctx_add_event(fetchctx_t *fctx, isc_loop_t *loop, const isc_sockaddr_t *client,
 
 	FCTXTRACE("addevent");
 
-	resp = isc_mem_get(fctx->mctx, sizeof(*resp));
+	resp = isc_mem_get(isc_g_mctx, sizeof(*resp));
 	*resp = (dns_fetchresponse_t){
 		.result = DNS_R_SERVFAIL,
 		.qtype = fctx->type,
@@ -4878,7 +4870,6 @@ fctx_add_event(fetchctx_t *fctx, isc_loop_t *loop, const isc_sockaddr_t *client,
 		.link = ISC_LINK_INITIALIZER,
 		.edectx = edectx,
 	};
-	isc_mem_attach(fctx->mctx, &resp->mctx);
 
 	resp->foundname = dns_fixedname_initname(&resp->fname);
 	ISC_LIST_APPEND(fctx->resps, resp, link);
@@ -4931,7 +4922,6 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	isc_interval_t interval;
 	unsigned int findoptions = 0;
 	char buf[DNS_NAME_FORMATSIZE + DNS_RDATATYPE_FORMATSIZE + 1];
-	isc_mem_t *mctx = isc_loop_getmctx(loop);
 	size_t p;
 	uint32_t nvalidations = atomic_load_relaxed(&res->maxvalidations);
 	uint32_t nfails = atomic_load_relaxed(&res->maxvalidationfails);
@@ -4941,7 +4931,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	 */
 	REQUIRE(fctxp != NULL && *fctxp == NULL);
 
-	fctx = isc_mem_get(mctx, sizeof(*fctx));
+	fctx = isc_mem_get(isc_g_mctx, sizeof(*fctx));
 	*fctx = (fetchctx_t){ .type = type,
 			      .qmintype = type,
 			      .options = options,
@@ -4966,12 +4956,11 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			      .qmin.rdataset = DNS_RDATASET_INIT,
 			      .qmin.sigrdataset = DNS_RDATASET_INIT };
 
-	isc_mem_attach(mctx, &fctx->mctx);
 	dns_resolver_attach(res, &fctx->res);
 
 	isc_mutex_init(&fctx->lock);
 
-	dns_ede_init(fctx->mctx, &fctx->edectx);
+	dns_ede_init(&fctx->edectx);
 
 	fctx->name = dns_fixedname_initname(&fctx->fname);
 	fctx->nsname = dns_fixedname_initname(&fctx->nsfname);
@@ -4994,16 +4983,16 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	p = strlcat(buf, "/", sizeof(buf));
 	INSIST(p + DNS_RDATATYPE_FORMATSIZE < sizeof(buf));
 	dns_rdatatype_format(type, buf + p, sizeof(buf) - p);
-	fctx->info = isc_mem_strdup(fctx->mctx, buf);
+	fctx->info = isc_mem_strdup(isc_g_mctx, buf);
 
 	FCTXTRACE("create");
 
 	if (nfails > 0) {
-		isc_counter_create(mctx, nfails, &fctx->nfails);
+		isc_counter_create(nfails, &fctx->nfails);
 	}
 
 	if (nvalidations > 0) {
-		isc_counter_create(mctx, nvalidations, &fctx->nvalidations);
+		isc_counter_create(nvalidations, &fctx->nvalidations);
 	}
 
 	if (qc != NULL) {
@@ -5013,7 +5002,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			      "fctx %p(%s): attached to counter %p (%d)", fctx,
 			      fctx->info, fctx->qc, isc_counter_used(fctx->qc));
 	} else {
-		isc_counter_create(fctx->mctx, res->maxqueries, &fctx->qc);
+		isc_counter_create(res->maxqueries, &fctx->qc);
 		isc_log_write(DNS_LOGCATEGORY_RESOLVER, DNS_LOGMODULE_RESOLVER,
 			      ISC_LOG_DEBUG(9),
 			      "fctx %p(%s): created counter %p", fctx,
@@ -5144,7 +5133,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		goto cleanup_fcount;
 	}
 
-	dns_message_create(fctx->mctx, fctx->res->namepools[fctx->tid],
+	dns_message_create(fctx->res->namepools[fctx->tid],
 			   fctx->res->rdspools[fctx->tid],
 			   DNS_MESSAGE_INTENTRENDER, &fctx->qmessage);
 
@@ -5229,7 +5218,7 @@ cleanup_nameservers:
 	if (fctx->delegset != NULL) {
 		dns_delegset_detach(&fctx->delegset);
 	}
-	isc_mem_free(fctx->mctx, fctx->info);
+	isc_mem_free(isc_g_mctx, fctx->info);
 	if (fctx->nfails != NULL) {
 		isc_counter_detach(&fctx->nfails);
 	}
@@ -5247,7 +5236,7 @@ cleanup_nameservers:
 	dns_ede_invalidate(&fctx->edectx);
 	isc_mutex_destroy(&fctx->lock);
 	dns_resolver_detach(&fctx->res);
-	isc_mem_putanddetach(&fctx->mctx, fctx, sizeof(*fctx));
+	isc_mem_put(isc_g_mctx, fctx, sizeof(*fctx));
 
 	return result;
 }
@@ -5901,7 +5890,7 @@ validated(void *arg) {
 
 	FCTXTRACE("received validation completion event");
 
-	isc_mem_put(fctx->mctx, valarg, sizeof(*valarg));
+	isc_mem_put(isc_g_mctx, valarg, sizeof(*valarg));
 
 	LOCK(&fctx->lock);
 
@@ -7365,7 +7354,7 @@ resume_dslookup(void *arg) {
 	case ISC_R_SUCCESS:
 		FCTXTRACE("resuming DS lookup");
 
-		dns_delegset_fromnsrdataset(fctx->mctx, frdataset, &delegset);
+		dns_delegset_fromnsrdataset(isc_g_mctx, frdataset, &delegset);
 		dns_rdataset_cleanup(frdataset);
 
 		if (delegset == NULL) {
@@ -7508,8 +7497,7 @@ make_printable(unsigned char *src, size_t srclen, char *buf, size_t buflen) {
  * Log server NSID at log level 'level'
  */
 static void
-log_nsid(isc_buffer_t *opt, size_t nsid_len, resquery_t *query, int level,
-	 isc_mem_t *mctx) {
+log_nsid(isc_buffer_t *opt, size_t nsid_len, resquery_t *query, int level) {
 	char addrbuf[ISC_SOCKADDR_FORMATSIZE], *buf = NULL, *pbuf = NULL;
 	size_t buflen;
 
@@ -7517,8 +7505,8 @@ log_nsid(isc_buffer_t *opt, size_t nsid_len, resquery_t *query, int level,
 
 	/* Allocate buffer for storing hex version of the NSID */
 	buflen = nsid_len * 2 + 1;
-	buf = isc_mem_get(mctx, buflen);
-	pbuf = isc_mem_get(mctx, nsid_len + 1);
+	buf = isc_mem_get(isc_g_mctx, buflen);
+	pbuf = isc_mem_get(isc_g_mctx, nsid_len + 1);
 
 	/* Convert to hex */
 	make_hex(isc_buffer_current(opt), nsid_len, buf, buflen);
@@ -7531,14 +7519,13 @@ log_nsid(isc_buffer_t *opt, size_t nsid_len, resquery_t *query, int level,
 	isc_log_write(DNS_LOGCATEGORY_NSID, DNS_LOGMODULE_RESOLVER, level,
 		      "received NSID %s (\"%s\") from %s", buf, pbuf, addrbuf);
 
-	isc_mem_put(mctx, pbuf, nsid_len + 1);
-	isc_mem_put(mctx, buf, buflen);
+	isc_mem_put(isc_g_mctx, pbuf, nsid_len + 1);
+	isc_mem_put(isc_g_mctx, buf, buflen);
 }
 
 static void
 log_zoneversion(unsigned char *version, size_t version_len, unsigned char *nsid,
-		size_t nsid_len, resquery_t *query, int level,
-		isc_mem_t *mctx) {
+		size_t nsid_len, resquery_t *query, int level) {
 	char addrbuf[ISC_SOCKADDR_FORMATSIZE];
 	char namebuf[DNS_NAME_FORMATSIZE];
 	size_t nsid_buflen = 0;
@@ -7580,8 +7567,8 @@ log_zoneversion(unsigned char *version, size_t version_len, unsigned char *nsid,
 
 	if (nsid != NULL) {
 		nsid_buflen = nsid_len * 2 + 1;
-		nsid_hex = nsid_buf = isc_mem_get(mctx, nsid_buflen);
-		nsid_print = nsid_pbuf = isc_mem_get(mctx, nsid_len + 1);
+		nsid_hex = nsid_buf = isc_mem_get(isc_g_mctx, nsid_buflen);
+		nsid_print = nsid_pbuf = isc_mem_get(isc_g_mctx, nsid_len + 1);
 
 		/* Convert to hex */
 		make_hex(nsid, nsid_len, nsid_buf, nsid_buflen);
@@ -7607,8 +7594,8 @@ log_zoneversion(unsigned char *version, size_t version_len, unsigned char *nsid,
 			      sep_1, nsid_hex, sep_2, nsid_print, sep_3);
 	} else {
 		size_t version_buflen = version_len * 2 + 1;
-		char *version_hex = isc_mem_get(mctx, version_buflen);
-		char *version_pbuf = isc_mem_get(mctx, version_len - 1);
+		char *version_hex = isc_mem_get(isc_g_mctx, version_buflen);
+		char *version_pbuf = isc_mem_get(isc_g_mctx, version_len - 1);
 
 		/* Convert to hex */
 		make_hex(version + 2, version_len - 2, version_hex,
@@ -7625,15 +7612,15 @@ log_zoneversion(unsigned char *version, size_t version_len, unsigned char *nsid,
 			      version[1], version_hex, version_pbuf, addrbuf,
 			      query->fctx->info, namebuf, sep_1, nsid_hex,
 			      sep_2, nsid_print, sep_3);
-		isc_mem_put(mctx, version_hex, version_buflen);
-		isc_mem_put(mctx, version_pbuf, version_len - 1);
+		isc_mem_put(isc_g_mctx, version_hex, version_buflen);
+		isc_mem_put(isc_g_mctx, version_pbuf, version_len - 1);
 	}
 
 	if (nsid_pbuf != NULL) {
-		isc_mem_put(mctx, nsid_pbuf, nsid_len + 1);
+		isc_mem_put(isc_g_mctx, nsid_pbuf, nsid_len + 1);
 	}
 	if (nsid_buf != NULL) {
-		isc_mem_put(mctx, nsid_buf, nsid_buflen);
+		isc_mem_put(isc_g_mctx, nsid_buf, nsid_buflen);
 	}
 }
 
@@ -7685,7 +7672,7 @@ resquery_response(isc_result_t eresult, isc_region_t *region, void *arg) {
 		}
 	}
 
-	rctx = isc_mem_get(fctx->mctx, sizeof(*rctx));
+	rctx = isc_mem_get(isc_g_mctx, sizeof(*rctx));
 	rctx_respinit(query, fctx, eresult, region, rctx);
 
 	if (eresult == ISC_R_SHUTTINGDOWN ||
@@ -7845,7 +7832,7 @@ resquery_response(isc_result_t eresult, isc_region_t *region, void *arg) {
 
 cleanup:
 	resquery_detach(&rctx->query);
-	isc_mem_putanddetach(&rctx->mctx, rctx, sizeof(*rctx));
+	isc_mem_put(isc_g_mctx, rctx, sizeof(*rctx));
 }
 
 static isc_result_t
@@ -8218,7 +8205,7 @@ resquery_response_continue(void *arg, isc_result_t result) {
 
 cleanup:
 	resquery_detach(&rctx->query);
-	isc_mem_putanddetach(&rctx->mctx, rctx, sizeof(*rctx));
+	isc_mem_put(isc_g_mctx, rctx, sizeof(*rctx));
 }
 
 /*
@@ -8245,7 +8232,6 @@ rctx_respinit(resquery_t *query, fetchctx_t *fctx, isc_result_t result,
 	rctx->tnow = isc_time_now();
 	rctx->finish = &rctx->tnow;
 	rctx->now = (isc_stdtime_t)isc_time_seconds(&rctx->tnow);
-	isc_mem_attach(fctx->mctx, &rctx->mctx);
 }
 
 /*
@@ -8536,8 +8522,7 @@ rctx_opt(respctx_t *rctx) {
 			nsid = isc_buffer_current(&optbuf);
 			nsidlen = optlen;
 			if ((query->options & DNS_FETCHOPT_WANTNSID) != 0) {
-				log_nsid(&optbuf, optlen, query, ISC_LOG_INFO,
-					 fctx->mctx);
+				log_nsid(&optbuf, optlen, query, ISC_LOG_INFO);
 			}
 			break;
 		case DNS_OPT_COOKIE:
@@ -8591,7 +8576,7 @@ rctx_opt(respctx_t *rctx) {
 	    zoneversion != NULL)
 	{
 		log_zoneversion(zoneversion, zoneversionlen, nsid, nsidlen,
-				query, ISC_LOG_INFO, fctx->mctx);
+				query, ISC_LOG_INFO);
 	}
 }
 
@@ -9979,17 +9964,17 @@ rctx_logpacket(respctx_t *rctx) {
 		la = &localaddr;
 	}
 
-	dns_message_logpacketfromto(
-		rctx->query->rmessage, "received packet",
-		&rctx->query->addrinfo->sockaddr, la, DNS_LOGCATEGORY_RESOLVER,
-		DNS_LOGMODULE_PACKETS, ISC_LOG_DEBUG(10), fctx->mctx);
+	dns_message_logpacketfromto(rctx->query->rmessage, "received packet",
+				    &rctx->query->addrinfo->sockaddr, la,
+				    DNS_LOGCATEGORY_RESOLVER,
+				    DNS_LOGMODULE_PACKETS, ISC_LOG_DEBUG(10));
 
 #ifdef HAVE_DNSTAP
 	/*
 	 * Log the response via dnstap.
 	 */
 	memset(&zr, 0, sizeof(zr));
-	dns_compress_init(&cctx, fctx->mctx, 0);
+	dns_compress_init(&cctx, 0);
 	dns_compress_setpermitted(&cctx, false);
 	isc_buffer_init(&zb, zone, sizeof(zone));
 	result = dns_name_towire(fctx->domain, &cctx, &zb);
@@ -10233,9 +10218,9 @@ dns_resolver__destroy(dns_resolver_t *res) {
 	while ((a = ISC_LIST_HEAD(res->alternates)) != NULL) {
 		ISC_LIST_UNLINK(res->alternates, a, link);
 		if (!a->isaddress) {
-			dns_name_free(&a->_u._n.name, res->mctx);
+			dns_name_free(&a->_u._n.name, isc_g_mctx);
 		}
-		isc_mem_put(res->mctx, a, sizeof(*a));
+		isc_mem_put(isc_g_mctx, a, sizeof(*a));
 	}
 
 	dns_view_weakdetach(&res->view);
@@ -10243,12 +10228,12 @@ dns_resolver__destroy(dns_resolver_t *res) {
 	for (size_t i = 0; i < res->nloops; i++) {
 		dns_message_destroypools(&res->namepools[i], &res->rdspools[i]);
 	}
-	isc_mem_cput(res->mctx, res->rdspools, res->nloops,
+	isc_mem_cput(isc_g_mctx, res->rdspools, res->nloops,
 		     sizeof(res->rdspools[0]));
-	isc_mem_cput(res->mctx, res->namepools, res->nloops,
+	isc_mem_cput(isc_g_mctx, res->namepools, res->nloops,
 		     sizeof(res->namepools[0]));
 
-	isc_mem_putanddetach(&res->mctx, res, sizeof(*res));
+	isc_mem_put(isc_g_mctx, res, sizeof(*res));
 }
 
 static void
@@ -10295,7 +10280,7 @@ dns_resolver_create(dns_view_t *view, unsigned int options,
 	REQUIRE(tlsctx_cache != NULL);
 	REQUIRE(dispatchv4 != NULL || dispatchv6 != NULL);
 
-	res = isc_mem_get(view->mctx, sizeof(*res));
+	res = isc_mem_get(isc_g_mctx, sizeof(*res));
 	*res = (dns_resolver_t){
 		.rdclass = view->rdclass,
 		.options = options,
@@ -10316,7 +10301,6 @@ dns_resolver_create(dns_view_t *view, unsigned int options,
 	RTRACE("create");
 
 	dns_view_weakattach(view, &res->view);
-	isc_mem_attach(view->mctx, &res->mctx);
 
 	res->quotaresp[dns_quotatype_zone] = DNS_R_DROP;
 	res->quotaresp[dns_quotatype_server] = DNS_R_SERVFAIL;
@@ -10332,16 +10316,16 @@ dns_resolver_create(dns_view_t *view, unsigned int options,
 			     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL);
 	RUNTIME_CHECK(res->fctxs_ht != NULL);
 
-	isc_hashmap_create(view->mctx, RES_DOMAIN_HASH_BITS, &res->counters);
+	isc_hashmap_create(isc_g_mctx, RES_DOMAIN_HASH_BITS, &res->counters);
 	isc_rwlock_init(&res->counters_lock);
 
 	if (dispatchv4 != NULL) {
-		dns_dispatchset_create(res->mctx, dispatchv4, &res->dispatches4,
+		dns_dispatchset_create(dispatchv4, &res->dispatches4,
 				       res->nloops);
 	}
 
 	if (dispatchv6 != NULL) {
-		dns_dispatchset_create(res->mctx, dispatchv6, &res->dispatches6,
+		dns_dispatchset_create(dispatchv6, &res->dispatches6,
 				       res->nloops);
 	}
 
@@ -10350,21 +10334,15 @@ dns_resolver_create(dns_view_t *view, unsigned int options,
 	isc_mutex_init(&res->lock);
 	isc_mutex_init(&res->primelock);
 
-	dns_nametree_create(res->mctx, DNS_NAMETREE_BITS, "algorithms",
-			    &res->algorithms);
-	dns_nametree_create(res->mctx, DNS_NAMETREE_BITS, "ds-digests",
-			    &res->digests);
+	dns_nametree_create(DNS_NAMETREE_BITS, "algorithms", &res->algorithms);
+	dns_nametree_create(DNS_NAMETREE_BITS, "ds-digests", &res->digests);
 
-	res->namepools = isc_mem_cget(res->mctx, res->nloops,
+	res->namepools = isc_mem_cget(isc_g_mctx, res->nloops,
 				      sizeof(res->namepools[0]));
-	res->rdspools = isc_mem_cget(res->mctx, res->nloops,
+	res->rdspools = isc_mem_cget(isc_g_mctx, res->nloops,
 				     sizeof(res->rdspools[0]));
 	for (size_t i = 0; i < res->nloops; i++) {
-		isc_loop_t *loop = isc_loop_get(i);
-		isc_mem_t *pool_mctx = isc_loop_getmctx(loop);
-
-		dns_message_createpools(pool_mctx, &res->namepools[i],
-					&res->rdspools[i]);
+		dns_message_createpools(&res->namepools[i], &res->rdspools[i]);
 	}
 
 	res->magic = RES_MAGIC;
@@ -10404,7 +10382,7 @@ prime_done(void *arg) {
 	dns_rdataset_cleanup(resp->rdataset);
 	INSIST(resp->sigrdataset == NULL);
 
-	isc_mem_put(res->mctx, resp->rdataset, sizeof(*resp->rdataset));
+	isc_mem_put(isc_g_mctx, resp->rdataset, sizeof(*resp->rdataset));
 	dns_resolver_freefresp(&resp);
 	dns_resolver_destroyfetch(&fetch);
 }
@@ -10436,7 +10414,7 @@ dns_resolver_prime(dns_resolver_t *res) {
 		 */
 		RTRACE("priming");
 
-		dns_rdataset_t *rdataset = isc_mem_get(res->mctx,
+		dns_rdataset_t *rdataset = isc_mem_get(isc_g_mctx,
 						       sizeof(*rdataset));
 		dns_rdataset_init(rdataset);
 
@@ -10449,7 +10427,7 @@ dns_resolver_prime(dns_resolver_t *res) {
 		UNLOCK(&res->primelock);
 
 		if (result != ISC_R_SUCCESS) {
-			isc_mem_put(res->mctx, rdataset, sizeof(*rdataset));
+			isc_mem_put(isc_g_mctx, rdataset, sizeof(*rdataset));
 			atomic_compare_exchange_enforced(
 				&res->priming, &(bool){ true }, false);
 		}
@@ -10765,7 +10743,6 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 	unsigned int count = 0;
 	unsigned int spillat;
 	unsigned int spillatmin;
-	isc_mem_t *mctx = isc_loop_getmctx(loop);
 
 	UNUSED(forwarders);
 
@@ -10788,11 +10765,10 @@ dns_resolver_createfetch(dns_resolver_t *res, const dns_name_t *name,
 
 	log_fetch(name, type);
 
-	fetch = isc_mem_get(mctx, sizeof(*fetch));
+	fetch = isc_mem_get(isc_g_mctx, sizeof(*fetch));
 	*fetch = (dns_fetch_t){ 0 };
 
 	dns_resolver_attach(res, &fetch->res);
-	isc_mem_attach(mctx, &fetch->mctx);
 
 	if ((options & DNS_FETCHOPT_UNSHARED) == 0) {
 		/*
@@ -10904,7 +10880,7 @@ unlock:
 fail:
 	if (result != ISC_R_SUCCESS) {
 		dns_resolver_detach(&fetch->res);
-		isc_mem_putanddetach(&fetch->mctx, fetch, sizeof(*fetch));
+		isc_mem_put(isc_g_mctx, fetch, sizeof(*fetch));
 		return result;
 	}
 
@@ -10984,7 +10960,7 @@ dns_resolver_destroyfetch(dns_fetch_t **fetchp) {
 	}
 	UNLOCK(&fctx->lock);
 
-	isc_mem_putanddetach(&fetch->mctx, fetch, sizeof(*fetch));
+	isc_mem_put(isc_g_mctx, fetch, sizeof(*fetch));
 
 	fetchctx_detach(&fctx);
 	dns_resolver_detach(&res);
@@ -11046,7 +11022,7 @@ dns_resolver_addalternate(dns_resolver_t *res, const isc_sockaddr_t *alt,
 	REQUIRE(!res->frozen);
 	REQUIRE((alt == NULL) ^ (name == NULL));
 
-	a = isc_mem_get(res->mctx, sizeof(*a));
+	a = isc_mem_get(isc_g_mctx, sizeof(*a));
 	if (alt != NULL) {
 		a->isaddress = true;
 		a->_u.addr = *alt;
@@ -11054,7 +11030,7 @@ dns_resolver_addalternate(dns_resolver_t *res, const isc_sockaddr_t *alt,
 		a->isaddress = false;
 		a->_u._n.port = port;
 		dns_name_init(&a->_u._n.name);
-		dns_name_dup(name, res->mctx, &a->_u._n.name);
+		dns_name_dup(name, isc_g_mctx, &a->_u._n.name);
 	}
 	ISC_LINK_INIT(a, link);
 	ISC_LIST_APPEND(res->alternates, a, link);
@@ -11467,5 +11443,5 @@ dns_resolver_freefresp(dns_fetchresponse_t **frespp) {
 	dns_fetchresponse_t *fresp = *frespp;
 	*frespp = NULL;
 
-	isc_mem_putanddetach(&fresp->mctx, fresp, sizeof(*fresp));
+	isc_mem_put(isc_g_mctx, fresp, sizeof(*fresp));
 }

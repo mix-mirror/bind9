@@ -1017,8 +1017,8 @@ temp_order(const void *av, const void *bv) {
  */
 
 static isc_result_t
-temp_check(isc_mem_t *mctx, dns_diff_t *temp, dns_db_t *db,
-	   dns_dbversion_t *ver, dns_name_t *tmpname, dns_rdatatype_t *typep) {
+temp_check(dns_diff_t *temp, dns_db_t *db, dns_dbversion_t *ver,
+	   dns_name_t *tmpname, dns_rdatatype_t *typep) {
 	isc_result_t result;
 	dns_name_t *name;
 	dns_dbnode_t *node;

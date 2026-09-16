@@ -63,7 +63,7 @@ isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
  */
 isc_result_t
 isc_hmac_key_create(isc_md_type_t type, const void *secret, const size_t len,
-		    isc_mem_t *mctx, isc_hmac_key_t **keyp);
+		    isc_hmac_key_t **keyp);
 
 void
 isc_hmac_key_destroy(isc_hmac_key_t **keyp);

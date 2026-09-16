@@ -116,7 +116,7 @@ main(int argc, char **argv) {
 	isc_commandline_errprint = false;
 
 	while ((ch = isc_commandline_parse(argc, argv,
-					   "aA:b:c:hk:Mmp:qr:s:t:u:Vy")) != -1)
+					   "aA:b:c:hk:mp:qr:s:t:u:Vy")) != -1)
 	{
 		switch (ch) {
 		case 'a':
@@ -145,10 +145,6 @@ main(int argc, char **argv) {
 		case 'y': /* Compatible with rndc -y. */
 			keyname = isc_commandline_argument;
 			break;
-		case 'M':
-			isc_mem_debugon(ISC_MEM_DEBUGTRACE);
-			break;
-
 		case 'm':
 			show_final_mem = true;
 			break;

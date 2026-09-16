@@ -81,7 +81,7 @@ dns_catz_options_init(dns_catz_options_t *options);
  */
 
 void
-dns_catz_options_free(dns_catz_options_t *options, isc_mem_t *mctx);
+dns_catz_options_free(dns_catz_options_t *options);
 /*%<
  * Free 'options' contents into 'mctx'. ('options' itself is not freed.)
  *
@@ -91,8 +91,8 @@ dns_catz_options_free(dns_catz_options_t *options, isc_mem_t *mctx);
  */
 
 void
-dns_catz_options_copy(isc_mem_t *mctx, const dns_catz_options_t *opts,
-		      dns_catz_options_t *nopts);
+dns_catz_options_copy(const dns_catz_options_t *opts,
+		      dns_catz_options_t       *nopts);
 /*%<
  * Duplicate 'opts' into 'nopts', allocating space from 'mctx'.
  *
@@ -103,8 +103,8 @@ dns_catz_options_copy(isc_mem_t *mctx, const dns_catz_options_t *opts,
  */
 
 void
-dns_catz_options_setdefault(isc_mem_t *mctx, const dns_catz_options_t *defaults,
-			    dns_catz_options_t *opts);
+dns_catz_options_setdefault(const dns_catz_options_t *defaults,
+			    dns_catz_options_t	     *opts);
 /*%<
  * Replace empty values in 'opts' with values from 'defaults'
  *
@@ -127,7 +127,7 @@ dns_catz_entry_getname(dns_catz_entry_t *entry);
  */
 
 dns_catz_entry_t *
-dns_catz_entry_new(isc_mem_t *mctx, const dns_name_t *domain);
+dns_catz_entry_new(const dns_name_t *domain);
 /*%<
  * Allocate a new catz_entry on 'mctx', with the name 'domain'
  *
@@ -279,7 +279,7 @@ struct dns_catz_zonemodmethods {
 };
 
 dns_catz_zones_t *
-dns_catz_zones_new(isc_mem_t *mctx, dns_catz_zonemodmethods_t *zmm);
+dns_catz_zones_new(dns_catz_zonemodmethods_t *zmm);
 /*%<
  * Allocate a new catz_zones object, a collection storing all catalog zones
  * for a view.

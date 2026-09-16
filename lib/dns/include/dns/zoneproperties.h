@@ -903,15 +903,6 @@ dns_zone_setssutable(dns_zone_t *zone, dns_ssutable_t *table);
  * \li	'zone' to be a valid zone.
  */
 
-isc_mem_t *
-dns_zone_getmctx(dns_zone_t *zone);
-/*%<
- * Get the memory context of a zone.
- *
- * Requires:
- * \li	'zone' to be a valid zone.
- */
-
 dns_zonemgr_t *
 dns_zone_getmgr(dns_zone_t *zone);
 /*%<

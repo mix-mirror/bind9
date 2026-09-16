@@ -114,7 +114,7 @@ typedef enum isc_nm_proxy_type {
  */
 
 void
-isc_netmgr_create(isc_mem_t *mctx);
+isc_netmgr_create(void);
 /*%<
  * Creates a new network manager and starts it running when loopmgr is started.
  */
@@ -765,7 +765,7 @@ isc_nm_listenhttp(uint32_t workers, isc_sockaddr_t *iface, int backlog,
 		  isc_nm_proxy_type_t proxy_type, isc_nmsocket_t **sockp);
 
 isc_nm_http_endpoints_t *
-isc_nm_http_endpoints_new(isc_mem_t *mctx);
+isc_nm_http_endpoints_new(void);
 /*%<
  * Create a new, empty HTTP endpoints set object.
  *

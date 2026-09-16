@@ -29,14 +29,6 @@
 
 /* Add -DISC_MEM_TRACE=1 to CFLAGS for detailed reference tracing */
 
-/*%
- * Define ISC_MEM_TRACKLINES=1 to turn on detailed tracing of memory
- * allocation and freeing by file and line number.
- */
-#ifndef ISC_MEM_TRACKLINES
-#define ISC_MEM_TRACKLINES 0
-#endif /* ifndef ISC_MEM_TRACKLINES */
-
 /*@{*/
 #define ISC_MEM_DEBUGTRACE  0x00000001U
 #define ISC_MEM_DEBUGRECORD 0x00000002U
@@ -63,18 +55,9 @@
  *
  * By default, no flags are set. This can be overridden by changing
  * ISC_MEM_DEBUGGING in mem.c. The flags can be activated at runtime by
- * setting environment variables (for example, "ISC_MEM_DEBUGRECORD=1")
- * or by calling isc_mem_debugon() (see below).
+ * setting environment variables (for example, "ISC_MEM_DEBUGRECORD=1").
  */
 /*@}*/
-
-#if ISC_MEM_TRACKLINES
-#define _ISC_MEM_FILELINE , __func__, __FILE__, __LINE__
-#define _ISC_MEM_FLARG	  , const char *, const char *, unsigned int
-#else /* if ISC_MEM_TRACKLINES */
-#define _ISC_MEM_FILELINE
-#define _ISC_MEM_FLARG
-#endif /* if ISC_MEM_TRACKLINES */
 
 /*%
  * A global 'default' memory context that can be used when we don't need more
@@ -141,72 +124,64 @@ extern isc_mem_t *isc_g_mctx;
 #endif
 #define ISC_MEM_ZERO ((int)0x40)
 
-#define isc_mem_get(c, s) isc__mem_get((c), (s), 0 _ISC_MEM_FILELINE)
-#define isc_mem_cget(c, n, s)                        \
-	isc__mem_get((c), ISC_CHECKED_MUL((n), (s)), \
-		     ISC_MEM_ZERO _ISC_MEM_FILELINE)
-#define isc_mem_getx(c, s, f) isc__mem_get((c), (s), (f)_ISC_MEM_FILELINE)
-#define isc_mem_reget(c, p, o, n) \
-	isc__mem_reget((c), (p), (o), (n), 0 _ISC_MEM_FILELINE)
+#define isc_mem_get(c, s) isc__mem_get((c), (s), 0)
+#define isc_mem_cget(c, n, s) \
+	isc__mem_get((c), ISC_CHECKED_MUL((n), (s)), ISC_MEM_ZERO)
+#define isc_mem_getx(c, s, f)	  isc__mem_get((c), (s), (f))
+#define isc_mem_reget(c, p, o, n) isc__mem_reget((c), (p), (o), (n), 0)
 #define isc_mem_creget(c, p, o, n, s)                       \
 	isc__mem_reget((c), (p), ISC_CHECKED_MUL((o), (s)), \
-		       ISC_CHECKED_MUL((n), (s)),           \
-		       ISC_MEM_ZERO _ISC_MEM_FILELINE)
-#define isc_mem_regetx(c, p, o, n, f) \
-	isc__mem_reget((c), (p), (o), (n), (f)_ISC_MEM_FILELINE)
-#define isc_mem_allocate(c, s) isc__mem_allocate((c), (s), 0 _ISC_MEM_FILELINE)
-#define isc_mem_allocatex(c, s, f) \
-	isc__mem_allocate((c), (s), (f)_ISC_MEM_FILELINE)
-#define isc_mem_callocate(c, n, s)                        \
-	isc__mem_allocate((c), ISC_CHECKED_MUL((n), (s)), \
-			  ISC_MEM_ZERO _ISC_MEM_FILELINE)
-#define isc_mem_reallocate(c, p, s) \
-	isc__mem_reallocate((c), (p), (s), 0 _ISC_MEM_FILELINE)
-#define isc_mem_reallocatex(c, p, s, f) \
-	isc__mem_reallocate((c), (p), (s), (f)_ISC_MEM_FILELINE)
-#define isc_mem_strdup(c, p) isc__mem_strdup((c), (p)_ISC_MEM_FILELINE)
-#define isc_mempool_get(c)   isc__mempool_get((c)_ISC_MEM_FILELINE)
+		       ISC_CHECKED_MUL((n), (s)), ISC_MEM_ZERO)
+#define isc_mem_regetx(c, p, o, n, f) isc__mem_reget((c), (p), (o), (n), (f))
+#define isc_mem_allocate(c, s)	      isc__mem_allocate((c), (s), 0)
+#define isc_mem_allocatex(c, s, f)    isc__mem_allocate((c), (s), (f))
+#define isc_mem_callocate(c, n, s) \
+	isc__mem_allocate((c), ISC_CHECKED_MUL((n), (s)), ISC_MEM_ZERO)
+#define isc_mem_reallocate(c, p, s)	isc__mem_reallocate((c), (p), (s), 0)
+#define isc_mem_reallocatex(c, p, s, f) isc__mem_reallocate((c), (p), (s), (f))
+#define isc_mem_strdup(c, p)		isc__mem_strdup((c), (p))
+#define isc_mempool_get(c)		isc__mempool_get((c))
 
-#define isc_mem_put(c, p, s)                                      \
-	do {                                                      \
-		isc__mem_put((c), (p), (s), 0 _ISC_MEM_FILELINE); \
-		(p) = NULL;                                       \
+#define isc_mem_put(c, p, s)                    \
+	do {                                    \
+		isc__mem_put((c), (p), (s), 0); \
+		(p) = NULL;                     \
 	} while (0)
 #define isc_mem_cput(c, p, n, s)                                  \
 	do {                                                      \
 		isc__mem_put((c), (p), ISC_CHECKED_MUL((n), (s)), \
-			     ISC_MEM_ZERO _ISC_MEM_FILELINE);     \
+			     ISC_MEM_ZERO);                       \
 		(p) = NULL;                                       \
 	} while (0)
-#define isc_mem_putx(c, p, s, f)                                   \
-	do {                                                       \
-		isc__mem_put((c), (p), (s), (f)_ISC_MEM_FILELINE); \
-		(p) = NULL;                                        \
+#define isc_mem_putx(c, p, s, f)                  \
+	do {                                      \
+		isc__mem_put((c), (p), (s), (f)); \
+		(p) = NULL;                       \
 	} while (0)
-#define isc_mem_putanddetach(c, p, s)                                      \
-	do {                                                               \
-		isc__mem_putanddetach((c), (p), (s), 0 _ISC_MEM_FILELINE); \
-		(p) = NULL;                                                \
+#define isc_mem_putanddetach(c, p, s)                    \
+	do {                                             \
+		isc__mem_putanddetach((c), (p), (s), 0); \
+		(p) = NULL;                              \
 	} while (0)
-#define isc_mem_putanddetachx(c, p, s, f)                                   \
-	do {                                                                \
-		isc__mem_putanddetach((c), (p), (s), (f)_ISC_MEM_FILELINE); \
-		(p) = NULL;                                                 \
+#define isc_mem_putanddetachx(c, p, s, f)                  \
+	do {                                               \
+		isc__mem_putanddetach((c), (p), (s), (f)); \
+		(p) = NULL;                                \
 	} while (0)
-#define isc_mem_free(c, p)                                    \
-	do {                                                  \
-		isc__mem_free((c), (p), 0 _ISC_MEM_FILELINE); \
-		(p) = NULL;                                   \
+#define isc_mem_free(c, p)                  \
+	do {                                \
+		isc__mem_free((c), (p), 0); \
+		(p) = NULL;                 \
 	} while (0)
-#define isc_mem_freex(c, p, f)                                 \
-	do {                                                   \
-		isc__mem_free((c), (p), (f)_ISC_MEM_FILELINE); \
-		(p) = NULL;                                    \
+#define isc_mem_freex(c, p, f)                \
+	do {                                  \
+		isc__mem_free((c), (p), (f)); \
+		(p) = NULL;                   \
 	} while (0)
-#define isc_mempool_put(c, p)                                \
-	do {                                                 \
-		isc__mempool_put((c), (p)_ISC_MEM_FILELINE); \
-		(p) = NULL;                                  \
+#define isc_mempool_put(c, p)               \
+	do {                                \
+		isc__mempool_put((c), (p)); \
+		(p) = NULL;                 \
 	} while (0)
 
 /*@{*/
@@ -228,48 +203,21 @@ extern volatile void *isc__mem_malloc;
 
 #define isc_mem_create(name, cp)                                      \
 	{                                                             \
-		isc__mem_create((name), (cp)_ISC_MEM_FILELINE);       \
+		isc__mem_create((name), (cp));                        \
 		isc__mem_malloc = mallocx;                            \
 		ISC_INSIST(CMM_ACCESS_ONCE(isc__mem_malloc) != NULL); \
 	}
 #else
-#define isc_mem_create(name, cp) isc__mem_create((name), (cp)_ISC_MEM_FILELINE)
+#define isc_mem_create(name, cp) isc__mem_create((name), (cp))
 #endif
 void
-isc__mem_create(const char *name, isc_mem_t **_ISC_MEM_FLARG);
+isc__mem_create(const char *name, isc_mem_t **);
 /*!<
  * \brief Create a memory context.
  *
  * Requires:
  * mctxp != NULL && *mctxp == NULL */
 /*@}*/
-
-unsigned int
-isc_mem_debugon(unsigned int debugging);
-unsigned int
-isc_mem_debugoff(unsigned int debugging);
-/*!<
- * Set or clear debugging the flags for the main memory context
- * (isc_g_mctx), and the default debugging flags for all memory
- * contexts yet to be created (mem_debugging).
- *
- * Note: These are bitwise operations. To clear the existing flags
- * before setting new ones, use isc_mem_debugoff(ISC_MEM_DEBUGALL).
- *
- * Returns:
- * \li	the previous value of the debugging flags
- */
-
-void
-isc_mem_setdebugging(isc_mem_t *ctx, unsigned int debugging);
-/*!<
- * Set the debugging flags for a single memory context.
- *
- * Note: This is an assignemnt, not a bitwise operation.
- *
- * Requires:
- * \li	'ctx' valid memory context without active allocation.
- */
 
 #if ISC_MEM_TRACE
 #define isc_mem_ref(ptr)   isc_mem__ref(ptr, __func__, __FILE__, __LINE__)
@@ -378,11 +326,10 @@ isc_mem_renderjson(void *memobj0);
  * Memory pools
  */
 
-#define isc_mempool_create(c, s, n, mp) \
-	isc__mempool_create((c), (s), (n), (mp)_ISC_MEM_FILELINE)
+#define isc_mempool_create(c, s, n, mp) isc__mempool_create((c), (s), (n), (mp))
 void
 isc__mempool_create(isc_mem_t *restrict mctx, const size_t element_size,
-		    const char *name, isc_mempool_t **mpctxp _ISC_MEM_FLARG);
+		    const char *name, isc_mempool_t **mpctxp);
 /*%<
  * Create a memory pool.
  *
@@ -396,9 +343,9 @@ isc__mempool_create(isc_mem_t *restrict mctx, const size_t element_size,
  *\li	fillcount = 1
  */
 
-#define isc_mempool_destroy(mp) isc__mempool_destroy((mp)_ISC_MEM_FILELINE)
+#define isc_mempool_destroy(mp) isc__mempool_destroy((mp))
 void
-isc__mempool_destroy(isc_mempool_t **restrict mpctxp _ISC_MEM_FLARG);
+isc__mempool_destroy(isc_mempool_t **restrict mpctxp);
 /*%<
  * Destroy a memory pool.
  *
@@ -474,11 +421,11 @@ isc_mempool_setfillcount(isc_mempool_t *restrict mpctx,
  * Pseudo-private functions for use via macros.  Do not call directly.
  */
 void
-isc__mem_putanddetach(isc_mem_t **, void *, size_t, int _ISC_MEM_FLARG);
+isc__mem_putanddetach(isc_mem_t **, void *, size_t, int);
 void
-isc__mem_put(isc_mem_t *, void *, size_t, int _ISC_MEM_FLARG);
+isc__mem_put(isc_mem_t *, void *, size_t, int);
 void
-isc__mem_free(isc_mem_t *, void *, int _ISC_MEM_FLARG);
+isc__mem_free(isc_mem_t *, void *, int);
 
 ISC_ATTR_RETURNS_NONNULL
 ISC_ATTR_MALLOC_DEALLOCATOR_IDX(isc__mem_put, 2)
@@ -487,29 +434,29 @@ isc__mem_get(isc_mem_t *, size_t, int _ISC_MEM_FLARG);
 
 ISC_ATTR_DEALLOCATOR_IDX(isc__mem_put, 2)
 void *
-isc__mem_reget(isc_mem_t *, void *, size_t, size_t, int _ISC_MEM_FLARG);
+isc__mem_reget(isc_mem_t *, void *, size_t, size_t, int);
 
 ISC_ATTR_RETURNS_NONNULL
 ISC_ATTR_MALLOC_DEALLOCATOR_IDX(isc__mem_free, 2)
 void *
-isc__mem_allocate(isc_mem_t *, size_t, int _ISC_MEM_FLARG);
+isc__mem_allocate(isc_mem_t *, size_t, int);
 
 ISC_ATTR_DEALLOCATOR_IDX(isc__mem_free, 2)
 void *
-isc__mem_reallocate(isc_mem_t *, void *, size_t, int _ISC_MEM_FLARG);
+isc__mem_reallocate(isc_mem_t *, void *, size_t, int);
 
 ISC_ATTR_RETURNS_NONNULL
 ISC_ATTR_MALLOC_DEALLOCATOR_IDX(isc__mem_free, 2)
 char *
-isc__mem_strdup(isc_mem_t *, const char *_ISC_MEM_FLARG);
+isc__mem_strdup(isc_mem_t *, const char *);
 
 ISC_ATTR_RETURNS_NONNULL
 ISC_ATTR_MALLOC_DEALLOCATOR_IDX(isc__mempool_put, 2)
 void *
-isc__mempool_get(isc_mempool_t *_ISC_MEM_FLARG);
+isc__mempool_get(isc_mempool_t *);
 
 void
-isc__mempool_put(isc_mempool_t *, void *_ISC_MEM_FLARG);
+isc__mempool_put(isc_mempool_t *, void *);
 
 #ifdef POP_MALLOC_MACRO
 /*

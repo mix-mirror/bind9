@@ -31,7 +31,7 @@ typedef isc_result_t
 dns_zt_callback_t(void *arg);
 
 void
-dns_zt_create(isc_mem_t *mctx, dns_view_t *view, dns_zt_t **ztp);
+dns_zt_create(dns_view_t *view, dns_zt_t **ztp);
 /*%<
  * Creates a new zone table for a view.
  *

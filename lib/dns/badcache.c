@@ -149,21 +149,19 @@ bcentry_lookup(struct cds_lfht *ht, uint32_t hashval, dns__bckey_t *key) {
 }
 
 static dns_bcentry_t *
-bcentry_new(isc_loop_t *loop, const dns_name_t *name,
-	    const dns_rdatatype_t type, const uint32_t flags,
-	    const isc_stdtime_t expire) {
-	isc_mem_t *mctx = isc_loop_getmctx(loop);
-	dns_bcentry_t *bad = isc_mem_get(mctx, sizeof(*bad));
+bcentry_new(const dns_name_t *name, const dns_rdatatype_t type,
+	    const uint32_t flags, const isc_stdtime_t expire) {
+	dns_bcentry_t *bad = isc_mem_get(isc_g_mctx, sizeof(*bad));
 	*bad = (dns_bcentry_t){
 		.type = type,
 		.flags = flags,
 		.expire = expire,
-		.mctx = isc_mem_ref(mctx),
+		.mctx = isc_mem_ref(isc_g_mctx),
 		.lru_head = CDS_LIST_HEAD_INIT(bad->lru_head),
 	};
 
 	dns_name_init(&bad->name);
-	dns_name_dup(name, mctx, &bad->name);
+	dns_name_dup(name, bad->mctx, &bad->name);
 
 	return bad;
 }
@@ -232,7 +230,6 @@ dns_badcache_add(dns_badcache_t *bc, const dns_name_t *name,
 	REQUIRE(VALID_BADCACHE(bc));
 	REQUIRE(name != NULL);
 
-	isc_loop_t *loop = isc_loop();
 	isc_stdtime_t now = isc_stdtime_now();
 
 	if (expire < now) {
@@ -248,7 +245,7 @@ dns_badcache_add(dns_badcache_t *bc, const dns_name_t *name,
 	uint32_t hashval = bcentry_hash(&key);
 
 	/* struct cds_lfht_iter iter; */
-	dns_bcentry_t *bad = bcentry_new(loop, name, type, flags, expire);
+	dns_bcentry_t *bad = bcentry_new(name, type, flags, expire);
 
 	LOCK(&bc->lru_lock);
 	struct cds_lfht_node *ht_node;

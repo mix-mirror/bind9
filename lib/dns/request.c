@@ -47,7 +47,6 @@ typedef ISC_LIST(dns_request_t) dns_requestlist_t;
 
 struct dns_requestmgr {
 	unsigned int magic;
-	isc_mem_t *mctx;
 	isc_refcount_t references;
 
 	atomic_bool shuttingdown;
@@ -62,7 +61,6 @@ struct dns_request {
 	unsigned int magic;
 	isc_refcount_t references;
 
-	isc_mem_t *mctx;
 	int32_t flags;
 
 	isc_loop_t *loop;
@@ -99,8 +97,7 @@ struct dns_request {
  ***/
 
 static isc_result_t
-req_render(dns_message_t *message, isc_buffer_t **buffer, unsigned int options,
-	   isc_mem_t *mctx);
+req_render(dns_message_t *message, isc_buffer_t **buffer, unsigned int options);
 static void
 req_response(isc_result_t result, isc_region_t *region, void *arg);
 static void
@@ -121,7 +118,7 @@ req_log(int level, const char *fmt, ...) ISC_FORMAT_PRINTF(2, 3);
  ***/
 
 isc_result_t
-dns_requestmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
+dns_requestmgr_create(dns_dispatchmgr_t *dispatchmgr,
 		      dns_dispatch_t *dispatchv4, dns_dispatch_t *dispatchv6,
 		      dns_requestmgr_t **requestmgrp) {
 	REQUIRE(requestmgrp != NULL && *requestmgrp == NULL);
@@ -129,14 +126,14 @@ dns_requestmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
 
 	req_log(ISC_LOG_DEBUG(3), "%s", __func__);
 
-	dns_requestmgr_t *requestmgr = isc_mem_get(mctx, sizeof(*requestmgr));
+	dns_requestmgr_t *requestmgr = isc_mem_get(isc_g_mctx,
+						   sizeof(*requestmgr));
 	*requestmgr = (dns_requestmgr_t){
 		.magic = REQUESTMGR_MAGIC,
 	};
-	isc_mem_attach(mctx, &requestmgr->mctx);
 
 	uint32_t nloops = isc_loopmgr_nloops();
-	requestmgr->requests = isc_mem_cget(requestmgr->mctx, nloops,
+	requestmgr->requests = isc_mem_cget(isc_g_mctx, nloops,
 					    sizeof(requestmgr->requests[0]));
 	for (size_t i = 0; i < nloops; i++) {
 		ISC_LIST_INIT(requestmgr->requests[i]);
@@ -148,12 +145,12 @@ dns_requestmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
 	dns_dispatchmgr_attach(dispatchmgr, &requestmgr->dispatchmgr);
 
 	if (dispatchv4 != NULL) {
-		dns_dispatchset_create(requestmgr->mctx, dispatchv4,
+		dns_dispatchset_create(isc_g_mctx, dispatchv4,
 				       &requestmgr->dispatches4,
 				       isc_loopmgr_nloops());
 	}
 	if (dispatchv6 != NULL) {
-		dns_dispatchset_create(requestmgr->mctx, dispatchv6,
+		dns_dispatchset_create(isc_g_mctx, dispatchv6,
 				       &requestmgr->dispatches6,
 				       isc_loopmgr_nloops());
 	}
@@ -233,7 +230,7 @@ requestmgr_destroy(dns_requestmgr_t *requestmgr) {
 	for (size_t i = 0; i < nloops; i++) {
 		INSIST(ISC_LIST_EMPTY(requestmgr->requests[i]));
 	}
-	isc_mem_cput(requestmgr->mctx, requestmgr->requests, nloops,
+	isc_mem_cput(isc_g_mctx, requestmgr->requests, nloops,
 		     sizeof(requestmgr->requests[0]));
 
 	if (requestmgr->dispatches4 != NULL) {
@@ -246,8 +243,7 @@ requestmgr_destroy(dns_requestmgr_t *requestmgr) {
 		dns_dispatchmgr_detach(&requestmgr->dispatchmgr);
 	}
 	requestmgr->magic = 0;
-	isc_mem_putanddetach(&requestmgr->mctx, requestmgr,
-			     sizeof(*requestmgr));
+	isc_mem_put(isc_g_mctx, requestmgr, sizeof(*requestmgr));
 }
 
 #if DNS_REQUEST_TRACE
@@ -274,10 +270,10 @@ req_send(dns_request_t *request) {
 }
 
 static dns_request_t *
-new_request(isc_mem_t *mctx, isc_loop_t *loop, isc_job_cb cb, void *arg,
-	    bool tcp, unsigned int connect_timeout, unsigned int timeout,
+new_request(isc_loop_t *loop, isc_job_cb cb, void *arg, bool tcp,
+	    unsigned int connect_timeout, unsigned int timeout,
 	    unsigned int udptimeout, unsigned int udpretries) {
-	dns_request_t *request = isc_mem_get(mctx, sizeof(*request));
+	dns_request_t *request = isc_mem_get(isc_g_mctx, sizeof(*request));
 	*request = (dns_request_t){
 		.magic = REQUEST_MAGIC,
 		.loop = loop,
@@ -290,7 +286,6 @@ new_request(isc_mem_t *mctx, isc_loop_t *loop, isc_job_cb cb, void *arg,
 	};
 
 	isc_refcount_init(&request->references, 1);
-	isc_mem_attach(mctx, &request->mctx);
 
 	if (tcp) {
 		request->connect_timeout = connect_timeout * 1000;
@@ -399,7 +394,6 @@ dns_request_createraw(dns_requestmgr_t *requestmgr, isc_buffer_t *msgbuf,
 		      dns_request_t **requestp) {
 	dns_request_t *request = NULL;
 	isc_result_t result;
-	isc_mem_t *mctx = NULL;
 	dns_messageid_t id;
 	bool tcp = false;
 	isc_region_t r;
@@ -417,8 +411,6 @@ dns_request_createraw(dns_requestmgr_t *requestmgr, isc_buffer_t *msgbuf,
 	if (srcaddr != NULL) {
 		REQUIRE(isc_sockaddr_pf(srcaddr) == isc_sockaddr_pf(destaddr));
 	}
-
-	mctx = requestmgr->mctx;
 
 	req_log(ISC_LOG_DEBUG(3), "%s", __func__);
 
@@ -444,10 +436,11 @@ dns_request_createraw(dns_requestmgr_t *requestmgr, isc_buffer_t *msgbuf,
 		tcp = true;
 	}
 
-	request = new_request(mctx, loop, cb, arg, tcp, connect_timeout,
-			      timeout, udptimeout, udpretries);
+	request = new_request(loop, cb, arg, tcp, connect_timeout, timeout,
+			      udptimeout, udpretries);
 
-	isc_buffer_allocate(mctx, &request->query, r.length + (tcp ? 2 : 0));
+	isc_buffer_allocate(isc_g_mctx, &request->query,
+			    r.length + (tcp ? 2 : 0));
 	CHECK(isc_buffer_copyregion(request->query, &r));
 
 	if ((options & DNS_REQUESTOPT_FIXEDID) != 0) {
@@ -512,7 +505,6 @@ dns_request_create(dns_requestmgr_t *requestmgr, dns_message_t *message,
 		   void *arg, dns_request_t **requestp) {
 	dns_request_t *request = NULL;
 	isc_result_t result;
-	isc_mem_t *mctx = NULL;
 	dns_messageid_t id;
 	bool tcp = false;
 
@@ -530,8 +522,6 @@ dns_request_create(dns_requestmgr_t *requestmgr, dns_message_t *message,
 	{
 		return ISC_R_FAMILYMISMATCH;
 	}
-
-	mctx = requestmgr->mctx;
 
 	req_log(ISC_LOG_DEBUG(3), "%s", __func__);
 
@@ -551,8 +541,8 @@ dns_request_create(dns_requestmgr_t *requestmgr, dns_message_t *message,
 		tcp = true;
 	}
 
-	request = new_request(mctx, loop, cb, arg, tcp, connect_timeout,
-			      timeout, udptimeout, udpretries);
+	request = new_request(loop, cb, arg, tcp, connect_timeout, timeout,
+			      udptimeout, udpretries);
 
 	if (key != NULL) {
 		dns_tsigkey_attach(key, &request->tsigkey);
@@ -571,7 +561,7 @@ again:
 			       &request->dispentry));
 
 	message->id = id;
-	result = req_render(message, &request->query, options, mctx);
+	result = req_render(message, &request->query, options);
 	if (result == DNS_R_USETCP && !tcp) {
 		/* Try again using TCP. */
 		dns_message_renderreset(message);
@@ -584,7 +574,7 @@ again:
 		goto cleanup;
 	}
 
-	CHECK(dns_message_getquerytsig(message, mctx, &request->tsig));
+	CHECK(dns_message_getquerytsig(message, &request->tsig));
 
 	request->destaddr = *destaddr;
 	request->flags |= DNS_REQUEST_F_CONNECTING;
@@ -620,8 +610,8 @@ done:
 }
 
 static isc_result_t
-req_render(dns_message_t *message, isc_buffer_t **bufferp, unsigned int options,
-	   isc_mem_t *mctx) {
+req_render(dns_message_t *message, isc_buffer_t **bufferp,
+	   unsigned int options) {
 	isc_buffer_t *buf1 = NULL;
 	isc_buffer_t *buf2 = NULL;
 	isc_result_t result;
@@ -636,7 +626,7 @@ req_render(dns_message_t *message, isc_buffer_t **bufferp, unsigned int options,
 	/*
 	 * Create buffer able to hold largest possible message.
 	 */
-	isc_buffer_allocate(mctx, &buf1, 65535);
+	isc_buffer_allocate(isc_g_mctx, &buf1, 65535);
 
 	compflags = 0;
 	if ((options & DNS_REQUESTOPT_LARGE) != 0) {
@@ -645,7 +635,7 @@ req_render(dns_message_t *message, isc_buffer_t **bufferp, unsigned int options,
 	if ((options & DNS_REQUESTOPT_CASE) != 0) {
 		compflags |= DNS_COMPRESS_CASE;
 	}
-	dns_compress_init(&cctx, mctx, compflags);
+	dns_compress_init(&cctx, compflags);
 
 	/*
 	 * Render message.
@@ -664,7 +654,7 @@ req_render(dns_message_t *message, isc_buffer_t **bufferp, unsigned int options,
 	if ((options & DNS_REQUESTOPT_TCP) == 0 && r.length > 512) {
 		CLEANUP(DNS_R_USETCP);
 	}
-	isc_buffer_allocate(mctx, &buf2, r.length);
+	isc_buffer_allocate(isc_g_mctx, &buf2, r.length);
 	CHECK(isc_buffer_copyregion(buf2, &r));
 
 	/*
@@ -862,7 +852,7 @@ req_response(isc_result_t eresult, isc_region_t *region, void *arg) {
 		break;
 	case ISC_R_SUCCESS:
 		/* Copy region to request. */
-		isc_buffer_allocate(request->mctx, &request->answer,
+		isc_buffer_allocate(isc_g_mctx, &request->answer,
 				    region->length);
 		eresult = isc_buffer_copyregion(request->answer, region);
 		if (eresult != ISC_R_SUCCESS) {
@@ -954,7 +944,7 @@ req_destroy(dns_request_t *request) {
 	if (request->requestmgr != NULL) {
 		dns_requestmgr_detach(&request->requestmgr);
 	}
-	isc_mem_putanddetach(&request->mctx, request, sizeof(*request));
+	isc_mem_put(isc_g_mctx, request, sizeof(*request));
 }
 
 void *

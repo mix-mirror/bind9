@@ -83,7 +83,6 @@ struct dns_aclelement {
 
 struct dns_acl {
 	unsigned int	  magic;
-	isc_mem_t	 *mctx;
 	isc_refcount_t	  references;
 	dns_iptable_t	 *iptable;
 	dns_aclelement_t *elements;
@@ -98,7 +97,6 @@ struct dns_acl {
 
 struct dns_aclenv {
 	unsigned int   magic;
-	isc_mem_t     *mctx;
 	isc_refcount_t references;
 
 	dns_acl_t *localhost;
@@ -118,7 +116,7 @@ struct dns_aclenv {
  ***/
 
 void
-dns_acl_create(isc_mem_t *mctx, int n, dns_acl_t **target);
+dns_acl_create(int n, dns_acl_t **target);
 /*%<
  * Create a new ACL, including an IP table and an array with room
  * for 'n' ACL elements.  The elements are uninitialized and the
@@ -126,13 +124,13 @@ dns_acl_create(isc_mem_t *mctx, int n, dns_acl_t **target);
  */
 
 void
-dns_acl_any(isc_mem_t *mctx, dns_acl_t **target);
+dns_acl_any(dns_acl_t **target);
 /*%<
  * Create a new ACL that matches everything.
  */
 
 void
-dns_acl_none(isc_mem_t *mctx, dns_acl_t **target);
+dns_acl_none(dns_acl_t **target);
 /*%<
  * Create a new ACL that matches nothing.
  */
@@ -192,7 +190,7 @@ dns_acl_allowed(isc_netaddr_t *addr, const dns_name_t *signer, dns_acl_t *acl,
  */
 
 void
-dns_aclenv_create(isc_mem_t *mctx, dns_aclenv_t **envp);
+dns_aclenv_create(dns_aclenv_t **envp);
 /*%<
  * Create ACL environment, setting up localhost and localnets ACLs
  */

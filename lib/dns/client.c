@@ -65,7 +65,6 @@
 struct dns_client {
 	unsigned int magic;
 	unsigned int attributes;
-	isc_mem_t *mctx;
 	isc_loop_t *loop;
 	dns_dispatchmgr_t *dispatchmgr;
 	dns_dispatch_t *dispatchv4;
@@ -116,7 +115,6 @@ typedef struct resctx {
  * Argument of an internal event for synchronous name resolution.
  */
 typedef struct resarg {
-	isc_mem_t *mctx;
 	dns_client_t *client;
 	const dns_name_t *name;
 
@@ -136,23 +134,23 @@ destroyrestrans(dns_clientrestrans_t **transp);
  * Try honoring the operating system's preferred ephemeral port range.
  */
 static isc_result_t
-setsourceports(isc_mem_t *mctx, dns_dispatchmgr_t *manager) {
+setsourceports(dns_dispatchmgr_t *manager) {
 	isc_portset_t *v4portset = NULL, *v6portset = NULL;
 	in_port_t udpport_low, udpport_high;
 	isc_result_t result;
 
-	isc_portset_create(mctx, &v4portset);
+	isc_portset_create(&v4portset);
 	isc_net_getportrange(AF_INET, &udpport_low, &udpport_high);
 	isc_portset_addrange(v4portset, udpport_low, udpport_high);
 
-	isc_portset_create(mctx, &v6portset);
+	isc_portset_create(&v6portset);
 	isc_net_getportrange(AF_INET6, &udpport_low, &udpport_high);
 	isc_portset_addrange(v6portset, udpport_low, udpport_high);
 
 	result = dns_dispatchmgr_setavailports(manager, v4portset, v6portset);
 
-	isc_portset_destroy(mctx, &v4portset);
-	isc_portset_destroy(mctx, &v6portset);
+	isc_portset_destroy(&v4portset);
+	isc_portset_destroy(&v6portset);
 
 	return result;
 }
@@ -178,23 +176,21 @@ getudpdispatch(int family, dns_dispatchmgr_t *dispatchmgr,
 }
 
 static isc_result_t
-createview(isc_mem_t *mctx, dns_rdataclass_t rdclass,
-	   isc_tlsctx_cache_t *tlsctx_client_cache,
+createview(dns_rdataclass_t rdclass, isc_tlsctx_cache_t *tlsctx_client_cache,
 	   dns_dispatchmgr_t *dispatchmgr, dns_dispatch_t *dispatchv4,
 	   dns_dispatch_t *dispatchv6, dns_view_t **viewp) {
 	isc_result_t result;
 	dns_view_t *view = NULL;
 
-	dns_view_create(mctx, dispatchmgr, rdclass, DNS_CLIENTVIEW_NAME, &view);
+	dns_view_create(dispatchmgr, rdclass, DNS_CLIENTVIEW_NAME, &view);
 
 	/* Initialize view security roots */
 	dns_view_initsecroots(view);
 
 	CHECK(dns_view_createresolver(view, 0, tlsctx_client_cache, dispatchv4,
 				      dispatchv6));
-	CHECK(dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			    dns_dbtype_cache, rdclass, 0, NULL,
-			    &view->cachedb));
+	CHECK(dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			    rdclass, 0, NULL, &view->cachedb));
 
 	*viewp = view;
 	return ISC_R_SUCCESS;
@@ -205,8 +201,7 @@ cleanup:
 }
 
 isc_result_t
-dns_client_create(isc_mem_t *mctx, unsigned int options,
-		  isc_tlsctx_cache_t *tlsctx_client_cache,
+dns_client_create(unsigned int options, isc_tlsctx_cache_t *tlsctx_client_cache,
 		  dns_client_t **clientp, const isc_sockaddr_t *localaddr4,
 		  const isc_sockaddr_t *localaddr6) {
 	isc_result_t result;
@@ -215,24 +210,23 @@ dns_client_create(isc_mem_t *mctx, unsigned int options,
 	dns_dispatch_t *dispatchv6 = NULL;
 	dns_view_t *view = NULL;
 
-	REQUIRE(mctx != NULL);
 	REQUIRE(tlsctx_client_cache != NULL);
 	REQUIRE(clientp != NULL && *clientp == NULL);
 
 	UNUSED(options);
 
-	client = isc_mem_get(mctx, sizeof(*client));
+	client = isc_mem_get(isc_g_mctx, sizeof(*client));
 	*client = (dns_client_t){
 		.loop = isc_loop_get(0),
 		.max_restarts = DEF_MAX_RESTARTS,
 		.max_queries = DEF_MAX_QUERIES,
 	};
 
-	result = dns_dispatchmgr_create(mctx, &client->dispatchmgr);
+	result = dns_dispatchmgr_create(&client->dispatchmgr);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_client;
 	}
-	(void)setsourceports(mctx, client->dispatchmgr);
+	(void)setsourceports(client->dispatchmgr);
 
 	/*
 	 * If only one address family is specified, use it.
@@ -265,7 +259,7 @@ dns_client_create(isc_mem_t *mctx, unsigned int options,
 	isc_refcount_init(&client->references, 1);
 
 	/* Create the default view for class IN */
-	result = createview(mctx, dns_rdataclass_in, tlsctx_client_cache,
+	result = createview(dns_rdataclass_in, tlsctx_client_cache,
 			    client->dispatchmgr, dispatchv4, dispatchv6, &view);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_references;
@@ -276,8 +270,6 @@ dns_client_create(isc_mem_t *mctx, unsigned int options,
 	dns_view_freeze(view); /* too early? */
 
 	ISC_LIST_INIT(client->resctxs);
-
-	isc_mem_attach(mctx, &client->mctx);
 
 	client->find_timeout = DEF_FIND_TIMEOUT;
 	client->find_udpretries = DEF_FIND_UDPRETRIES;
@@ -300,7 +292,7 @@ cleanup_dispatchmgr:
 	}
 	dns_dispatchmgr_detach(&client->dispatchmgr);
 cleanup_client:
-	isc_mem_put(mctx, client, sizeof(*client));
+	isc_mem_put(isc_g_mctx, client, sizeof(*client));
 
 	return result;
 }
@@ -322,7 +314,7 @@ destroyclient(dns_client_t *client) {
 
 	client->magic = 0;
 
-	isc_mem_putanddetach(&client->mctx, client, sizeof(*client));
+	isc_mem_put(isc_g_mctx, client, sizeof(*client));
 }
 
 void
@@ -383,13 +375,10 @@ dns_client_setsendcookie(dns_client_t *client, bool sendcookie) {
 }
 
 static isc_result_t
-getrdataset(isc_mem_t *mctx, dns_rdataset_t **rdatasetp) {
-	dns_rdataset_t *rdataset;
-
-	REQUIRE(mctx != NULL);
+getrdataset(dns_rdataset_t **rdatasetp) {
 	REQUIRE(rdatasetp != NULL && *rdatasetp == NULL);
 
-	rdataset = isc_mem_get(mctx, sizeof(*rdataset));
+	dns_rdataset_t *rdataset = isc_mem_get(isc_g_mctx, sizeof(*rdataset));
 
 	dns_rdataset_init(rdataset);
 
@@ -399,7 +388,7 @@ getrdataset(isc_mem_t *mctx, dns_rdataset_t **rdatasetp) {
 }
 
 static void
-putrdataset(isc_mem_t *mctx, dns_rdataset_t **rdatasetp) {
+putrdataset(dns_rdataset_t **rdatasetp) {
 	dns_rdataset_t *rdataset;
 
 	REQUIRE(rdatasetp != NULL);
@@ -409,7 +398,7 @@ putrdataset(isc_mem_t *mctx, dns_rdataset_t **rdatasetp) {
 
 	dns_rdataset_cleanup(rdataset);
 
-	isc_mem_put(mctx, rdataset, sizeof(*rdataset));
+	isc_mem_put(isc_g_mctx, rdataset, sizeof(*rdataset));
 }
 
 static void
@@ -468,7 +457,6 @@ view_find(resctx_t *rctx, dns_db_t **dbp, dns_name_t *foundname) {
 
 static void
 client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
-	isc_mem_t *mctx = NULL;
 	isc_result_t tresult, result = ISC_R_SUCCESS;
 	isc_result_t vresult = ISC_R_SUCCESS;
 	bool want_restart;
@@ -484,8 +472,6 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 	dns_rdata_dname_t dname;
 
 	REQUIRE(RCTX_VALID(rctx));
-
-	mctx = rctx->view->mctx;
 
 	name = dns_fixedname_name(&rctx->name);
 
@@ -513,10 +499,9 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 				}
 				result = start_fetch(rctx);
 				if (result != ISC_R_SUCCESS) {
-					putrdataset(mctx, &rctx->rdataset);
+					putrdataset(&rctx->rdataset);
 					if (rctx->sigrdataset != NULL) {
-						putrdataset(mctx,
-							    &rctx->sigrdataset);
+						putrdataset(&rctx->sigrdataset);
 					}
 					send_event = true;
 				}
@@ -541,10 +526,10 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 		 */
 		dns_name_t *aname = dns_fixedname_name(&rctx->name);
 
-		ansname = isc_mem_get(mctx, sizeof(*ansname));
+		ansname = isc_mem_get(isc_g_mctx, sizeof(*ansname));
 		dns_name_init(ansname);
 
-		dns_name_dup(aname, mctx, ansname);
+		dns_name_dup(aname, isc_g_mctx, ansname);
 
 		switch (result) {
 		case ISC_R_SUCCESS:
@@ -641,16 +626,16 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			rctx->rdataset = NULL;
 			/* What about sigrdataset? */
 			if (rctx->sigrdataset != NULL) {
-				putrdataset(mctx, &rctx->sigrdataset);
+				putrdataset(&rctx->sigrdataset);
 			}
 			send_event = true;
 			goto done;
 		default:
 			if (rctx->rdataset != NULL) {
-				putrdataset(mctx, &rctx->rdataset);
+				putrdataset(&rctx->rdataset);
 			}
 			if (rctx->sigrdataset != NULL) {
-				putrdataset(mctx, &rctx->sigrdataset);
+				putrdataset(&rctx->sigrdataset);
 			}
 			send_event = true;
 			goto done;
@@ -666,10 +651,9 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 							  &node);
 				if (tresult != ISC_R_SUCCESS) {
 					result = tresult;
-					putrdataset(mctx, &rctx->rdataset);
+					putrdataset(&rctx->rdataset);
 					if (rctx->sigrdataset != NULL) {
-						putrdataset(mctx,
-							    &rctx->sigrdataset);
+						putrdataset(&rctx->sigrdataset);
 					}
 					goto done;
 				}
@@ -704,8 +688,7 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 				if (tresult == ISC_R_SUCCESS &&
 				    rctx->rdataset == NULL)
 				{
-					tresult = getrdataset(mctx,
-							      &rctx->rdataset);
+					tresult = getrdataset(&rctx->rdataset);
 					if (tresult != ISC_R_SUCCESS) {
 						result = tresult;
 						POST(result);
@@ -714,10 +697,10 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 				}
 			}
 			if (rctx->rdataset != NULL) {
-				putrdataset(mctx, &rctx->rdataset);
+				putrdataset(&rctx->rdataset);
 			}
 			if (rctx->sigrdataset != NULL) {
-				putrdataset(mctx, &rctx->sigrdataset);
+				putrdataset(&rctx->sigrdataset);
 			}
 			if (n == 0) {
 				/*
@@ -761,10 +744,10 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 		if (ansname != NULL) {
 			ISC_LIST_FOREACH(ansname->list, rdataset, link) {
 				ISC_LIST_UNLINK(ansname->list, rdataset, link);
-				putrdataset(mctx, &rdataset);
+				putrdataset(&rdataset);
 			}
-			dns_name_free(ansname, mctx);
-			isc_mem_put(mctx, ansname, sizeof(*ansname));
+			dns_name_free(ansname, isc_g_mctx);
+			isc_mem_put(isc_g_mctx, ansname, sizeof(*ansname));
 		}
 
 		if (node != NULL) {
@@ -792,11 +775,11 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			INSIST(rctx->rdataset == NULL &&
 			       rctx->sigrdataset == NULL);
 
-			result = getrdataset(mctx, &rctx->rdataset);
+			result = getrdataset(&rctx->rdataset);
 			if (result == ISC_R_SUCCESS && rctx->want_dnssec) {
-				result = getrdataset(mctx, &rctx->sigrdataset);
+				result = getrdataset(&rctx->sigrdataset);
 				if (result != ISC_R_SUCCESS) {
-					putrdataset(mctx, &rctx->rdataset);
+					putrdataset(&rctx->rdataset);
 				}
 			}
 
@@ -833,7 +816,7 @@ resolve_done(void *arg) {
 		ISC_LIST_APPEND(*resarg->namelist, name, link);
 	}
 
-	isc_mem_put(resarg->mctx, rev, sizeof(*rev));
+	isc_mem_put(isc_g_mctx, rev, sizeof(*rev));
 	destroyrestrans(&resarg->trans);
 
 	result = resarg->result;
@@ -852,7 +835,7 @@ resolve_done(void *arg) {
 
 	dns_client_detach(&resarg->client);
 
-	isc_mem_putanddetach(&resarg->mctx, resarg, sizeof(*resarg));
+	isc_mem_put(isc_g_mctx, resarg, sizeof(*resarg));
 }
 
 static isc_result_t
@@ -862,7 +845,6 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 	     dns_clientrestrans_t **transp) {
 	dns_clientresume_t *rev = NULL;
 	resctx_t *rctx = NULL;
-	isc_mem_t *mctx = NULL;
 	isc_result_t result;
 	dns_rdataset_t *rdataset = NULL, *sigrdataset = NULL;
 	bool want_dnssec, want_validation, want_cdflag, want_tcp;
@@ -871,7 +853,6 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 	REQUIRE(transp != NULL && *transp == NULL);
 	REQUIRE(rdclass == dns_rdataclass_in);
 
-	mctx = client->mctx;
 	want_dnssec = ((options & DNS_CLIENTRESOPT_NODNSSEC) == 0);
 	want_validation = ((options & DNS_CLIENTRESOPT_NOVALIDATE) == 0);
 	want_cdflag = ((options & DNS_CLIENTRESOPT_NOCDFLAG) == 0);
@@ -880,7 +861,7 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 	/*
 	 * Prepare some intermediate resources
 	 */
-	rev = isc_mem_get(mctx, sizeof(*rev));
+	rev = isc_mem_get(isc_g_mctx, sizeof(*rev));
 	*rev = (dns_clientresume_t){
 		.result = DNS_R_SERVFAIL,
 		.answerlist = ISC_LIST_INITIALIZER,
@@ -888,7 +869,7 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 		.arg = arg,
 	};
 
-	rctx = isc_mem_get(mctx, sizeof(*rctx));
+	rctx = isc_mem_get(isc_g_mctx, sizeof(*rctx));
 	*rctx = (resctx_t){
 		.client = client,
 		.rev = rev,
@@ -901,11 +882,11 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 		.link = ISC_LINK_INITIALIZER,
 	};
 
-	CHECK(getrdataset(mctx, &rdataset));
+	CHECK(getrdataset(&rdataset));
 	rctx->rdataset = rdataset;
 
 	if (want_dnssec) {
-		CHECK(getrdataset(mctx, &sigrdataset));
+		CHECK(getrdataset(&sigrdataset));
 	}
 	rctx->sigrdataset = sigrdataset;
 
@@ -917,7 +898,7 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 	rctx->magic = RCTX_MAGIC;
 	isc_refcount_increment(&client->references);
 
-	isc_counter_create(mctx, client->max_queries, &rctx->qc);
+	isc_counter_create(client->max_queries, &rctx->qc);
 
 	ISC_LIST_APPEND(client->resctxs, rctx, link);
 
@@ -928,16 +909,16 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 
 cleanup:
 	if (rdataset != NULL) {
-		putrdataset(client->mctx, &rdataset);
+		putrdataset(&rdataset);
 	}
 	if (sigrdataset != NULL) {
-		putrdataset(client->mctx, &sigrdataset);
+		putrdataset(&sigrdataset);
 	}
 	if (rctx->qc != NULL) {
 		isc_counter_detach(&rctx->qc);
 	}
-	isc_mem_put(mctx, rctx, sizeof(*rctx));
-	isc_mem_put(mctx, rev, sizeof(*rev));
+	isc_mem_put(isc_g_mctx, rctx, sizeof(*rctx));
+	isc_mem_put(isc_g_mctx, rev, sizeof(*rev));
 
 	return result;
 }
@@ -954,7 +935,7 @@ dns_client_resolve(dns_client_t *client, const dns_name_t *name,
 	REQUIRE(namelist != NULL && ISC_LIST_EMPTY(*namelist));
 	REQUIRE(rdclass == dns_rdataclass_in);
 
-	resarg = isc_mem_get(client->mctx, sizeof(*resarg));
+	resarg = isc_mem_get(isc_g_mctx, sizeof(*resarg));
 
 	*resarg = (resarg_t){
 		.client = client,
@@ -964,12 +945,10 @@ dns_client_resolve(dns_client_t *client, const dns_name_t *name,
 		.resolve_cb = resolve_cb,
 	};
 
-	isc_mem_attach(client->mctx, &resarg->mctx);
-
 	result = startresolve(client, name, rdclass, type, options,
 			      resolve_done, resarg, &resarg->trans);
 	if (result != ISC_R_SUCCESS) {
-		isc_mem_putanddetach(&resarg->mctx, resarg, sizeof(*resarg));
+		isc_mem_put(isc_g_mctx, resarg, sizeof(*resarg));
 		return result;
 	}
 
@@ -986,11 +965,11 @@ dns_client_freeresanswer(dns_client_t *client, dns_namelist_t *namelist) {
 
 		ISC_LIST_FOREACH(name->list, rdataset, link) {
 			ISC_LIST_UNLINK(name->list, rdataset, link);
-			putrdataset(client->mctx, &rdataset);
+			putrdataset(&rdataset);
 		}
 
-		dns_name_free(name, client->mctx);
-		isc_mem_put(client->mctx, name, sizeof(*name));
+		dns_name_free(name, isc_g_mctx);
+		isc_mem_put(isc_g_mctx, name, sizeof(*name));
 	}
 }
 
@@ -1003,7 +982,6 @@ dns_client_freeresanswer(dns_client_t *client, dns_namelist_t *namelist) {
 static void
 destroyrestrans(dns_clientrestrans_t **transp) {
 	resctx_t *rctx = NULL;
-	isc_mem_t *mctx = NULL;
 	dns_client_t *client = NULL;
 
 	REQUIRE(transp != NULL);
@@ -1018,7 +996,6 @@ destroyrestrans(dns_clientrestrans_t **transp) {
 
 	REQUIRE(DNS_CLIENT_VALID(client));
 
-	mctx = client->mctx;
 	dns_view_detach(&rctx->view);
 
 	INSIST(ISC_LINK_LINKED(rctx, link));
@@ -1031,7 +1008,7 @@ destroyrestrans(dns_clientrestrans_t **transp) {
 	if (rctx->qc != NULL) {
 		isc_counter_detach(&rctx->qc);
 	}
-	isc_mem_put(mctx, rctx, sizeof(*rctx));
+	isc_mem_put(isc_g_mctx, rctx, sizeof(*rctx));
 }
 
 isc_result_t

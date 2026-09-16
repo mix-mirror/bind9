@@ -239,8 +239,6 @@ loop_init(isc_loop_t *loop, isc_tid_t tid) {
 	UV_RUNTIME_CHECK(uv_prepare_init, r);
 	uv_handle_set_data(&loop->quiescent, loop);
 
-	isc_mem_attach(isc_g_mctx, &loop->mctx);
-
 	isc_refcount_init(&loop->references, 1);
 
 	loop->magic = LOOP_MAGIC;
@@ -270,8 +268,6 @@ loop_close(isc_loop_t *loop) {
 	INSIST(ISC_LIST_EMPTY(loop->run_jobs));
 
 	loop->magic = 0;
-
-	isc_mem_detach(&loop->mctx);
 }
 
 static void *
@@ -350,8 +346,6 @@ isc_loopmgr_create(isc_mem_t *mctx, uint32_t nloops) {
 		.magic = LOOPMGR_MAGIC,
 	};
 
-	isc_mem_attach(mctx, &loopmgr->mctx);
-
 	/* We need to double the number for loops */
 	isc_barrier_init(&loopmgr->pausing, loopmgr->nloops);
 	isc_barrier_init(&loopmgr->resuming, loopmgr->nloops);
@@ -360,7 +354,7 @@ isc_loopmgr_create(isc_mem_t *mctx, uint32_t nloops) {
 	isc_barrier_init(&loopmgr->stopping,
 			 loopmgr->nloops * (1 + ISC_WORKLANE_COUNT));
 
-	loopmgr->loops = isc_mem_cget(loopmgr->mctx, loopmgr->nloops,
+	loopmgr->loops = isc_mem_cget(isc_g_mctx, loopmgr->nloops,
 				      sizeof(loopmgr->loops[0]));
 	for (size_t i = 0; i < loopmgr->nloops; i++) {
 		isc_loop_t *loop = &loopmgr->loops[i];
@@ -383,7 +377,7 @@ isc_loop_setup(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 	REQUIRE(cb != NULL);
 
 	isc_loopmgr_t *loopmgr = isc__loopmgr;
-	isc_job_t *job = isc_mem_get(loop->mctx, sizeof(*job));
+	isc_job_t *job = isc_mem_get(isc_g_mctx, sizeof(*job));
 	*job = (isc_job_t){
 		.cb = cb,
 		.cbarg = cbarg,
@@ -405,7 +399,7 @@ isc_loop_teardown(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 	REQUIRE(VALID_LOOP(loop));
 
 	isc_loopmgr_t *loopmgr = isc__loopmgr;
-	isc_job_t *job = isc_mem_get(loop->mctx, sizeof(*job));
+	isc_job_t *job = isc_mem_get(isc_g_mctx, sizeof(*job));
 	*job = (isc_job_t){
 		.cb = cb,
 		.cbarg = cbarg,
@@ -555,7 +549,7 @@ isc_loopmgr_destroy(void) {
 		isc_loop_t *loop = &loopmgr->loops[i];
 		loop_close(loop);
 	}
-	isc_mem_cput(loopmgr->mctx, loopmgr->loops, loopmgr->nloops,
+	isc_mem_cput(isc_g_mctx, loopmgr->loops, loopmgr->nloops,
 		     sizeof(loopmgr->loops[0]));
 
 	isc_barrier_destroy(&loopmgr->starting);
@@ -563,7 +557,7 @@ isc_loopmgr_destroy(void) {
 	isc_barrier_destroy(&loopmgr->resuming);
 	isc_barrier_destroy(&loopmgr->pausing);
 
-	isc_mem_putanddetach(&loopmgr->mctx, loopmgr, sizeof(*loopmgr));
+	isc_mem_put(isc_g_mctx, loopmgr, sizeof(*loopmgr));
 
 	isc__thread_shutdown();
 }
@@ -573,13 +567,6 @@ isc_loopmgr_nloops(void) {
 	REQUIRE(VALID_LOOPMGR(isc__loopmgr));
 
 	return isc__loopmgr->nloops;
-}
-
-isc_mem_t *
-isc_loop_getmctx(isc_loop_t *loop) {
-	REQUIRE(VALID_LOOP(loop));
-
-	return loop->mctx;
 }
 
 isc_loop_t *

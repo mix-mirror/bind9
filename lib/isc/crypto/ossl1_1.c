@@ -58,7 +58,6 @@
 struct isc_hmac_key {
 	uint32_t magic;
 	uint32_t len;
-	isc_mem_t *mctx;
 	EVP_MD *md;
 	uint8_t secret[];
 };
@@ -66,7 +65,6 @@ struct isc_hmac_key {
 struct isc_crypto_quic_hp_protect {
 	uint32_t magic;
 	isc_crypto_quic_hp_protect_algorithm_t algorithm;
-	isc_mem_t *mctx;
 	union {
 		AES_KEY aes;
 #if HAVE_CRYPTO_CHACHA_20
@@ -144,7 +142,7 @@ isc_hmac(isc_md_type_t type, const void *key, const size_t keylen,
 
 isc_result_t
 isc_hmac_key_create(isc_md_type_t type, const void *secret, const size_t len,
-		    isc_mem_t *mctx, isc_hmac_key_t **keyp) {
+		    isc_hmac_key_t **keyp) {
 	isc_hmac_key_t *key;
 	EVP_MD *md;
 
@@ -156,14 +154,13 @@ isc_hmac_key_create(isc_md_type_t type, const void *secret, const size_t len,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	key = isc_mem_get(mctx, STRUCT_FLEX_SIZE(key, secret, len));
+	key = isc_mem_get(isc_g_mctx, STRUCT_FLEX_SIZE(key, secret, len));
 	*key = (isc_hmac_key_t){
 		.magic = HMAC_KEY_MAGIC,
 		.len = len,
 		.md = md,
 	};
 	memmove(key->secret, secret, len);
-	isc_mem_attach(mctx, &key->mctx);
 
 	*keyp = key;
 
@@ -183,8 +180,7 @@ isc_hmac_key_destroy(isc_hmac_key_t **keyp) {
 	key->magic = 0x00;
 
 	isc_safe_memwipe(key->secret, key->len);
-	isc_mem_putanddetach(&key->mctx, key,
-			     STRUCT_FLEX_SIZE(key, secret, key->len));
+	isc_mem_put(isc_g_mctx, key, STRUCT_FLEX_SIZE(key, secret, key->len));
 }
 
 isc_region_t
@@ -983,13 +979,12 @@ isc_crypto_quic_hp_protect_destroy(isc_crypto_quic_hp_protect_t **protp) {
 	isc_safe_memwipe(&prot->key, ISC_MAX(sizeof(prot->key.aes),
 					     sizeof(prot->key.chacha20)));
 
-	isc_mem_putanddetach(&prot->mctx, prot, sizeof(*prot));
+	isc_mem_put(isc_g_mctx, prot, sizeof(*prot));
 }
 
 isc_result_t
 isc_crypto_quic_hp_protect_create(
-	isc_mem_t *mctx, isc_constregion_t key,
-	isc_crypto_quic_hp_protect_algorithm_t algorithm,
+	isc_constregion_t key, isc_crypto_quic_hp_protect_algorithm_t algorithm,
 	isc_crypto_quic_hp_protect_t **protp) {
 	isc_crypto_quic_hp_protect_t *prot;
 	isc_result_t result;
@@ -997,11 +992,10 @@ isc_crypto_quic_hp_protect_create(
 	REQUIRE(protp != NULL && *protp == NULL);
 	REQUIRE(key.base != NULL);
 
-	prot = isc_mem_get(mctx, sizeof(*prot));
+	prot = isc_mem_get(isc_g_mctx, sizeof(*prot));
 	*prot = (isc_crypto_quic_hp_protect_t){
 		.magic = crypto_quic_hp_protect_magic,
 		.algorithm = algorithm,
-		.mctx = isc_mem_ref(mctx),
 	};
 
 	switch (algorithm) {
@@ -1048,7 +1042,7 @@ isc_crypto_quic_hp_protect_create(
 	return ISC_R_SUCCESS;
 
 cleanup:
-	isc_mem_putanddetach(&prot->mctx, prot, sizeof(*prot));
+	isc_mem_put(isc_g_mctx, prot, sizeof(*prot));
 	return result;
 }
 

@@ -220,7 +220,7 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 	if (sigder_len == 0) {
 		CLEANUP(ISC_R_FAILURE);
 	}
-	sigder = isc_mem_get(dctx->mctx, sigder_len);
+	sigder = isc_mem_get(isc_g_mctx, sigder_len);
 	sigder_alloced = sigder_len;
 	if (EVP_DigestSignFinal(evp_md_ctx, sigder, &sigder_len) != 1) {
 		CLEANUP(dst__openssl_toresult3(
@@ -243,7 +243,7 @@ opensslecdsa_sign(dst_context_t *dctx, isc_buffer_t *sig) {
 
 cleanup:
 	if (sigder != NULL && sigder_alloced != 0) {
-		isc_mem_put(dctx->mctx, sigder, sigder_alloced);
+		isc_mem_put(isc_g_mctx, sigder, sigder_alloced);
 	}
 
 	return result;
@@ -292,7 +292,7 @@ opensslecdsa_verify(dst_context_t *dctx, const isc_region_t *sig) {
 	}
 
 	sigder_len = (size_t)status;
-	sigder = isc_mem_get(dctx->mctx, sigder_len);
+	sigder = isc_mem_get(isc_g_mctx, sigder_len);
 	sigder_alloced = sigder_len;
 
 	sigder_copy = sigder;
@@ -323,7 +323,7 @@ cleanup:
 		ECDSA_SIG_free(ecdsasig);
 	}
 	if (sigder != NULL && sigder_alloced != 0) {
-		isc_mem_put(dctx->mctx, sigder, sigder_alloced);
+		isc_mem_put(isc_g_mctx, sigder, sigder_alloced);
 	}
 
 	return result;
@@ -525,8 +525,7 @@ opensslecdsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	REQUIRE(opensslecdsa_valid_key_alg(key->key_alg));
 
 	/* read private key file */
-	CHECK(dst__privstruct_parse(key, DST_ALG_ECDSA256, lexer, key->mctx,
-				    &priv));
+	CHECK(dst__privstruct_parse(key, DST_ALG_ECDSA256, lexer, &priv));
 
 	if (key->external) {
 		if (priv.nelements != 0 || pub == NULL) {
@@ -604,7 +603,7 @@ cleanup:
 	if (result != ISC_R_SUCCESS) {
 		key->keydata.generic = NULL;
 	}
-	dst__privstruct_free(&priv, key->mctx);
+	dst__privstruct_free(&priv);
 	isc_safe_memwipe(&priv, sizeof(priv));
 
 	return result;
@@ -634,7 +633,7 @@ opensslecdsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
 		UNREACHABLE();
 	}
 
-	key->label = isc_mem_strdup(key->mctx, label);
+	key->label = isc_mem_strdup(isc_g_mctx, label);
 	key->key_size = EVP_PKEY_bits(privpkey);
 	key->keydata.pkeypair.priv = privpkey;
 	key->keydata.pkeypair.pub = pubpkey;

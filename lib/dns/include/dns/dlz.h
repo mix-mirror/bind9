@@ -94,7 +94,6 @@
 #define DNS_DLZ_VALID(dlz) ISC_MAGIC_VALID(dlz, DNS_DLZ_MAGIC)
 
 typedef isc_result_t (*dns_dlzallowzonexfr_t)(void *driverarg, void *dbdata,
-					      isc_mem_t		   *mctx,
 					      dns_rdataclass_t	    rdclass,
 					      const dns_name_t	   *name,
 					      const isc_sockaddr_t *clientaddr,
@@ -113,9 +112,9 @@ typedef isc_result_t (*dns_dlzallowzonexfr_t)(void *driverarg, void *dbdata,
  * If an error occurs, the result code should indicate the type of error.
  */
 
-typedef isc_result_t (*dns_dlzcreate_t)(isc_mem_t *mctx, const char *dlzname,
-					unsigned int argc, char *argv[],
-					void *driverarg, void **dbdata);
+typedef isc_result_t (*dns_dlzcreate_t)(const char *dlzname, unsigned int argc,
+					char *argv[], void *driverarg,
+					void **dbdata);
 
 /*%<
  * Method prototype.  Drivers implementing the DLZ interface MUST
@@ -132,7 +131,6 @@ typedef void (*dns_dlzdestroy_t)(void *driverarg, void **dbdata);
  */
 
 typedef isc_result_t (*dns_dlzfindzone_t)(void *driverarg, void *dbdata,
-					  isc_mem_t		  *mctx,
 					  dns_rdataclass_t	   rdclass,
 					  const dns_name_t	  *name,
 					  dns_clientinfomethods_t *methods,
@@ -198,7 +196,6 @@ typedef struct dns_dlzmethods {
 struct dns_dlzimplementation {
 	const char	       *name;
 	const dns_dlzmethods_t *methods;
-	isc_mem_t	       *mctx;
 	void		       *driverarg;
 	ISC_LINK(dns_dlzimplementation_t) link;
 };
@@ -209,7 +206,6 @@ typedef isc_result_t (*dlzconfigure_callback_t)(dns_view_t *, dns_dlzdb_t *,
 /*% An instance of a DLZ driver */
 struct dns_dlzdb {
 	unsigned int		 magic;
-	isc_mem_t		*mctx;
 	dns_dlzimplementation_t *implementation;
 	void			*dbdata;
 	dlzconfigure_callback_t	 configure_callback;
@@ -234,8 +230,8 @@ dns_dlzallowzonexfr(dns_view_t *view, const dns_name_t *name,
  */
 
 isc_result_t
-dns_dlzcreate(isc_mem_t *mctx, const char *dlzname, const char *drivername,
-	      unsigned int argc, char *argv[], dns_dlzdb_t **dbp);
+dns_dlzcreate(const char *dlzname, const char *drivername, unsigned int argc,
+	      char *argv[], dns_dlzdb_t **dbp);
 
 /*%<
  * This method is called when the DNS server is starting up and
@@ -256,8 +252,7 @@ dns_dlzdestroy(dns_dlzdb_t **dbp);
 
 isc_result_t
 dns_dlzregister(const char *drivername, const dns_dlzmethods_t *methods,
-		void *driverarg, isc_mem_t *mctx,
-		dns_dlzimplementation_t **dlzimp);
+		void *driverarg, dns_dlzimplementation_t **dlzimp);
 
 /*%<
  * Register a dynamically loadable zones (DLZ) driver for the database
@@ -269,7 +264,7 @@ dns_dlzregister(const char *drivername, const dns_dlzmethods_t *methods,
  */
 
 isc_result_t
-dns_dlzstrtoargv(isc_mem_t *mctx, char *s, unsigned int *argcp, char ***argvp);
+dns_dlzstrtoargv(char *s, unsigned int *argcp, char ***argvp);
 
 /*%<
  * This method is called when the name server is starting up to parse

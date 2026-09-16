@@ -37,7 +37,6 @@
 /* Key store */
 struct dns_keystore {
 	unsigned int magic;
-	isc_mem_t   *mctx;
 	const char  *name;
 
 	/* Internals. */
@@ -60,7 +59,7 @@ struct dns_keystore {
 #define DNS_KEYSTORE_KEYDIRECTORY "key-directory"
 
 void
-dns_keystore_create(isc_mem_t *mctx, const char *name, dns_keystore_t **kspp);
+dns_keystore_create(const char *name, dns_keystore_t **kspp);
 /*%<
  * Create a key store.
  *
@@ -136,9 +135,8 @@ dns_keystore_setpkcs11uri(dns_keystore_t *keystore, const char *uri);
 
 isc_result_t
 dns_keystore_keygen(dns_keystore_t *keystore, const dns_name_t *origin,
-		    const char *policy, dns_rdataclass_t rdclass,
-		    isc_mem_t *mctx, uint32_t alg, int size, int flags,
-		    dst_key_t **dstkey);
+		    const char *policy, dns_rdataclass_t rdclass, uint32_t alg,
+		    int size, int flags, dst_key_t **dstkey);
 /*%<
  * Create a DNSSEC key pair. Set keystore PKCS#11 URI.
  *

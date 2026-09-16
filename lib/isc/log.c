@@ -132,7 +132,6 @@ struct isc_logconfig {
 struct isc_log {
 	/* Not locked. */
 	unsigned int magic;
-	isc_mem_t *mctx;
 	atomic_int_fast32_t debug_level;
 	/* RCU-protected pointer */
 	isc_logconfig_t *logconfig;
@@ -331,7 +330,7 @@ isc_logconfig_create(isc_logconfig_t **lcfgp) {
 
 	int level = ISC_LOG_INFO;
 
-	isc_logconfig_t *lcfg = isc_mem_get(isc__lctx->mctx, sizeof(*lcfg));
+	isc_logconfig_t *lcfg = isc_mem_get(isc_g_mctx, sizeof(*lcfg));
 
 	*lcfg = (isc_logconfig_t){
 		.magic = LCFG_MAGIC,
@@ -393,7 +392,6 @@ isc_logconfig_set(isc_logconfig_t *lcfg) {
 void
 isc_logconfig_destroy(isc_logconfig_t **lcfgp) {
 	isc_logconfig_t *lcfg = NULL;
-	isc_mem_t *mctx = NULL;
 	char *filename = NULL;
 
 	REQUIRE(lcfgp != NULL && VALID_CONFIG(*lcfgp));
@@ -411,8 +409,6 @@ isc_logconfig_destroy(isc_logconfig_t **lcfgp) {
 	REQUIRE(rcu_dereference(lcfg->lctx->logconfig) != lcfg);
 	rcu_read_unlock();
 
-	mctx = lcfg->lctx->mctx;
-
 	ISC_LIST_FOREACH(lcfg->channels, channel, link) {
 		if (channel->type == ISC_LOG_TOFILE) {
 			/*
@@ -422,32 +418,32 @@ isc_logconfig_destroy(isc_logconfig_t **lcfgp) {
 			 * into writable memory and is not longer truly const.
 			 */
 			filename = UNCONST(FILE_NAME(channel));
-			isc_mem_free(mctx, filename);
+			isc_mem_free(isc_g_mctx, filename);
 
 			if (FILE_STREAM(channel) != NULL) {
 				(void)fclose(FILE_STREAM(channel));
 			}
 		}
 
-		isc_mem_free(mctx, channel->name);
-		isc_mem_put(mctx, channel, sizeof(*channel));
+		isc_mem_free(isc_g_mctx, channel->name);
+		isc_mem_put(isc_g_mctx, channel, sizeof(*channel));
 	}
 
 	for (size_t i = 0; i < ARRAY_SIZE(lcfg->channellists); i++) {
 		ISC_LIST_FOREACH(lcfg->channellists[i], item, link) {
 			ISC_LIST_UNLINK(lcfg->channellists[i], item, link);
-			isc_mem_put(mctx, item, sizeof(*item));
+			isc_mem_put(isc_g_mctx, item, sizeof(*item));
 		}
 	}
 
 	lcfg->dynamic = false;
 	if (lcfg->tag != NULL) {
-		isc_mem_free(lcfg->lctx->mctx, lcfg->tag);
+		isc_mem_free(isc_g_mctx, lcfg->tag);
 	}
 	lcfg->highest_level = 0;
 	lcfg->magic = 0;
 
-	isc_mem_put(mctx, lcfg, sizeof(*lcfg));
+	isc_mem_put(isc_g_mctx, lcfg, sizeof(*lcfg));
 }
 
 isc_logcategory_t
@@ -472,7 +468,6 @@ isc_log_createchannel(isc_logconfig_t *lcfg, const char *name,
 		      const isc_logdestination_t *destination,
 		      unsigned int flags) {
 	isc_logchannel_t *channel;
-	isc_mem_t *mctx;
 	unsigned int permitted = ISC_LOG_PRINTALL | ISC_LOG_DEBUGONLY |
 				 ISC_LOG_BUFFERED | ISC_LOG_ISO8601 |
 				 ISC_LOG_UTC | ISC_LOG_TZINFO;
@@ -488,11 +483,9 @@ isc_log_createchannel(isc_logconfig_t *lcfg, const char *name,
 
 	/* FIXME: find duplicate names? */
 
-	mctx = lcfg->lctx->mctx;
+	channel = isc_mem_get(isc_g_mctx, sizeof(*channel));
 
-	channel = isc_mem_get(mctx, sizeof(*channel));
-
-	channel->name = isc_mem_strdup(mctx, name);
+	channel->name = isc_mem_strdup(isc_g_mctx, name);
 
 	channel->type = type;
 	channel->level = level;
@@ -510,7 +503,7 @@ isc_log_createchannel(isc_logconfig_t *lcfg, const char *name,
 		 * to scribble on it, so it needs to be definitely in
 		 * writable memory.
 		 */
-		FILE_NAME(channel) = isc_mem_strdup(mctx,
+		FILE_NAME(channel) = isc_mem_strdup(isc_g_mctx,
 						    destination->file.name);
 		FILE_STREAM(channel) = NULL;
 		FILE_VERSIONS(channel) = destination->file.versions;
@@ -671,12 +664,12 @@ isc_log_settag(isc_logconfig_t *lcfg, const char *tag) {
 
 	if (tag != NULL && *tag != '\0') {
 		if (lcfg->tag != NULL) {
-			isc_mem_free(lcfg->lctx->mctx, lcfg->tag);
+			isc_mem_free(isc_g_mctx, lcfg->tag);
 		}
-		lcfg->tag = isc_mem_strdup(lcfg->lctx->mctx, tag);
+		lcfg->tag = isc_mem_strdup(isc_g_mctx, tag);
 	} else {
 		if (lcfg->tag != NULL) {
-			isc_mem_free(lcfg->lctx->mctx, lcfg->tag);
+			isc_mem_free(isc_g_mctx, lcfg->tag);
 		}
 	}
 }
@@ -725,13 +718,11 @@ assignchannel(isc_logconfig_t *lcfg, const isc_logcategory_t category,
 	REQUIRE(VALID_CONFIG(lcfg));
 	REQUIRE(channel != NULL);
 
-	isc_log_t *lctx = lcfg->lctx;
-
 	REQUIRE(category >= ISC_LOGCATEGORY_DEFAULT &&
 		category < ISC_LOGCATEGORY_MAX);
 	REQUIRE(module >= ISC_LOGMODULE_DEFAULT && module < ISC_LOGMODULE_MAX);
 
-	isc_logchannellist_t *new_item = isc_mem_get(lctx->mctx,
+	isc_logchannellist_t *new_item = isc_mem_get(isc_g_mctx,
 						     sizeof(*new_item));
 
 	new_item->channel = channel;
@@ -1532,15 +1523,9 @@ void
 isc__log_initialize(void) {
 	REQUIRE(isc__lctx == NULL);
 
-	isc_mem_t *mctx = NULL;
-
-	isc_mem_create("log", &mctx);
-	isc_mem_setdebugging(mctx, 0);
-
-	isc__lctx = isc_mem_get(mctx, sizeof(*isc__lctx));
+	isc__lctx = isc_mem_get(isc_g_mctx, sizeof(*isc__lctx));
 	*isc__lctx = (isc_log_t){
 		.magic = LCTX_MAGIC,
-		.mctx = mctx, /* implicit attach */
 	};
 
 	isc_mutex_init(&isc__lctx->lock);
@@ -1567,8 +1552,6 @@ isc__log_shutdown(void) {
 
 	REQUIRE(VALID_CONTEXT(isc__lctx));
 
-	isc_mem_t *mctx = isc__lctx->mctx;
-
 	/* Stop the logging as a first thing */
 	atomic_store_release(&isc__lctx->debug_level, 0);
 	atomic_store_release(&isc__lctx->highest_level, 0);
@@ -1580,5 +1563,5 @@ isc__log_shutdown(void) {
 
 	isc_mutex_destroy(&isc__lctx->lock);
 
-	isc_mem_putanddetach(&mctx, isc__lctx, sizeof(*isc__lctx));
+	isc_mem_put(isc_g_mctx, isc__lctx, sizeof(*isc__lctx));
 }

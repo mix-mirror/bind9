@@ -130,8 +130,8 @@ dns_dlzallowzonexfr(dns_view_t *view, const dns_name_t *name,
 
 		allowzonexfr = dlzdb->implementation->methods->allowzonexfr;
 		result = (*allowzonexfr)(dlzdb->implementation->driverarg,
-					 dlzdb->dbdata, dlzdb->mctx,
-					 view->rdclass, name, clientaddr, dbp);
+					 dlzdb->dbdata, view->rdclass, name,
+					 clientaddr, dbp);
 
 		/*
 		 * In these cases, we found the right database. Non-success
@@ -155,8 +155,8 @@ dns_dlzallowzonexfr(dns_view_t *view, const dns_name_t *name,
 }
 
 isc_result_t
-dns_dlzcreate(isc_mem_t *mctx, const char *dlzname, const char *drivername,
-	      unsigned int argc, char *argv[], dns_dlzdb_t **dbp) {
+dns_dlzcreate(const char *dlzname, const char *drivername, unsigned int argc,
+	      char *argv[], dns_dlzdb_t **dbp) {
 	dns_dlzimplementation_t *impinfo;
 	isc_result_t result;
 	dns_dlzdb_t *db = NULL;
@@ -167,7 +167,6 @@ dns_dlzcreate(isc_mem_t *mctx, const char *dlzname, const char *drivername,
 	REQUIRE(dbp != NULL && *dbp == NULL);
 	REQUIRE(dlzname != NULL);
 	REQUIRE(drivername != NULL);
-	REQUIRE(mctx != NULL);
 
 	/* write log message */
 	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_DLZ, ISC_LOG_INFO,
@@ -191,25 +190,24 @@ dns_dlzcreate(isc_mem_t *mctx, const char *dlzname, const char *drivername,
 	}
 
 	/* Allocate memory to hold the DLZ database driver */
-	db = isc_mem_get(mctx, sizeof(*db));
+	db = isc_mem_get(isc_g_mctx, sizeof(*db));
 	*db = (dns_dlzdb_t){
 		.implementation = impinfo,
 	};
 
 	ISC_LINK_INIT(db, link);
 	if (dlzname != NULL) {
-		db->dlzname = isc_mem_strdup(mctx, dlzname);
+		db->dlzname = isc_mem_strdup(isc_g_mctx, dlzname);
 	}
 
 	/* Create a new database using implementation 'drivername'. */
-	result = ((impinfo->methods->create)(mctx, dlzname, argc, argv,
+	result = ((impinfo->methods->create)(dlzname, argc, argv,
 					     impinfo->driverarg, &db->dbdata));
 	RWUNLOCK(&dlz_implock, isc_rwlocktype_read);
 	CHECK(result);
 
 	/* Mark the DLZ driver as valid */
 	db->magic = DNS_DLZ_MAGIC;
-	isc_mem_attach(mctx, &db->mctx);
 	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_DLZ,
 		      ISC_LOG_DEBUG(2), "DLZ driver loaded successfully.");
 	*dbp = db;
@@ -219,8 +217,8 @@ cleanup:
 		      ISC_LOG_ERROR, "DLZ driver failed to load.");
 
 	/* impinfo->methods->create failed. */
-	isc_mem_free(mctx, db->dlzname);
-	isc_mem_put(mctx, db, sizeof(*db));
+	isc_mem_free(isc_g_mctx, db->dlzname);
+	isc_mem_put(isc_g_mctx, db, sizeof(*db));
 	return result;
 }
 
@@ -247,12 +245,12 @@ dns_dlzdestroy(dns_dlzdb_t **dbp) {
 
 	/* call the drivers destroy method */
 	if (db->dlzname != NULL) {
-		isc_mem_free(db->mctx, db->dlzname);
+		isc_mem_free(isc_g_mctx, db->dlzname);
 	}
 	destroy = db->implementation->methods->destroy;
 	(*destroy)(db->implementation->driverarg, db->dbdata);
 	/* return memory and detach */
-	isc_mem_putanddetach(&db->mctx, db, sizeof(*db));
+	isc_mem_put(isc_g_mctx, db, sizeof(*db));
 }
 
 /*%
@@ -261,8 +259,7 @@ dns_dlzdestroy(dns_dlzdb_t **dbp) {
  */
 isc_result_t
 dns_dlzregister(const char *drivername, const dns_dlzmethods_t *methods,
-		void *driverarg, isc_mem_t *mctx,
-		dns_dlzimplementation_t **dlzimp) {
+		void *driverarg, dns_dlzimplementation_t **dlzimp) {
 	dns_dlzimplementation_t *dlz_imp;
 
 	/* Write debugging message to log */
@@ -278,7 +275,6 @@ dns_dlzregister(const char *drivername, const dns_dlzmethods_t *methods,
 	REQUIRE(methods->create != NULL);
 	REQUIRE(methods->destroy != NULL);
 	REQUIRE(methods->findzone != NULL);
-	REQUIRE(mctx != NULL);
 	REQUIRE(dlzimp != NULL && *dlzimp == NULL);
 
 	/* lock the dlz_implementations list so we can modify it. */
@@ -301,15 +297,12 @@ dns_dlzregister(const char *drivername, const dns_dlzmethods_t *methods,
 	 * Allocate memory for a dlz_implementation object.  Error if
 	 * we cannot.
 	 */
-	dlz_imp = isc_mem_get(mctx, sizeof(*dlz_imp));
+	dlz_imp = isc_mem_get(isc_g_mctx, sizeof(*dlz_imp));
 	*dlz_imp = (dns_dlzimplementation_t){
 		.name = drivername,
 		.methods = methods,
 		.driverarg = driverarg,
 	};
-
-	/* attach the new dlz_implementation object to a memory context */
-	isc_mem_attach(mctx, &dlz_imp->mctx);
 
 	/*
 	 * prepare the dlz_implementation object to be put in a list,
@@ -335,8 +328,8 @@ dns_dlzregister(const char *drivername, const dns_dlzmethods_t *methods,
  * is modified in-place.
  */
 isc_result_t
-dns_dlzstrtoargv(isc_mem_t *mctx, char *s, unsigned int *argcp, char ***argvp) {
-	return isc_commandline_strtoargv(mctx, s, argcp, argvp, 0);
+dns_dlzstrtoargv(char *s, unsigned int *argcp, char ***argvp) {
+	return isc_commandline_strtoargv(s, argcp, argvp, 0);
 }
 
 /*%
@@ -368,7 +361,7 @@ dns_dlzunregister(dns_dlzimplementation_t **dlzimp) {
 	 * Return the memory back to the available memory pool and
 	 * remove it from the memory context.
 	 */
-	isc_mem_putanddetach(&dlz_imp->mctx, dlz_imp, sizeof(*dlz_imp));
+	isc_mem_put(isc_g_mctx, dlz_imp, sizeof(*dlz_imp));
 
 	/* Unlock the dlz_implementations list. */
 	RWUNLOCK(&dlz_implock, isc_rwlocktype_write);
@@ -423,14 +416,14 @@ dns_dlz_writeablezone(dns_view_t *view, dns_dlzdb_t *dlzdb,
 	INSIST(dupzone == NULL);
 
 	/* Create it */
-	dns_zone_create(&zone, view->mctx, 0);
+	dns_zone_create(&zone, isc_g_mctx, 0);
 	dns_zone_setorigin(zone, origin);
 	dns_zone_setview(zone, view);
 
 	dns_zone_setadded(zone, true);
 
 	if (dlzdb->ssutable == NULL) {
-		dns_ssutable_createdlz(dlzdb->mctx, &dlzdb->ssutable, dlzdb);
+		dns_ssutable_createdlz(&dlzdb->ssutable, dlzdb);
 	}
 	dns_zone_setssutable(zone, dlzdb->ssutable);
 

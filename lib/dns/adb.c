@@ -309,11 +309,11 @@ new_adbfind(dns_adb_t *, in_port_t);
 static void
 free_adbfind(dns_adbfind_t **);
 static dns_adbaddrinfo_t *
-new_adbaddrinfo(dns_adb_t *, dns_adbentry_t *, in_port_t);
+new_adbaddrinfo(dns_adbentry_t *, in_port_t);
 static dns_adbfetch_t *
-new_adbfetch(dns_adb_t *);
+new_adbfetch(void);
 static void
-free_adbfetch(dns_adb_t *, dns_adbfetch_t **);
+free_adbfetch(dns_adbfetch_t **);
 static void
 purge_names_overmem(dns_adb_t *adb, size_t requested);
 static dns_adbname_t *
@@ -1093,7 +1093,7 @@ free_adbfind(dns_adbfind_t **findp) {
 }
 
 static dns_adbfetch_t *
-new_adbfetch(dns_adb_t *adb ISC_ATTR_UNUSED) {
+new_adbfetch(void) {
 	dns_adbfetch_t *fetch = NULL;
 
 	fetch = isc_mem_get(isc_g_mctx, sizeof(*fetch));
@@ -1106,7 +1106,7 @@ new_adbfetch(dns_adb_t *adb ISC_ATTR_UNUSED) {
 }
 
 static void
-free_adbfetch(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbfetch_t **fetchp) {
+free_adbfetch(dns_adbfetch_t **fetchp) {
 	dns_adbfetch_t *fetch = NULL;
 
 	REQUIRE(fetchp != NULL && DNS_ADBFETCH_VALID(*fetchp));
@@ -1126,8 +1126,7 @@ free_adbfetch(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbfetch_t **fetchp) {
  * The entry must be locked, and its reference count must be incremented.
  */
 static dns_adbaddrinfo_t *
-new_adbaddrinfo(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbentry_t *entry,
-		in_port_t port) {
+new_adbaddrinfo(dns_adbentry_t *entry, in_port_t port) {
 	dns_adbaddrinfo_t *ai = NULL;
 
 	ai = isc_mem_get(isc_g_mctx, sizeof(*ai));
@@ -1146,7 +1145,7 @@ new_adbaddrinfo(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbentry_t *entry,
 }
 
 static void
-free_adbaddrinfo(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbaddrinfo_t **ainfo) {
+free_adbaddrinfo(dns_adbaddrinfo_t **ainfo) {
 	dns_adbaddrinfo_t *ai = NULL;
 
 	REQUIRE(ainfo != NULL && DNS_ADBADDRINFO_VALID(*ainfo));
@@ -1371,8 +1370,8 @@ log_quota(dns_adbentry_t *entry, const char *fmt, ...) {
 }
 
 static void
-copy_namehook_lists(dns_adb_t *adb, dns_adbfind_t *find, dns_adbname_t *name,
-		    size_t maxfindlen, size_t *findlen) {
+copy_namehook_lists(dns_adbfind_t *find, dns_adbname_t *name, size_t maxfindlen,
+		    size_t *findlen) {
 	dns_adbentry_t *entry = NULL;
 	size_t count = 0;
 
@@ -1388,7 +1387,7 @@ copy_namehook_lists(dns_adb_t *adb, dns_adbfind_t *find, dns_adbname_t *name,
 				continue;
 			}
 
-			addrinfo = new_adbaddrinfo(adb, entry, find->port);
+			addrinfo = new_adbaddrinfo(entry, find->port);
 
 			/*
 			 * Found a valid entry.  Add it to the find's list.
@@ -1415,7 +1414,7 @@ copy_namehook_lists(dns_adb_t *adb, dns_adbfind_t *find, dns_adbname_t *name,
 				continue;
 			}
 
-			addrinfo = new_adbaddrinfo(adb, entry, find->port);
+			addrinfo = new_adbaddrinfo(entry, find->port);
 
 			/*
 			 * Found a valid entry.  Add it to the find's list.
@@ -1738,7 +1737,7 @@ findaddrinfo(dns_adb_t *adb, const isc_sockaddr_t *addr,
 	}
 
 	in_port_t port = isc_sockaddr_getport(addr);
-	*adbaddrp = new_adbaddrinfo(adb, adbentry, port);
+	*adbaddrp = new_adbaddrinfo(adbentry, port);
 
 out:
 	UNLOCK(&adbentry->lock);
@@ -2070,7 +2069,7 @@ fetch:
 	 * Run through the name and copy out the bits we are
 	 * interested in.
 	 */
-	copy_namehook_lists(adb, find, adbname, maxfindlen, findlen);
+	copy_namehook_lists(find, adbname, maxfindlen, findlen);
 
 post_copy:
 	if (NAME_FETCH_A(adbname)) {
@@ -2158,7 +2157,6 @@ post_copy:
 void
 dns_adb_destroyfind(dns_adbfind_t **findp) {
 	dns_adbfind_t *find = NULL;
-	dns_adb_t *adb = NULL;
 
 	REQUIRE(findp != NULL && DNS_ADBFIND_VALID(*findp));
 
@@ -2168,8 +2166,6 @@ dns_adb_destroyfind(dns_adbfind_t **findp) {
 	DP(DEF_LEVEL, "dns_adb_destroyfind on find %p", find);
 
 	REQUIRE(find->loop == NULL || isc_loop() == find->loop);
-
-	adb = find->adb;
 
 	LOCK(&find->lock);
 
@@ -2182,7 +2178,7 @@ dns_adb_destroyfind(dns_adbfind_t **findp) {
 	 */
 	ISC_LIST_FOREACH(find->list, ai, publink) {
 		ISC_LIST_UNLINK(find->list, ai, publink);
-		free_adbaddrinfo(adb, &ai);
+		free_adbaddrinfo(&ai);
 	}
 	UNLOCK(&find->lock);
 
@@ -2845,7 +2841,7 @@ moreaddrs:
 
 out:
 	dns_resolver_destroyfetch(&fetch->fetch);
-	free_adbfetch(adb, &fetch);
+	free_adbfetch(&fetch);
 	dns_resolver_freefresp(&resp);
 	if (astat != DNS_ADB_CANCELED) {
 		clean_finds_at_name(name, astat, address_type);
@@ -2894,7 +2890,7 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 		}
 	}
 
-	fetch = new_adbfetch(adb);
+	fetch = new_adbfetch();
 	fetch->depth = depth;
 
 	/*
@@ -2927,7 +2923,7 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 
 cleanup:
 	if (fetch != NULL) {
-		free_adbfetch(adb, &fetch);
+		free_adbfetch(&fetch);
 	}
 
 	if (delegset != NULL) {
@@ -3286,7 +3282,7 @@ dns_adb_freeaddrinfo(dns_adb_t *adb, dns_adbaddrinfo_t **addrp) {
 
 	REQUIRE(DNS_ADBENTRY_VALID(entry));
 
-	free_adbaddrinfo(adb, &addr);
+	free_adbaddrinfo(&addr);
 }
 
 void

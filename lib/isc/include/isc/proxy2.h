@@ -300,10 +300,8 @@ struct isc_proxy2_handler {
 	bool calling_cb; /*<! Callback calling marker. Used to detect recursive
 		    object uses (changing the data state from within
 		    the callback). */
-	isc_result_t result; /*<! The last passed to the callback processing
-				status value. */
-	isc_mem_t *mctx;
-
+	isc_result_t result;  /*<! The last passed to the callback processing
+				 status value. */
 	size_t header_size;   /*!< Total PROXYv2 header size (including the
 				 payload. */
 	size_t tlv_data_size; /*!< The size of TLVs payload size */
@@ -321,7 +319,7 @@ struct isc_proxy2_handler {
 };
 
 void
-isc_proxy2_handler_init(isc_proxy2_handler_t *restrict handler, isc_mem_t *mctx,
+isc_proxy2_handler_init(isc_proxy2_handler_t *restrict handler,
 			const size_t max_size, isc_proxy2_handler_cb_t cb,
 			void *cbarg);
 /*!<
@@ -329,7 +327,6 @@ isc_proxy2_handler_init(isc_proxy2_handler_t *restrict handler, isc_mem_t *mctx,
  * to the memory context.
  *
  * Arguments:
- *\li	'mctx' -  memory context;
  *\li	'max_size' - the upper limit for the PROXYv2 header and its payload (0 -
  *unlimited);
  *\li	'cb' - data processing callback;
@@ -337,7 +334,6 @@ isc_proxy2_handler_init(isc_proxy2_handler_t *restrict handler, isc_mem_t *mctx,
  *
  * Requires:
  *\li	'handler' is not NULL;
- *\li	'mctx' is not NULL;
  *\li	'max_size' is >= `ISC_PROXY2_HEADER_SIZE` &&
  *      is <= `ISC_PROXY2_MAX_SIZE`, or is 0;
  *\li	'cb' is not NULL.
@@ -366,14 +362,13 @@ isc_proxy2_handler_clear(isc_proxy2_handler_t *restrict handler);
  */
 
 isc_proxy2_handler_t *
-isc_proxy2_handler_new(isc_mem_t *mctx, const size_t max_size,
-		       isc_proxy2_handler_cb_t cb, void *cbarg);
+isc_proxy2_handler_new(const size_t max_size, isc_proxy2_handler_cb_t cb,
+		       void *cbarg);
 /*!<
  * \brief Allocate and initialise a new 'isc_proxy2_handler_t'
  * object, attach to the memory context.
  *
  * Arguments:
- *\li	'mctx' -  memory context;
  *\li	'max_size' - the upper limit for the PROXYv2 header and its payload (0 -
  *unlimited);
  *\li	'cb' - data processing callback;
@@ -381,7 +376,6 @@ isc_proxy2_handler_new(isc_mem_t *mctx, const size_t max_size,
  *processing callback argument.
  *
  * Requires:
- *\li	'mctx' is not NULL;
  *\li	'max_size' is >= `ISC_PROXY2_HEADER_SIZE` &&
  *       is <= `ISC_PROXY2_MAX_SIZE`, or is 0;
  *\li	'cb' is not NULL.

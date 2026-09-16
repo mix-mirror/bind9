@@ -114,13 +114,10 @@ main(int argc, char **argv) {
 
 	isc_commandline_init(argc, argv);
 
-	while ((ch = isc_commandline_parse(argc, argv, "hm")) != -1) {
+	while ((ch = isc_commandline_parse(argc, argv, "h")) != -1) {
 		switch (ch) {
 		case 'h':
 			usage(0);
-			break;
-		case 'm':
-			isc_mem_debugon(ISC_MEM_DEBUGRECORD);
 			break;
 		default:
 			usage(1);

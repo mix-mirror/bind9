@@ -385,8 +385,8 @@ delnsec3(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 			continue;
 		}
 
-		dns_difftuple_create(diff->mctx, DNS_DIFFOP_DEL, name,
-				     rdataset.ttl, &rdata, &tuple);
+		dns_difftuple_create(DNS_DIFFOP_DEL, name, rdataset.ttl, &rdata,
+				     &tuple);
 		CHECK(dns_diff_applytuple(&tuple, db, version, diff));
 	}
 
@@ -659,8 +659,8 @@ find_previous:
 		CHECK(dns_rdata_fromstruct(&rdata, rdataset.rdclass,
 					   dns_rdatatype_nsec3, &nsec3,
 					   &buffer));
-		dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, prev,
-				     rdataset.ttl, &rdata, &tuple);
+		dns_difftuple_create(DNS_DIFFOP_ADD, prev, rdataset.ttl, &rdata,
+				     &tuple);
 		CHECK(dns_diff_applytuple(&tuple, db, version, diff));
 		INSIST(old_length <= sizeof(nexthash));
 		memmove(nexthash, old_next, old_length);
@@ -693,8 +693,7 @@ addnsec3:
 	/*
 	 * Add the new NSEC3 and record the change.
 	 */
-	dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, hashname, nsecttl,
-			     &rdata, &tuple);
+	dns_difftuple_create(DNS_DIFFOP_ADD, hashname, nsecttl, &rdata, &tuple);
 	CHECK(dns_diff_applytuple(&tuple, db, version, diff));
 	INSIST(tuple == NULL);
 	dns_rdata_reset(&rdata);
@@ -791,8 +790,8 @@ addnsec3:
 			CHECK(dns_rdata_fromstruct(&rdata, rdataset.rdclass,
 						   dns_rdatatype_nsec3, &nsec3,
 						   &buffer));
-			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, prev,
-					     rdataset.ttl, &rdata, &tuple);
+			dns_difftuple_create(DNS_DIFFOP_ADD, prev, rdataset.ttl,
+					     &rdata, &tuple);
 			CHECK(dns_diff_applytuple(&tuple, db, version, diff));
 			INSIST(old_length <= sizeof(nexthash));
 			memmove(nexthash, old_next, old_length);
@@ -820,8 +819,8 @@ addnsec3:
 		/*
 		 * Add the new NSEC3 and record the change.
 		 */
-		dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, hashname,
-				     nsecttl, &rdata, &tuple);
+		dns_difftuple_create(DNS_DIFFOP_ADD, hashname, nsecttl, &rdata,
+				     &tuple);
 		CHECK(dns_diff_applytuple(&tuple, db, version, diff));
 		INSIST(tuple == NULL);
 		dns_rdata_reset(&rdata);
@@ -1060,8 +1059,8 @@ dns_nsec3param_deletechains(dns_db_t *db, dns_dbversion_t *ver,
 		CHECK(rr_exists(db, ver, origin, &private, &flag));
 
 		if (!flag) {
-			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, origin,
-					     0, &private, &tuple);
+			dns_difftuple_create(DNS_DIFFOP_ADD, origin, 0,
+					     &private, &tuple);
 			CHECK(dns_diff_applytuple(&tuple, db, ver, diff));
 			INSIST(tuple == NULL);
 		}
@@ -1110,8 +1109,7 @@ try_private:
 		INSIST(rdata.length <= sizeof(buf));
 		memmove(buf, rdata.data, rdata.length);
 
-		dns_difftuple_create(diff->mctx, DNS_DIFFOP_DEL, origin, 0,
-				     &rdata, &tuple);
+		dns_difftuple_create(DNS_DIFFOP_DEL, origin, 0, &rdata, &tuple);
 		CHECK(dns_diff_applytuple(&tuple, db, ver, diff));
 		INSIST(tuple == NULL);
 
@@ -1124,8 +1122,8 @@ try_private:
 		CHECK(rr_exists(db, ver, origin, &rdata, &flag));
 
 		if (!flag) {
-			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, origin,
-					     0, &rdata, &tuple);
+			dns_difftuple_create(DNS_DIFFOP_ADD, origin, 0, &rdata,
+					     &tuple);
 			CHECK(dns_diff_applytuple(&tuple, db, ver, diff));
 			INSIST(tuple == NULL);
 		}
@@ -1405,8 +1403,8 @@ dns_nsec3_delnsec3(dns_db_t *db, dns_dbversion_t *version,
 		CHECK(dns_rdata_fromstruct(&rdata, rdataset.rdclass,
 					   dns_rdatatype_nsec3, &nsec3,
 					   &buffer));
-		dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, prev,
-				     rdataset.ttl, &rdata, &tuple);
+		dns_difftuple_create(DNS_DIFFOP_ADD, prev, rdataset.ttl, &rdata,
+				     &tuple);
 		CHECK(dns_diff_applytuple(&tuple, db, version, diff));
 		dns_rdata_reset(&rdata);
 		dns_rdataset_disassociate(&rdataset);
@@ -1505,8 +1503,8 @@ cleanup_orphaned_ents:
 			CHECK(dns_rdata_fromstruct(&rdata, rdataset.rdclass,
 						   dns_rdatatype_nsec3, &nsec3,
 						   &buffer));
-			dns_difftuple_create(diff->mctx, DNS_DIFFOP_ADD, prev,
-					     rdataset.ttl, &rdata, &tuple);
+			dns_difftuple_create(DNS_DIFFOP_ADD, prev, rdataset.ttl,
+					     &rdata, &tuple);
 			CHECK(dns_diff_applytuple(&tuple, db, version, diff));
 			dns_rdata_reset(&rdata);
 			dns_rdataset_disassociate(&rdataset);

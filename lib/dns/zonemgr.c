@@ -112,7 +112,7 @@ dns_zonemgr_create(isc_mem_t *mctx, dns_zonemgr_t **zmgrp) {
 	*zmgrp = zmgr;
 }
 
-isc_result_t
+void
 dns_zonemgr_createzone(dns_zonemgr_t *zmgr, dns_zone_t **zonep) {
 	dns_zone_t *zone = NULL;
 	isc_tid_t tid;
@@ -125,8 +125,6 @@ dns_zonemgr_createzone(dns_zonemgr_t *zmgr, dns_zone_t **zonep) {
 	dns_zone_create(&zone, isc_g_mctx, tid);
 
 	*zonep = zone;
-
-	return ISC_R_SUCCESS;
 }
 
 isc_result_t

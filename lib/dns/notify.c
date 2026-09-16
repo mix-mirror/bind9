@@ -55,20 +55,19 @@ dns_notifyctx_init(dns_notifyctx_t *nctx, dns_rdatatype_t type) {
 }
 
 void
-dns_notify_create(isc_mem_t *mctx, dns_rdatatype_t type, in_port_t port,
-		  unsigned int flags, dns_notify_t **notifyp) {
+dns_notify_create(dns_rdatatype_t type, in_port_t port, unsigned int flags,
+		  dns_notify_t **notifyp) {
 	dns_notify_t *notify;
 
 	REQUIRE(notifyp != NULL && *notifyp == NULL);
 
-	notify = isc_mem_get(mctx, sizeof(*notify));
+	notify = isc_mem_get(isc_g_mctx, sizeof(*notify));
 	*notify = (dns_notify_t){
 		.flags = flags,
 		.port = port,
 		.type = type,
 	};
 
-	isc_mem_attach(mctx, &notify->mctx);
 	isc_sockaddr_any(&notify->src);
 	isc_sockaddr_any(&notify->dst);
 	dns_name_init(&notify->ns);
@@ -81,7 +80,6 @@ void
 dns_notify_destroy(dns_notify_t *notify, bool locked) {
 	REQUIRE(DNS_NOTIFY_VALID(notify));
 
-	isc_mem_t *mctx;
 	dns_notifyctx_t *nctx;
 
 	if (notify->zone != NULL) {
@@ -109,7 +107,7 @@ dns_notify_destroy(dns_notify_t *notify, bool locked) {
 		dns_request_destroy(&notify->request);
 	}
 	if (dns_name_dynamic(&notify->ns)) {
-		dns_name_free(&notify->ns, notify->mctx);
+		dns_name_free(&notify->ns, isc_g_mctx);
 	}
 	if (notify->key != NULL) {
 		dns_tsigkey_detach(&notify->key);
@@ -117,9 +115,7 @@ dns_notify_destroy(dns_notify_t *notify, bool locked) {
 	if (notify->transport != NULL) {
 		dns_transport_detach(&notify->transport);
 	}
-	mctx = notify->mctx;
-	isc_mem_put(notify->mctx, notify, sizeof(*notify));
-	isc_mem_detach(&mctx);
+	isc_mem_put(isc_g_mctx, notify, sizeof(*notify));
 }
 
 static void
@@ -140,9 +136,7 @@ notify_done(void *arg) {
 
 	dns_rdatatype_format(notify->type, typebuf, sizeof(typebuf));
 
-	/* WMM: This is changing the mctx from zone to notify. */
-	dns_message_create(notify->mctx, NULL, NULL, DNS_MESSAGE_INTENTPARSE,
-			   &message);
+	dns_message_create(NULL, NULL, DNS_MESSAGE_INTENTPARSE, &message);
 
 	result = dns_request_getresult(request);
 	if (result != ISC_R_SUCCESS) {
@@ -211,8 +205,7 @@ notify_createmessage(dns_notify_t *notify, dns_message_t **messagep) {
 	REQUIRE(messagep != NULL && *messagep == NULL);
 
 	/* WMM: This is changing the mctx from zone to notify. */
-	dns_message_create(notify->mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER,
-			   &message);
+	dns_message_create(NULL, NULL, DNS_MESSAGE_INTENTRENDER, &message);
 
 	message->opcode = dns_opcode_notify;
 	message->flags |= DNS_MESSAGEFLAG_AA;
@@ -264,8 +257,7 @@ notify_createmessage(dns_notify_t *notify, dns_message_t **messagep) {
 	}
 	dns_rdataset_current(&rdataset, &rdata);
 	dns_rdata_toregion(&rdata, &r);
-	/* WMM: This is changing the mctx from zone to notify. */
-	isc_buffer_allocate(notify->mctx, &b, r.length);
+	isc_buffer_allocate(isc_g_mctx, &b, r.length);
 	isc_buffer_putmem(b, r.base, r.length);
 	isc_buffer_usedregion(b, &r);
 	dns_rdata_fromregion(temprdata, rdata.rdclass, rdata.type, &r);
@@ -687,8 +679,8 @@ notify_send(dns_notify_t *notify) {
 		}
 		newnotify = NULL;
 		flags = notify->flags & DNS_NOTIFY_NOSOA;
-		dns_notify_create(notify->mctx, notify->type, notify->port,
-				  flags, &newnotify);
+		dns_notify_create(notify->type, notify->port, flags,
+				  &newnotify);
 		dns__zone_iattach_locked(notify->zone, &newnotify->zone);
 		ISC_LIST_APPEND(notifyctx->notifies, newnotify, link);
 		newnotify->dst = dst;

@@ -45,7 +45,7 @@ typedef enum {
 } dns_nametree_type_t;
 
 void
-dns_nametree_create(isc_mem_t *mctx, dns_nametree_type_t type, const char *name,
+dns_nametree_create(dns_nametree_type_t type, const char *name,
 		    dns_nametree_t **ntp);
 /*%<
  * Create a nametree.

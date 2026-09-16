@@ -350,11 +350,8 @@ main(int argc, char *argv[]) {
 
 	isc_commandline_init(argc, argv);
 
-	while ((ch = isc_commandline_parse(argc, argv, "mptxy")) != -1) {
+	while ((ch = isc_commandline_parse(argc, argv, "ptxy")) != -1) {
 		switch (ch) {
-		case 'm':
-			isc_mem_debugon(ISC_MEM_DEBUGRECORD);
-			break;
 		case 'p':
 			printmessage = true;
 			break;

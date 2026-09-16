@@ -753,30 +753,9 @@ main(int argc, char **argv) {
 	/*
 	 * Process memory debugging argument first.
 	 */
-#define CMDLINE_FLAGS                                          \
-	"3A:a:b:Cc:D:d:E:Ff:GhI:i:K:k:L:l:M:m:n:P:p:qR:r:S:s:" \
+#define CMDLINE_FLAGS                                        \
+	"3A:a:b:Cc:D:d:E:Ff:GhI:i:K:k:L:l:M:n:P:p:qR:r:S:s:" \
 	"T:t:v:V"
-	while ((ch = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
-		switch (ch) {
-		case 'm':
-			if (strcasecmp(isc_commandline_argument, "record") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGRECORD);
-			}
-			if (strcasecmp(isc_commandline_argument, "trace") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGTRACE);
-			}
-			if (strcasecmp(isc_commandline_argument, "usage") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGUSAGE);
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	isc_commandline_reset = true;
 
 	while ((ch = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
 		switch (ch) {

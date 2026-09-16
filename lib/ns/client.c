@@ -216,7 +216,7 @@ client_zoneversion_reset(ns_client_t *client) {
 	if (client->inner.zoneversion == NULL) {
 		return;
 	}
-	isc_mem_put(client->manager->mctx, client->inner.zoneversion,
+	isc_mem_put(isc_g_mctx, client->inner.zoneversion,
 		    client->inner.zoneversionlength);
 	client->inner.zoneversionlength = 0;
 }
@@ -263,7 +263,7 @@ ns_client_endrequest(ns_client_t *client) {
 	client->inner.ednsversion = -1;
 	client->inner.additionaldepth = 0;
 	if (dns_name_dynamic(&client->inner.rad)) {
-		dns_name_free(&client->inner.rad, client->manager->mctx);
+		dns_name_free(&client->inner.rad, isc_g_mctx);
 	}
 	dns_ecs_init(&client->inner.ecs);
 	dns_message_reset(client->message, DNS_MESSAGE_INTENTPARSE);
@@ -370,7 +370,7 @@ client_put_tcp_buffer(ns_client_t *client) {
 	}
 
 	if (client->inner.tcpbuf != client->manager->tcp_buffer) {
-		isc_mem_put(client->manager->mctx, client->inner.tcpbuf,
+		isc_mem_put(isc_g_mctx, client->inner.tcpbuf,
 			    client->inner.tcpbuf_size);
 	}
 
@@ -434,8 +434,8 @@ client_sendpkg(ns_client_t *client, isc_buffer_t *buffer) {
 			 * We can save space by allocating a new buffer with a
 			 * correct size and freeing the big buffer.
 			 */
-			unsigned char *new_tcpbuf =
-				isc_mem_get(client->manager->mctx, used);
+			unsigned char *new_tcpbuf = isc_mem_get(isc_g_mctx,
+								used);
 			memmove(new_tcpbuf, buffer->base, used);
 
 			/*
@@ -643,7 +643,7 @@ ns_client_send(ns_client_t *client) {
 			compflags = DNS_COMPRESS_DISABLED;
 		}
 	}
-	dns_compress_init(&cctx, client->manager->mctx, compflags);
+	dns_compress_init(&cctx, isc_g_mctx, compflags);
 	cleanup_cctx = true;
 
 	CHECK(dns_message_renderbegin(client->message, &cctx, &buffer));
@@ -1504,7 +1504,7 @@ process_keytag(ns_client_t *client, isc_buffer_t *buf, size_t optlen) {
 		return ISC_R_SUCCESS;
 	}
 
-	client->inner.keytag = isc_mem_get(client->manager->mctx, optlen);
+	client->inner.keytag = isc_mem_get(isc_g_mctx, optlen);
 	{
 		client->inner.keytag_len = (uint16_t)optlen;
 		memmove(client->inner.keytag, isc_buffer_current(buf), optlen);
@@ -1707,7 +1707,7 @@ ns__client_reset_cb(void *client0) {
 	}
 
 	if (client->inner.reqbuf != NULL) {
-		isc_mem_put(client->manager->mctx, client->inner.reqbuf,
+		isc_mem_put(isc_g_mctx, client->inner.reqbuf,
 			    client->inner.reqbuf_size);
 		client->inner.reqbuf_size = 0;
 	}
@@ -1717,7 +1717,7 @@ ns__client_reset_cb(void *client0) {
 	}
 
 	if (client->inner.keytag != NULL) {
-		isc_mem_put(client->manager->mctx, client->inner.keytag,
+		isc_mem_put(isc_g_mctx, client->inner.keytag,
 			    client->inner.keytag_len);
 		client->inner.keytag_len = 0;
 	}
@@ -1762,7 +1762,7 @@ ns__client_put_cb(void *client0) {
 	 */
 	isc_mutex_destroy(&client->query.fetchlock);
 
-	isc_mem_put(manager->mctx, client, sizeof(*client));
+	isc_mem_put(isc_g_mctx, client, sizeof(*client));
 
 	ns_clientmgr_detach(&manager);
 }
@@ -1834,7 +1834,7 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		INSIST(VALID_MANAGER(clientmgr));
 		INSIST(clientmgr->tid == isc_tid());
 
-		client = isc_mem_get(clientmgr->mctx, sizeof(*client));
+		client = isc_mem_get(isc_g_mctx, sizeof(*client));
 
 		ns__client_setup(client, clientmgr, true);
 
@@ -2163,8 +2163,8 @@ ns_client_request(isc_nmhandle_t *handle, isc_result_t eresult,
 		INSIST(client->inner.reqbuf == NULL);
 		isc_buffer_usedregion(client->inner.buffer, &r);
 		if (r.length != 0) {
-			client->inner.reqbuf =
-				isc_mem_get(client->manager->mctx, r.length);
+			client->inner.reqbuf = isc_mem_get(isc_g_mctx,
+							   r.length);
 			client->inner.reqbuf_size = r.length;
 			memmove(client->inner.reqbuf, r.base, r.length);
 			isc_buffer_init(&client->inner.tbuffer,
@@ -2593,8 +2593,7 @@ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
 
 		ns_clientmgr_attach(mgr, &client->manager);
 
-		dns_message_create(client->manager->mctx,
-				   client->manager->namepool,
+		dns_message_create(isc_g_mctx, client->manager->namepool,
 				   client->manager->rdspool,
 				   DNS_MESSAGE_INTENTPARSE, &client->message);
 
@@ -2605,7 +2604,7 @@ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
 		client->magic = NS_CLIENT_MAGIC;
 		ns_query_init(client);
 
-		dns_ede_init(client->manager->mctx, &client->edectx);
+		dns_ede_init(isc_g_mctx, &client->edectx);
 	} else {
 		REQUIRE(NS_CLIENT_VALID(client));
 		REQUIRE(client->manager->tid == isc_tid());
@@ -2657,7 +2656,7 @@ clientmgr_destroy_cb(void *arg) {
 
 	dns_message_destroypools(&manager->rdspool, &manager->namepool);
 
-	isc_mem_putanddetach(&manager->mctx, manager, sizeof(*manager));
+	isc_mem_putanddetach(&isc_g_mctx, manager, sizeof(*manager));
 }
 
 static void
@@ -2675,7 +2674,6 @@ ns_clientmgr_create(ns_server_t *sctx, dns_aclenv_t *aclenv, isc_tid_t tid,
 	manager = isc_mem_get(isc_g_mctx, sizeof(*manager));
 	*manager = (ns_clientmgr_t){
 		.magic = 0,
-		.mctx = isc_mem_ref(isc_g_mctx),
 		.tid = tid,
 		.recursing = ISC_LIST_INITIALIZER,
 	};
@@ -2685,7 +2683,7 @@ ns_clientmgr_create(ns_server_t *sctx, dns_aclenv_t *aclenv, isc_tid_t tid,
 	isc_refcount_init(&manager->references, 1);
 	ns_server_attach(sctx, &manager->sctx);
 
-	dns_message_createpools(manager->mctx, &manager->namepool,
+	dns_message_createpools(isc_g_mctx, &manager->namepool,
 				&manager->rdspool);
 
 	manager->magic = MANAGER_MAGIC;
@@ -2898,12 +2896,12 @@ ns_client_dumpmessage(ns_client_t *client, const char *reason) {
 	 */
 
 	do {
-		buf = isc_mem_get(client->manager->mctx, len);
+		buf = isc_mem_get(isc_g_mctx, len);
 		isc_buffer_init(&buffer, buf, len);
 		result = dns_message_totext(
 			client->message, &dns_master_style_debug, 0, &buffer);
 		if (result == ISC_R_NOSPACE) {
-			isc_mem_put(client->manager->mctx, buf, len);
+			isc_mem_put(isc_g_mctx, buf, len);
 			len += 1024;
 		} else if (result == ISC_R_SUCCESS) {
 			ns_client_log(client, NS_LOGCATEGORY_CLIENT,
@@ -2914,7 +2912,7 @@ ns_client_dumpmessage(ns_client_t *client, const char *reason) {
 	} while (result == ISC_R_NOSPACE);
 
 	if (buf != NULL) {
-		isc_mem_put(client->manager->mctx, buf, len);
+		isc_mem_put(isc_g_mctx, buf, len);
 	}
 }
 
@@ -3045,7 +3043,7 @@ ns_client_newnamebuf(ns_client_t *client) {
 
 	CTRACE("ns_client_newnamebuf");
 
-	isc_buffer_allocate(client->manager->mctx, &dbuf, 1024);
+	isc_buffer_allocate(isc_g_mctx, &dbuf, 1024);
 	ISC_LIST_APPEND(client->query.namebufs, dbuf, link);
 
 	CTRACE("ns_client_newnamebuf: done");
@@ -3138,8 +3136,7 @@ ns_client_newdbversion(ns_client_t *client, unsigned int n) {
 	ns_dbversion_t *dbversion = NULL;
 
 	for (i = 0; i < n; i++) {
-		dbversion = isc_mem_get(client->manager->mctx,
-					sizeof(*dbversion));
+		dbversion = isc_mem_get(isc_g_mctx, sizeof(*dbversion));
 		*dbversion = (ns_dbversion_t){ 0 };
 		ISC_LIST_INITANDAPPEND(client->query.freeversions, dbversion,
 				       link);

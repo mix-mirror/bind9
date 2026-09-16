@@ -176,7 +176,6 @@ struct dns_rpz_nm_zbits {
 typedef struct nmdata nmdata_t;
 struct nmdata {
 	dns_name_t name;
-	isc_mem_t *mctx;
 	isc_refcount_t references;
 	dns_rpz_nm_zbits_t set;
 	dns_rpz_nm_zbits_t wild;
@@ -206,7 +205,7 @@ static void
 rpz_del(dns_rpz_zone_t *rpz, dns_qp_t *qp, const dns_name_t *src_name);
 
 static nmdata_t *
-new_nmdata(isc_mem_t *mctx, const dns_name_t *name, const nmdata_t *data);
+new_nmdata(const dns_name_t *name, const nmdata_t *data);
 
 /* QP trie methods */
 static void
@@ -690,12 +689,12 @@ adj_trigger_cnt(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 }
 
 static dns_rpz_cidr_node_t *
-new_node(dns_rpz_zones_t *rpzs, const dns_rpz_cidr_key_t *ip,
-	 dns_rpz_prefix_t prefix, const dns_rpz_cidr_node_t *child) {
+new_node(const dns_rpz_cidr_key_t *ip, dns_rpz_prefix_t prefix,
+	 const dns_rpz_cidr_node_t *child) {
 	dns_rpz_cidr_node_t *node = NULL;
 	int i, words, wlen;
 
-	node = isc_mem_get(rpzs->mctx, sizeof(*node));
+	node = isc_mem_get(isc_g_mctx, sizeof(*node));
 	*node = (dns_rpz_cidr_node_t){
 		.prefix = prefix,
 	};
@@ -1192,7 +1191,7 @@ search(dns_rpz_zones_t *rpzs, const dns_rpz_cidr_key_t *tgt_ip,
 			if (!create) {
 				return find_result;
 			}
-			child = new_node(rpzs, tgt_ip, tgt_prefix, NULL);
+			child = new_node(tgt_ip, tgt_prefix, NULL);
 			if (parent == NULL) {
 				rpzs->cidr = child;
 			} else {
@@ -1272,7 +1271,7 @@ search(dns_rpz_zones_t *rpzs, const dns_rpz_cidr_key_t *tgt_ip,
 				return find_result;
 			}
 
-			new_parent = new_node(rpzs, tgt_ip, tgt_prefix, cur);
+			new_parent = new_node(tgt_ip, tgt_prefix, cur);
 			new_parent->parent = parent;
 			if (parent == NULL) {
 				rpzs->cidr = new_parent;
@@ -1322,8 +1321,8 @@ search(dns_rpz_zones_t *rpzs, const dns_rpz_cidr_key_t *tgt_ip,
 			return find_result;
 		}
 
-		sibling = new_node(rpzs, tgt_ip, tgt_prefix, NULL);
-		new_parent = new_node(rpzs, tgt_ip, dbit, cur);
+		sibling = new_node(tgt_ip, tgt_prefix, NULL);
+		new_parent = new_node(tgt_ip, dbit, cur);
 		new_parent->parent = parent;
 		if (parent == NULL) {
 			rpzs->cidr = new_parent;
@@ -1395,19 +1394,18 @@ done:
 }
 
 static nmdata_t *
-new_nmdata(isc_mem_t *mctx, const dns_name_t *name, const nmdata_t *data) {
+new_nmdata(const dns_name_t *name, const nmdata_t *data) {
 	REQUIRE(data->set.qname != 0 || data->set.ns != 0 ||
 		data->wild.qname != 0 || data->wild.ns != 0);
 
-	nmdata_t *newdata = isc_mem_get(mctx, sizeof(*newdata));
+	nmdata_t *newdata = isc_mem_get(isc_g_mctx, sizeof(*newdata));
 	*newdata = (nmdata_t){
 		.set = data->set,
 		.wild = data->wild,
 		.name = DNS_NAME_INITEMPTY,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 	};
-	dns_name_dup(name, mctx, &newdata->name);
-	isc_mem_attach(mctx, &newdata->mctx);
+	dns_name_dup(name, isc_g_mctx, &newdata->name);
 
 #ifdef DNS_RPZ_TRACE
 	fprintf(stderr, "new_nmdata:%s:%s:%d:%p->references = 1\n", __func__,
@@ -1418,8 +1416,7 @@ new_nmdata(isc_mem_t *mctx, const dns_name_t *name, const nmdata_t *data) {
 }
 
 static isc_result_t
-add_nm(dns_rpz_zones_t *rpzs, dns_qp_t *qp, dns_name_t *trig_name,
-       const nmdata_t *new_data) {
+add_nm(dns_qp_t *qp, dns_name_t *trig_name, const nmdata_t *new_data) {
 	isc_result_t result;
 	nmdata_t *data = NULL;
 	nmdata_t merged;
@@ -1457,7 +1454,7 @@ add_nm(dns_rpz_zones_t *rpzs, dns_qp_t *qp, dns_name_t *trig_name,
 		new_data = &merged;
 	}
 
-	data = new_nmdata(rpzs->mctx, trig_name, new_data);
+	data = new_nmdata(trig_name, new_data);
 
 	RUNTIME_CHECK(dns_qp_insert(qp, data, 0) == ISC_R_SUCCESS);
 
@@ -1489,7 +1486,7 @@ add_name(dns_rpz_zone_t *rpz, dns_qp_t *qp, dns_rpz_type_t rpz_type,
 		return fail ? result : ISC_R_SUCCESS;
 	}
 
-	result = add_nm(rpz->rpzs, qp, trig_name, &new_data);
+	result = add_nm(qp, trig_name, &new_data);
 
 	/*
 	 * Do not worry if the node already exists,
@@ -1512,14 +1509,11 @@ add_name(dns_rpz_zone_t *rpz, dns_qp_t *qp, dns_rpz_type_t rpz_type,
 isc_result_t
 dns_rpz_new_zones(dns_view_t *view, dns_rpz_zones_t **rpzsp, bool first_time) {
 	dns_rpz_zones_t *rpzs = NULL;
-	isc_mem_t *mctx = NULL;
 
 	REQUIRE(rpzsp != NULL && *rpzsp == NULL);
 	REQUIRE(view != NULL);
 
-	mctx = view->mctx;
-
-	rpzs = isc_mem_get(mctx, sizeof(*rpzs));
+	rpzs = isc_mem_get(isc_g_mctx, sizeof(*rpzs));
 	*rpzs = (dns_rpz_zones_t){
 		.magic = DNS_RPZ_ZONES_MAGIC,
 		.first_time = first_time,
@@ -1530,9 +1524,7 @@ dns_rpz_new_zones(dns_view_t *view, dns_rpz_zones_t **rpzsp, bool first_time) {
 	atomic_init(&rpzs->shuttingdown, false);
 	isc_refcount_init(&rpzs->references, 1);
 
-	dns_qpmulti_create(mctx, &qpmethods, view, &rpzs->table);
-
-	isc_mem_attach(mctx, &rpzs->mctx);
+	dns_qpmulti_create(isc_g_mctx, &qpmethods, view, &rpzs->table);
 
 	*rpzsp = rpzs;
 	return ISC_R_SUCCESS;
@@ -1551,7 +1543,7 @@ dns_rpz_new_zone(dns_rpz_zones_t *rpzs, dns_rpz_zone_t **rpzp) {
 
 	RETERR(dns__rpz_shuttingdown(rpzs));
 
-	rpz = isc_mem_get(rpzs->mctx, sizeof(*rpz));
+	rpz = isc_mem_get(isc_g_mctx, sizeof(*rpz));
 	*rpz = (dns_rpz_zone_t){
 		.addsoa = true,
 		.magic = DNS_RPZ_ZONE_MAGIC,
@@ -1564,7 +1556,7 @@ dns_rpz_new_zone(dns_rpz_zones_t *rpzs, dns_rpz_zone_t **rpzp) {
 	 * simplifies update_from_db().
 	 */
 
-	isc_ht_init(&rpz->nodes, rpzs->mctx, 1, ISC_HT_CASE_SENSITIVE);
+	isc_ht_init(&rpz->nodes, isc_g_mctx, 1, ISC_HT_CASE_SENSITIVE);
 
 	dns_name_init(&rpz->origin);
 	dns_name_init(&rpz->client_ip);
@@ -1753,12 +1745,12 @@ update_rpz_done_cb(void *data, isc_result_t result) {
 		      "rpz: %s: reload done: %s", dname,
 		      isc_result_totext(result));
 
-	isc_mem_put(rpz->rpzs->mctx, update, sizeof(*update));
+	isc_mem_put(isc_g_mctx, update, sizeof(*update));
 	dns_rpz_zones_unref(rpz->rpzs);
 }
 
 isc_result_t
-dns_rpz_checkdb(dns_db_t *db, isc_mem_t *mctx) {
+dns_rpz_checkdb(dns_db_t *db) {
 	dns_dbiterator_t *dbit = NULL;
 	dns_dbnode_t *node = NULL;
 	dns_fixedname_t fixedname;
@@ -1770,27 +1762,27 @@ dns_rpz_checkdb(dns_db_t *db, isc_mem_t *mctx) {
 	dns_view_t *view = NULL;
 	isc_result_t result, aresult = ISC_R_SUCCESS;
 
-	dns_view_create(mctx, NULL, dns_rdataclass_in, "view", &view);
+	dns_view_create(NULL, dns_rdataclass_in, "view", &view);
 	CHECK(dns_rpz_new_zones(view, &rpzs, true));
 	CHECK(dns_rpz_new_zone(rpzs, &rpz));
 
-	dns_name_dup(dns_db_origin(db), mctx, &rpz->origin);
+	dns_name_dup(dns_db_origin(db), isc_g_mctx, &rpz->origin);
 
 	CHECK(dns_name_fromstring(&rpz->client_ip, DNS_RPZ_CLIENT_IP_ZONE,
-				  &rpz->origin, DNS_NAME_DOWNCASE, mctx));
+				  &rpz->origin, DNS_NAME_DOWNCASE, isc_g_mctx));
 	CHECK(dns_name_fromstring(&rpz->ip, DNS_RPZ_IP_ZONE, &rpz->origin,
-				  DNS_NAME_DOWNCASE, mctx));
+				  DNS_NAME_DOWNCASE, isc_g_mctx));
 	CHECK(dns_name_fromstring(&rpz->nsdname, DNS_RPZ_NSDNAME_ZONE,
-				  &rpz->origin, DNS_NAME_DOWNCASE, mctx));
+				  &rpz->origin, DNS_NAME_DOWNCASE, isc_g_mctx));
 	CHECK(dns_name_fromstring(&rpz->nsip, DNS_RPZ_NSIP_ZONE, &rpz->origin,
-				  DNS_NAME_DOWNCASE, mctx));
+				  DNS_NAME_DOWNCASE, isc_g_mctx));
 
 	CHECK(dns_name_fromstring(&rpz->passthru, DNS_RPZ_PASSTHRU_NAME,
-				  dns_rootname, DNS_NAME_DOWNCASE, mctx));
+				  dns_rootname, DNS_NAME_DOWNCASE, isc_g_mctx));
 	CHECK(dns_name_fromstring(&rpz->drop, DNS_RPZ_DROP_NAME, dns_rootname,
-				  DNS_NAME_DOWNCASE, mctx));
+				  DNS_NAME_DOWNCASE, isc_g_mctx));
 	CHECK(dns_name_fromstring(&rpz->tcp_only, DNS_RPZ_TCP_ONLY_NAME,
-				  dns_rootname, DNS_NAME_DOWNCASE, mctx));
+				  dns_rootname, DNS_NAME_DOWNCASE, isc_g_mctx));
 
 	dns_qpmulti_write(rpzs->table, &qp);
 
@@ -2058,7 +2050,7 @@ update_rpz_cb(void *data) {
 
 	RETERR(dns__rpz_shuttingdown(rpz->rpzs));
 
-	isc_ht_init(&newnodes, rpz->rpzs->mctx, 1, ISC_HT_CASE_SENSITIVE);
+	isc_ht_init(&newnodes, isc_g_mctx, 1, ISC_HT_CASE_SENSITIVE);
 
 	CHECK(update_nodes(rpz, update->db, update->dbversion, newnodes));
 
@@ -2091,7 +2083,7 @@ dns__rpz_timer_cb(void *arg) {
 	rpz->updatepending = false;
 	rpz->updaterunning = true;
 
-	update = isc_mem_get(rpz->rpzs->mctx, sizeof(*update));
+	update = isc_mem_get(isc_g_mctx, sizeof(*update));
 	*update = (rpz_update_t){
 		.rpz = rpz,
 	};
@@ -2144,7 +2136,7 @@ cidr_free(dns_rpz_zones_t *rpzs) {
 		} else {
 			parent->child[parent->child[1] == cur] = NULL;
 		}
-		isc_mem_put(rpzs->mctx, cur, sizeof(*cur));
+		isc_mem_put(isc_g_mctx, cur, sizeof(*cur));
 		cur = parent;
 	}
 }
@@ -2164,40 +2156,38 @@ dns__rpz_shutdown(dns_rpz_zone_t *rpz) {
 static void
 dns_rpz_zone_destroy(dns_rpz_zone_t **rpzp) {
 	dns_rpz_zone_t *rpz = NULL;
-	dns_rpz_zones_t *rpzs;
 
 	rpz = *rpzp;
 	*rpzp = NULL;
 
-	rpzs = rpz->rpzs;
 	rpz->rpzs = NULL;
 
 	if (dns_name_dynamic(&rpz->origin)) {
-		dns_name_free(&rpz->origin, rpzs->mctx);
+		dns_name_free(&rpz->origin, isc_g_mctx);
 	}
 	if (dns_name_dynamic(&rpz->client_ip)) {
-		dns_name_free(&rpz->client_ip, rpzs->mctx);
+		dns_name_free(&rpz->client_ip, isc_g_mctx);
 	}
 	if (dns_name_dynamic(&rpz->ip)) {
-		dns_name_free(&rpz->ip, rpzs->mctx);
+		dns_name_free(&rpz->ip, isc_g_mctx);
 	}
 	if (dns_name_dynamic(&rpz->nsdname)) {
-		dns_name_free(&rpz->nsdname, rpzs->mctx);
+		dns_name_free(&rpz->nsdname, isc_g_mctx);
 	}
 	if (dns_name_dynamic(&rpz->nsip)) {
-		dns_name_free(&rpz->nsip, rpzs->mctx);
+		dns_name_free(&rpz->nsip, isc_g_mctx);
 	}
 	if (dns_name_dynamic(&rpz->passthru)) {
-		dns_name_free(&rpz->passthru, rpzs->mctx);
+		dns_name_free(&rpz->passthru, isc_g_mctx);
 	}
 	if (dns_name_dynamic(&rpz->drop)) {
-		dns_name_free(&rpz->drop, rpzs->mctx);
+		dns_name_free(&rpz->drop, isc_g_mctx);
 	}
 	if (dns_name_dynamic(&rpz->tcp_only)) {
-		dns_name_free(&rpz->tcp_only, rpzs->mctx);
+		dns_name_free(&rpz->tcp_only, isc_g_mctx);
 	}
 	if (dns_name_dynamic(&rpz->cname)) {
-		dns_name_free(&rpz->cname, rpzs->mctx);
+		dns_name_free(&rpz->cname, isc_g_mctx);
 	}
 	if (rpz->db != NULL) {
 		if (rpz->dbversion != NULL) {
@@ -2212,7 +2202,7 @@ dns_rpz_zone_destroy(dns_rpz_zone_t **rpzp) {
 	isc_ht_destroy(&rpz->nodes);
 	isc_mutex_destroy(&rpz->update_lock);
 
-	isc_mem_put(rpzs->mctx, rpz, sizeof(*rpz));
+	isc_mem_put(isc_g_mctx, rpz, sizeof(*rpz));
 }
 
 static void
@@ -2235,7 +2225,7 @@ dns__rpz_zones_destroy(dns_rpz_zones_t *rpzs) {
 
 	isc_mutex_destroy(&rpzs->data_lock);
 	isc_rwlock_destroy(&rpzs->search_lock);
-	isc_mem_putanddetach(&rpzs->mctx, rpzs, sizeof(*rpzs));
+	isc_mem_put(isc_g_mctx, rpzs, sizeof(*rpzs));
 }
 
 void
@@ -2389,7 +2379,7 @@ del_cidr(dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 		if (child != NULL) {
 			child->parent = parent;
 		}
-		isc_mem_put(rpz->rpzs->mctx, tgt, sizeof(*tgt));
+		isc_mem_put(isc_g_mctx, tgt, sizeof(*tgt));
 
 		tgt = parent;
 	} while (tgt != NULL);
@@ -2449,8 +2439,7 @@ del_name(dns_rpz_zone_t *rpz, dns_qp_t *qp, dns_rpz_type_t rpz_type,
 	if (remaining.set.qname != 0 || remaining.set.ns != 0 ||
 	    remaining.wild.qname != 0 || remaining.wild.ns != 0)
 	{
-		nmdata_t *new_data = new_nmdata(rpz->rpzs->mctx, trig_name,
-						&remaining);
+		nmdata_t *new_data = new_nmdata(trig_name, &remaining);
 		RUNTIME_CHECK(dns_qp_insert(qp, new_data, 0) == ISC_R_SUCCESS);
 		nmdata_detach(&new_data);
 	}
@@ -2760,8 +2749,8 @@ dns_rpz_decode_cname(dns_rpz_zone_t *rpz, dns_rdataset_t *rdataset,
 
 static void
 destroy_nmdata(nmdata_t *data) {
-	dns_name_free(&data->name, data->mctx);
-	isc_mem_putanddetach(&data->mctx, data, sizeof(nmdata_t));
+	dns_name_free(&data->name, isc_g_mctx);
+	isc_mem_put(isc_g_mctx, data, sizeof(nmdata_t));
 }
 
 #ifdef DNS_RPZ_TRACE

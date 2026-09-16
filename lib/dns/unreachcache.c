@@ -45,7 +45,6 @@ typedef struct dns_uckey {
 
 struct dns_unreachcache {
 	unsigned int magic;
-	isc_mem_t *mctx;
 	uint16_t expire_min_s;
 	uint16_t expire_max_s;
 	uint16_t backoff_eligible_s;
@@ -61,8 +60,6 @@ struct dns_unreachcache {
 #define UNREACHCACHE_MIN_SIZE  (1 << 5) /* Must be power of 2 */
 
 struct dns_ucentry {
-	isc_mem_t *mctx;
-
 	isc_stdtime_t expire;
 	unsigned int exp_backoff_n;
 	uint16_t wait_time;
@@ -84,13 +81,12 @@ ucentry_alive(dns_unreachcache_t *uc, dns_ucentry_t *unreach, isc_stdtime_t now,
 	      bool alive_or_waiting);
 
 dns_unreachcache_t *
-dns_unreachcache_new(isc_mem_t *mctx, const uint16_t expire_min_s,
-		     const uint16_t expire_max_s,
+dns_unreachcache_new(const uint16_t expire_min_s, const uint16_t expire_max_s,
 		     const uint16_t backoff_eligible_s) {
 	REQUIRE(expire_min_s > 0);
 	REQUIRE(expire_min_s <= expire_max_s);
 
-	dns_unreachcache_t *uc = isc_mem_get(mctx, sizeof(*uc));
+	dns_unreachcache_t *uc = isc_mem_get(isc_g_mctx, sizeof(*uc));
 	*uc = (dns_unreachcache_t){
 		.magic = UNREACHCACHE_MAGIC,
 		.expire_min_s = expire_min_s,
@@ -104,8 +100,6 @@ dns_unreachcache_new(isc_mem_t *mctx, const uint16_t expire_min_s,
 
 	isc_mutex_init(&uc->lru_lock);
 	CDS_INIT_LIST_HEAD(&uc->lru);
-
-	isc_mem_attach(mctx, &uc->mctx);
 
 	return uc;
 }
@@ -128,7 +122,7 @@ dns_unreachcache_destroy(dns_unreachcache_t **ucp) {
 
 	isc_mutex_destroy(&uc->lru_lock);
 
-	isc_mem_putanddetach(&uc->mctx, uc, sizeof(dns_unreachcache_t));
+	isc_mem_put(isc_g_mctx, uc, sizeof(dns_unreachcache_t));
 }
 
 static int
@@ -158,17 +152,14 @@ ucentry_lookup(struct cds_lfht *ht, uint32_t hashval, dns__uckey_t *key) {
 }
 
 static dns_ucentry_t *
-ucentry_new(isc_loop_t *loop, const isc_sockaddr_t *remote,
-	    const isc_sockaddr_t *local, const isc_stdtime_t expire,
-	    const isc_stdtime_t wait_time) {
-	isc_mem_t *mctx = isc_loop_getmctx(loop);
-	dns_ucentry_t *unreach = isc_mem_get(mctx, sizeof(*unreach));
+ucentry_new(const isc_sockaddr_t *remote, const isc_sockaddr_t *local,
+	    const isc_stdtime_t expire, const isc_stdtime_t wait_time) {
+	dns_ucentry_t *unreach = isc_mem_get(isc_g_mctx, sizeof(*unreach));
 	*unreach = (dns_ucentry_t){
 		.remote = *remote,
 		.local = *local,
 		.expire = expire,
 		.wait_time = wait_time,
-		.mctx = isc_mem_ref(mctx),
 		.lru_head = CDS_LIST_HEAD_INIT(unreach->lru_head),
 	};
 
@@ -179,7 +170,7 @@ static void
 ucentry_destroy(struct rcu_head *rcu_head) {
 	dns_ucentry_t *unreach = caa_container_of(rcu_head, dns_ucentry_t,
 						  rcu_head);
-	isc_mem_putanddetach(&unreach->mctx, unreach, sizeof(*unreach));
+	isc_mem_put(isc_g_mctx, unreach, sizeof(*unreach));
 }
 
 static void
@@ -272,7 +263,6 @@ dns_unreachcache_add(dns_unreachcache_t *uc, const isc_sockaddr_t *remote,
 	REQUIRE(remote != NULL);
 	REQUIRE(local != NULL);
 
-	isc_loop_t *loop = isc_loop();
 	isc_stdtime_t now = isc_stdtime_now();
 	isc_stdtime_t expire = now + uc->expire_min_s;
 	bool exp_backoff_activated = false;
@@ -285,7 +275,7 @@ dns_unreachcache_add(dns_unreachcache_t *uc, const isc_sockaddr_t *remote,
 	};
 	uint32_t hashval = ucentry_hash(&key);
 
-	dns_ucentry_t *unreach = ucentry_new(loop, remote, local, expire,
+	dns_ucentry_t *unreach = ucentry_new(remote, local, expire,
 					     uc->backoff_eligible_s);
 
 	LOCK(&uc->lru_lock);

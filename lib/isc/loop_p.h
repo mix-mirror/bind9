@@ -46,8 +46,6 @@ struct isc_loop {
 	uv_loop_t loop;
 	isc_tid_t tid;
 
-	isc_mem_t *mctx;
-
 	/* states */
 	bool paused;
 	bool shuttingdown;
@@ -86,7 +84,6 @@ struct isc_loop {
 
 typedef struct isc_loopmgr {
 	int magic;
-	isc_mem_t *mctx;
 
 	uint_fast32_t nloops;
 

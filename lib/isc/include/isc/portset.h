@@ -38,7 +38,7 @@
  ***/
 
 void
-isc_portset_create(isc_mem_t *mctx, isc_portset_t **portsetp);
+isc_portset_create(isc_portset_t **portsetp);
 /*%<
  * Create a port set and initialize it as an empty set.
  *
@@ -48,7 +48,7 @@ isc_portset_create(isc_mem_t *mctx, isc_portset_t **portsetp);
  */
 
 void
-isc_portset_destroy(isc_mem_t *mctx, isc_portset_t **portsetp);
+isc_portset_destroy(isc_portset_t **portsetp);
 /*%<
  * Destroy a port set.
  *

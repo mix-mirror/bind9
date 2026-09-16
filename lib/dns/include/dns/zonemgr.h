@@ -27,7 +27,7 @@ dns_zonemgr_create(isc_mem_t *mctx, dns_zonemgr_t **zmgrp);
  *\li	'zmgrp'	to point to a NULL pointer.
  */
 
-isc_result_t
+void
 dns_zonemgr_createzone(dns_zonemgr_t *zmgr, dns_zone_t **zonep);
 /*%<
  *	Allocate a new zone using a memory context from the

@@ -68,9 +68,9 @@ gssapi_create_signverify_ctx(dst_key_t *key, dst_context_t *dctx) {
 
 	UNUSED(key);
 
-	ctx = isc_mem_get(dctx->mctx, sizeof(dst_gssapi_signverifyctx_t));
+	ctx = isc_mem_get(isc_g_mctx, sizeof(dst_gssapi_signverifyctx_t));
 	ctx->buffer = NULL;
-	isc_buffer_allocate(dctx->mctx, &ctx->buffer, INITIAL_BUFFER_SIZE);
+	isc_buffer_allocate(isc_g_mctx, &ctx->buffer, INITIAL_BUFFER_SIZE);
 
 	dctx->ctxdata.gssctx = ctx;
 
@@ -88,7 +88,7 @@ gssapi_destroy_signverify_ctx(dst_context_t *dctx) {
 		if (ctx->buffer != NULL) {
 			isc_buffer_free(&ctx->buffer);
 		}
-		isc_mem_put(dctx->mctx, ctx,
+		isc_mem_put(isc_g_mctx, ctx,
 			    sizeof(dst_gssapi_signverifyctx_t));
 		dctx->ctxdata.gssctx = NULL;
 	}
@@ -115,7 +115,7 @@ gssapi_adddata(dst_context_t *dctx, const isc_region_t *data) {
 
 	length = isc_buffer_length(ctx->buffer) + data->length + BUFFER_EXTRA;
 
-	isc_buffer_allocate(dctx->mctx, &newbuffer, length);
+	isc_buffer_allocate(isc_g_mctx, &newbuffer, length);
 
 	isc_buffer_usedregion(ctx->buffer, &r);
 	(void)isc_buffer_copyregion(newbuffer, &r);
@@ -256,7 +256,7 @@ gssapi_isprivate(const dst_key_t *key) {
 static void
 gssapi_destroy(dst_key_t *key) {
 	REQUIRE(key != NULL);
-	dst_gssapi_deletectx(key->mctx, &key->keydata.gssctx);
+	dst_gssapi_deletectx(isc_g_mctx, &key->keydata.gssctx);
 	key->keydata.gssctx = NULL;
 }
 
@@ -276,7 +276,7 @@ gssapi_restore(dst_key_t *key, const char *keystr) {
 
 	len = (len / 4) * 3;
 
-	isc_buffer_allocate(key->mctx, &b, len);
+	isc_buffer_allocate(isc_g_mctx, &b, len);
 
 	result = isc_base64_decodestring(keystr, b);
 	if (result != ISC_R_SUCCESS) {
@@ -298,7 +298,7 @@ gssapi_restore(dst_key_t *key, const char *keystr) {
 }
 
 static isc_result_t
-gssapi_dump(dst_key_t *key, isc_mem_t *mctx, char **buffer, int *length) {
+gssapi_dump(dst_key_t *key, char **buffer, int *length) {
 	OM_uint32 major, minor;
 	gss_buffer_desc gssbuffer;
 	size_t len;
@@ -318,7 +318,7 @@ gssapi_dump(dst_key_t *key, isc_mem_t *mctx, char **buffer, int *length) {
 		return ISC_R_FAILURE;
 	}
 	len = ((gssbuffer.length + 2) / 3) * 4;
-	buf = isc_mem_get(mctx, len);
+	buf = isc_mem_get(isc_g_mctx, len);
 	isc_buffer_init(&b, buf, (unsigned int)len);
 	GBUFFER_TO_REGION(gssbuffer, r);
 	result = isc_base64_totext(&r, 0, "", &b);

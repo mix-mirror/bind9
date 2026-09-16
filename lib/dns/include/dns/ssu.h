@@ -52,7 +52,7 @@ typedef struct dns_ssuruletype {
 } dns_ssuruletype_t;
 
 void
-dns_ssutable_create(isc_mem_t *mctx, dns_ssutable_t **table);
+dns_ssutable_create(dns_ssutable_t **table);
 /*%<
  *	Creates a table that will be used to store simple-secure-update rules.
  *	Note: all locking must be provided by the client.
@@ -63,8 +63,7 @@ dns_ssutable_create(isc_mem_t *mctx, dns_ssutable_t **table);
  */
 
 void
-dns_ssutable_createdlz(isc_mem_t *mctx, dns_ssutable_t **tablep,
-		       dns_dlzdb_t *dlzdatabase);
+dns_ssutable_createdlz(dns_ssutable_t **tablep, dns_dlzdb_t *dlzdatabase);
 /*%<
  * Create an SSU table that contains a dlzdatabase pointer, and a
  * single rule with matchtype dns_ssumatchtype_dlz. This type of SSU
@@ -227,8 +226,7 @@ dns_ssutable_nextrule(dns_ssurule_t *rule, dns_ssurule_t **nextrule);
 bool
 dns_ssu_external_match(const dns_name_t *identity, const dns_name_t *signer,
 		       const dns_name_t *name, const isc_netaddr_t *tcpaddr,
-		       dns_rdatatype_t type, const dst_key_t *key,
-		       isc_mem_t *mctx);
+		       dns_rdatatype_t type, const dst_key_t *key);
 /*%<
  * Check a policy rule via an external application
  */

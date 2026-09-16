@@ -215,7 +215,6 @@ struct dns_rpz_popt {
 struct dns_rpz_zones {
 	unsigned int   magic;
 	isc_refcount_t references;
-	isc_mem_t     *mctx;
 
 	dns_rpz_popt_t	   p;
 	dns_rpz_zone_t	  *zones[DNS_RPZ_MAX_ZONES];
@@ -421,4 +420,4 @@ dns_rpz_find_name(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 		  dns_rpz_zbits_t zbits, dns_name_t *trig_name);
 
 isc_result_t
-dns_rpz_checkdb(dns_db_t *db, isc_mem_t *mctx);
+dns_rpz_checkdb(dns_db_t *db);

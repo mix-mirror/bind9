@@ -75,7 +75,7 @@ struct dns_dnsseckey {
 
 isc_result_t
 dns_dnssec_keyfromrdata(const dns_name_t *name, const dns_rdata_t *rdata,
-			isc_mem_t *mctx, dst_key_t **key);
+			dst_key_t **key);
 /*%<
  *	Creates a DST key from a DNS record.  Basically a wrapper around
  *	dst_key_fromdns().
@@ -114,7 +114,7 @@ dns_dnssec_make_dnskey(dst_key_t *key, unsigned char *buf, int bufsize,
 isc_result_t
 dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		isc_stdtime_t *inception, isc_stdtime_t *expire,
-		isc_mem_t *mctx, isc_buffer_t *buffer, dns_rdata_t *sigrdata);
+		isc_buffer_t *buffer, dns_rdata_t *sigrdata);
 /*%<
  *	Generates a RRSIG record covering this rdataset.  This has no effect
  *	on existing RRSIG records.
@@ -141,8 +141,8 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 
 isc_result_t
 dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
-		  bool ignoretime, isc_mem_t *mctx, dns_rdata_t *sigrdata,
-		  dns_name_t *wild, dns_name_t *wildsigner);
+		  bool ignoretime, dns_rdata_t *sigrdata, dns_name_t *wild,
+		  dns_name_t *wildsigner);
 /*%<
  *	Verifies the RRSIG record covering this rdataset signed by a specific
  *	key.  This does not determine if the key's owner is authorized to sign
@@ -238,12 +238,12 @@ dns_dnssec_verifymessage(isc_buffer_t *source, dns_message_t *msg,
 bool
 dns_dnssec_selfsigns(dns_rdata_t *rdata, const dns_name_t *name,
 		     dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
-		     bool ignoretime, isc_mem_t *mctx);
+		     bool ignoretime);
 
 bool
 dns_dnssec_signs(dns_rdata_t *rdata, const dns_name_t *name,
 		 dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
-		 bool ignoretime, isc_mem_t *mctx);
+		 bool ignoretime);
 /*%<
  * Verify that 'rdataset' is validly signed in 'sigrdataset' by
  * the key in 'rdata'.
@@ -271,8 +271,7 @@ dns_dnssec_haszonekey(dns_rdataset_t *keyset);
  */
 
 void
-dns_dnsseckey_create(isc_mem_t *mctx, dst_key_t **dstkey,
-		     dns_dnsseckey_t **dkp);
+dns_dnsseckey_create(dst_key_t **dstkey, dns_dnsseckey_t **dkp);
 /*%<
  * Create and initialize a dns_dnsseckey_t structure.
  *
@@ -281,7 +280,7 @@ dns_dnsseckey_create(isc_mem_t *mctx, dst_key_t **dstkey,
  */
 
 void
-dns_dnsseckey_destroy(isc_mem_t *mctx, dns_dnsseckey_t **dkp);
+dns_dnsseckey_destroy(dns_dnsseckey_t **dkp);
 /*%<
  * Reclaim a dns_dnsseckey_t structure.
  *
@@ -305,7 +304,7 @@ dns_dnssec_get_hints(dns_dnsseckey_t *key, isc_stdtime_t now);
 isc_result_t
 dns_dnssec_findmatchingkeys(const dns_name_t *origin, dns_kasp_t *kasp,
 			    const char *keydir, dns_keystorelist_t *keystores,
-			    isc_stdtime_t now, bool rrtypekey, isc_mem_t *mctx,
+			    isc_stdtime_t now, bool rrtypekey,
 			    dns_dnsseckeylist_t *keylist);
 /*%<
  * Search for K* key files matching the name in 'origin'. If 'kasp' is not
@@ -333,10 +332,10 @@ dns_dnssec_findmatchingkeys(const dns_name_t *origin, dns_kasp_t *kasp,
 
 isc_result_t
 dns_dnssec_keylistfromrdataset(const dns_name_t *origin, dns_kasp_t *kasp,
-			       const char *directory, isc_mem_t *mctx,
-			       dns_rdataset_t *keyset, dns_rdataset_t *keysigs,
-			       dns_rdataset_t *soasigs, bool savekeys,
-			       bool publickey, dns_dnsseckeylist_t *keylist);
+			       const char *directory, dns_rdataset_t *keyset,
+			       dns_rdataset_t *keysigs, dns_rdataset_t *soasigs,
+			       bool savekeys, bool publickey,
+			       dns_dnsseckeylist_t *keylist);
 /*%<
  * Append the contents of a DNSKEY rdataset 'keyset' to 'keylist'.
  * Omit duplicates.  If 'publickey' is false, search the key stores referenced
@@ -356,7 +355,7 @@ dns_dnssec_keylistfromrdataset(const dns_name_t *origin, dns_kasp_t *kasp,
 isc_result_t
 dns_dnssec_updatekeys(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *newkeys,
 		      dns_dnsseckeylist_t *removed, const dns_name_t *origin,
-		      dns_ttl_t hint_ttl, dns_diff_t *diff, isc_mem_t *mctx,
+		      dns_ttl_t hint_ttl, dns_diff_t *diff,
 		      void (*report)(const char *, ...)
 			      ISC_FORMAT_PRINTF(1, 2));
 /*%<
@@ -388,8 +387,7 @@ isc_result_t
 dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 		      dns_rdataset_t *cds, dns_rdataset_t *cdnskey,
 		      isc_stdtime_t now, dns_kasp_digestlist_t *digests,
-		      bool gencdnskey, dns_ttl_t hint_ttl, dns_diff_t *diff,
-		      isc_mem_t *mctx);
+		      bool gencdnskey, dns_ttl_t hint_ttl, dns_diff_t *diff);
 /*%<
  * Update the CDS and CDNSKEY RRsets, adding and removing keys as needed.
  *
@@ -420,8 +418,8 @@ dns_dnssec_syncupdate(dns_dnsseckeylist_t *keys, dns_dnsseckeylist_t *rmkeys,
 isc_result_t
 dns_dnssec_syncdelete(dns_rdataset_t *cds, dns_rdataset_t *cdnskey,
 		      dns_name_t *origin, dns_rdataclass_t zclass,
-		      dns_ttl_t ttl, dns_diff_t *diff, isc_mem_t *mctx,
-		      bool expect_cds_delete, bool expect_cdnskey_delete);
+		      dns_ttl_t ttl, dns_diff_t *diff, bool expect_cds_delete,
+		      bool expect_cdnskey_delete);
 /*%<
  * Add or remove the CDS DELETE record and the CDNSKEY DELETE record.
  * If 'expect_cds_delete' is true, the CDS DELETE record should be present.

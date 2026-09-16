@@ -104,13 +104,11 @@ struct isc_dnsstream_assembler {
 			    the callback). */
 	isc_result_t result; /*<! The last passed to the callback processing
 				status value. */
-	isc_mem_t *mctx;
 };
 
 static inline void
 isc_dnsstream_assembler_init(isc_dnsstream_assembler_t *restrict dnsasm,
-			     isc_mem_t *memctx, isc_dnsstream_assembler_cb_t cb,
-			     void *cbarg);
+			     isc_dnsstream_assembler_cb_t cb, void *cbarg);
 /*!<
  * \brief Initialise the given 'isc_dnsstream_assembler_t' object, attach
  * to the memory context.
@@ -132,8 +130,7 @@ isc_dnsstream_assembler_uninit(isc_dnsstream_assembler_t *restrict dnsasm);
  */
 
 static inline isc_dnsstream_assembler_t *
-isc_dnsstream_assembler_new(isc_mem_t *memctx, isc_dnsstream_assembler_cb_t cb,
-			    void *cbarg);
+isc_dnsstream_assembler_new(isc_dnsstream_assembler_cb_t cb, void *cbarg);
 /*!<
  * \brief Allocate and initialise a new 'isc_dnsstream_assembler_t' object,
  * attach to the memory context.
@@ -225,18 +222,15 @@ isc_dnsstream_assembler_clear(isc_dnsstream_assembler_t *restrict dnsasm);
 
 static inline void
 isc_dnsstream_assembler_init(isc_dnsstream_assembler_t *restrict dnsasm,
-			     isc_mem_t *memctx, isc_dnsstream_assembler_cb_t cb,
-			     void *cbarg) {
+			     isc_dnsstream_assembler_cb_t cb, void *cbarg) {
 	REQUIRE(dnsasm != NULL);
-	REQUIRE(memctx != NULL);
 	REQUIRE(cb != NULL);
 
 	*dnsasm = (isc_dnsstream_assembler_t){ .result = ISC_R_UNSET };
 	isc_dnsstream_assembler_setcb(dnsasm, cb, cbarg);
-	isc_mem_attach(memctx, &dnsasm->mctx);
 
 	isc_buffer_init(&dnsasm->dnsbuf, dnsasm->buf, sizeof(dnsasm->buf));
-	isc_buffer_setmctx(&dnsasm->dnsbuf, dnsasm->mctx);
+	isc_buffer_setmctx(&dnsasm->dnsbuf, isc_g_mctx);
 
 	dnsasm->current = &dnsasm->dnsbuf;
 }
@@ -251,22 +245,16 @@ isc_dnsstream_assembler_uninit(isc_dnsstream_assembler_t *restrict dnsasm) {
 	INSIST(dnsasm->calling_cb == false);
 	isc_buffer_clearmctx(&dnsasm->dnsbuf);
 	isc_buffer_invalidate(&dnsasm->dnsbuf);
-	if (dnsasm->mctx != NULL) {
-		isc_mem_detach(&dnsasm->mctx);
-	}
 	dnsasm->current = NULL;
 }
 
 static inline isc_dnsstream_assembler_t *
-isc_dnsstream_assembler_new(isc_mem_t *memctx, isc_dnsstream_assembler_cb_t cb,
-			    void *cbarg) {
-	isc_dnsstream_assembler_t *newasm;
-
-	REQUIRE(memctx != NULL);
+isc_dnsstream_assembler_new(isc_dnsstream_assembler_cb_t cb, void *cbarg) {
 	REQUIRE(cb != NULL);
 
-	newasm = isc_mem_get(memctx, sizeof(*newasm));
-	isc_dnsstream_assembler_init(newasm, memctx, cb, cbarg);
+	isc_dnsstream_assembler_t *newasm = isc_mem_get(isc_g_mctx,
+							sizeof(*newasm));
+	isc_dnsstream_assembler_init(newasm, cb, cbarg);
 
 	return newasm;
 }
@@ -274,14 +262,12 @@ isc_dnsstream_assembler_new(isc_mem_t *memctx, isc_dnsstream_assembler_cb_t cb,
 static inline void
 isc_dnsstream_assembler_free(isc_dnsstream_assembler_t **restrict dnsasm) {
 	isc_dnsstream_assembler_t *restrict oldasm = NULL;
-	isc_mem_t *memctx = NULL;
 	REQUIRE(dnsasm != NULL && *dnsasm != NULL);
 
 	oldasm = *dnsasm;
 
-	isc_mem_attach(oldasm->mctx, &memctx);
 	isc_dnsstream_assembler_uninit(oldasm);
-	isc_mem_putanddetach(&memctx, oldasm, sizeof(*oldasm));
+	isc_mem_put(isc_g_mctx, oldasm, sizeof(*oldasm));
 
 	*dnsasm = NULL;
 }

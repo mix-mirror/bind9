@@ -37,14 +37,12 @@ typedef ISC_LIST(struct dns_forwarder) dns_forwarderlist_t;
 struct dns_forwarders {
 	dns_forwarderlist_t fwdrs;
 	dns_fwdpolicy_t	    fwdpolicy;
-	isc_mem_t	   *mctx;
 	isc_refcount_t	    references;
 	dns_name_t	    name;
 };
 
 void
-dns_fwdtable_create(isc_mem_t *mctx, dns_view_t *view,
-		    dns_fwdtable_t **fwdtablep);
+dns_fwdtable_create(dns_view_t *view, dns_fwdtable_t **fwdtablep);
 /*%<
  * Creates a new forwarding table.
  *

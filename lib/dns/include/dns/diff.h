@@ -67,7 +67,6 @@ typedef ISC_LIST(dns_difftuple_t) dns_difftuplelist_t;
 
 struct dns_difftuple {
 	unsigned int magic;
-	isc_mem_t   *mctx;
 	dns_diffop_t op;
 	dns_name_t   name;
 	dns_ttl_t    ttl;
@@ -88,7 +87,6 @@ typedef struct dns_diff dns_diff_t;
 
 struct dns_diff {
 	unsigned int	    magic;
-	isc_mem_t	   *mctx;
 	dns_difftuplelist_t tuples;
 	size_t		    size;
 };
@@ -107,8 +105,8 @@ dns_diff_compare_func(const void *, const void *);
  */
 
 void
-dns_difftuple_create(isc_mem_t *mctx, dns_diffop_t op, const dns_name_t *name,
-		     dns_ttl_t ttl, dns_rdata_t *rdata, dns_difftuple_t **tp);
+dns_difftuple_create(dns_diffop_t op, const dns_name_t *name, dns_ttl_t ttl,
+		     dns_rdata_t *rdata, dns_difftuple_t **tp);
 /*%<
  * Create a tuple.  Deep copies are made of the name and rdata, so
  * they need not remain valid after the call.
@@ -141,7 +139,7 @@ dns_difftuple_copy(dns_difftuple_t *orig, dns_difftuple_t **copyp);
  */
 
 void
-dns_diff_init(isc_mem_t *mctx, dns_diff_t *diff);
+dns_diff_init(dns_diff_t *diff);
 /*%<
  * Initialize a diff.
  *

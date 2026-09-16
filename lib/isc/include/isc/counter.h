@@ -39,7 +39,7 @@
 *****/
 
 void
-isc_counter_create(isc_mem_t *mctx, int limit, isc_counter_t **counterp);
+isc_counter_create(int limit, isc_counter_t **counterp);
 /*%<
  * Allocate and initialize a counter object.
  */

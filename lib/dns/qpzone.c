@@ -158,7 +158,6 @@ typedef ISC_LIST(qpz_version_t) qpz_versionlist_t;
 
 /* Resigning heap indirection to allow ref counting */
 typedef struct qpz_heap {
-	isc_mem_t *mctx;
 	isc_refcount_t references;
 	/* Locks the data in this struct */
 	isc_mutex_t lock;
@@ -306,8 +305,8 @@ qpznode_erefs_increment(qpznode_t *node DNS__DB_FLARG);
  * Constructor and destructor for qpz_changed_t
  */
 static qpz_changed_t *
-qpz_changed_new(isc_mem_t *mctx, qpznode_t *node DNS__DB_FLARG) {
-	qpz_changed_t *changed = isc_mem_get(mctx, sizeof(qpz_changed_t));
+qpz_changed_new(qpznode_t *node DNS__DB_FLARG) {
+	qpz_changed_t *changed = isc_mem_get(isc_g_mctx, sizeof(qpz_changed_t));
 	*changed = (qpz_changed_t){
 		.node = node,
 		.dirty = false,
@@ -321,8 +320,9 @@ qpz_changed_new(isc_mem_t *mctx, qpznode_t *node DNS__DB_FLARG) {
  * Constructor and destructor for qpz_resigned_t
  */
 static qpz_resigned_t *
-qpz_resigned_new(isc_mem_t *mctx, qpznode_t *node, dns_vecheader_t *header) {
-	qpz_resigned_t *resigned = isc_mem_get(mctx, sizeof(qpz_resigned_t));
+qpz_resigned_new(qpznode_t *node, dns_vecheader_t *header) {
+	qpz_resigned_t *resigned = isc_mem_get(isc_g_mctx,
+					       sizeof(qpz_resigned_t));
 	*resigned = (qpz_resigned_t){
 		.node = node,
 		.header = header,
@@ -334,20 +334,20 @@ qpz_resigned_new(isc_mem_t *mctx, qpznode_t *node, dns_vecheader_t *header) {
 }
 
 static void
-qpz_resigned_destroy(isc_mem_t *mctx, qpz_resigned_t **resignedp) {
+qpz_resigned_destroy(qpz_resigned_t **resignedp) {
 	qpz_resigned_t *resigned = *resignedp;
 	*resignedp = NULL;
 	qpznode_unref(resigned->node);
 	dns_vecheader_unref(resigned->header);
-	isc_mem_put(mctx, resigned, sizeof(qpz_resigned_t));
+	isc_mem_put(isc_g_mctx, resigned, sizeof(qpz_resigned_t));
 }
 
 /*%
  * Constructor and destructor for qpz_resign_t
  */
 static qpz_resign_t *
-qpz_resign_new(isc_mem_t *mctx, qpznode_t *node, dns_vecheader_t *header) {
-	qpz_resign_t *elem = isc_mem_get(mctx, sizeof(qpz_resign_t));
+qpz_resign_new(qpznode_t *node, dns_vecheader_t *header) {
+	qpz_resign_t *elem = isc_mem_get(isc_g_mctx, sizeof(qpz_resign_t));
 	*elem = (qpz_resign_t){
 		.node = node,
 		.header = header,
@@ -359,12 +359,12 @@ qpz_resign_new(isc_mem_t *mctx, qpznode_t *node, dns_vecheader_t *header) {
 }
 
 static void
-qpz_resign_destroy(isc_mem_t *mctx, qpz_resign_t **elemp) {
+qpz_resign_destroy(qpz_resign_t **elemp) {
 	qpz_resign_t *elem = *elemp;
 	*elemp = NULL;
 	qpznode_unref(elem->node);
 	dns_vecheader_unref(elem->header);
-	isc_mem_put(mctx, elem, sizeof(qpz_resign_t));
+	isc_mem_put(isc_g_mctx, elem, sizeof(qpz_resign_t));
 }
 
 /* QP trie methods */
@@ -491,7 +491,7 @@ qpzone_get_locknum(void) {
 }
 
 static void
-free_glue(isc_mem_t *mctx, dns_glue_t *glue) {
+free_glue(dns_glue_t *glue) {
 	while (glue != NULL) {
 		dns_glue_t *next = glue->next;
 
@@ -508,9 +508,9 @@ free_glue(isc_mem_t *mctx, dns_glue_t *glue) {
 			dns_vecheader_unref(glue->sigheader_aaaa);
 		}
 
-		dns_name_free(&glue->name, mctx);
+		dns_name_free(&glue->name, isc_g_mctx);
 
-		isc_mem_put(mctx, glue, sizeof(*glue));
+		isc_mem_put(isc_g_mctx, glue, sizeof(*glue));
 
 		glue = next;
 	}
@@ -525,7 +525,7 @@ destroy_gluelist(dns_gluelist_t **gluelistp) {
 
 	dns_gluelist_t *gluelist = *gluelistp;
 
-	free_glue(gluelist->mctx, gluelist->glue);
+	free_glue(gluelist->glue);
 
 	isc_mem_putanddetach(&gluelist->mctx, gluelist, sizeof(*gluelist));
 }
@@ -560,7 +560,7 @@ free_db_rcu(struct rcu_head *rcu_head) {
 	qpzonedb_t *qpdb = caa_container_of(rcu_head, qpzonedb_t, rcu_head);
 
 	if (dns_name_dynamic(&qpdb->common.origin)) {
-		dns_name_free(&qpdb->common.origin, qpdb->common.mctx);
+		dns_name_free(&qpdb->common.origin, isc_g_mctx);
 	}
 
 	qpz_heap_detach(&qpdb->heap);
@@ -579,8 +579,8 @@ free_db_rcu(struct rcu_head *rcu_head) {
 		INSIST(!cds_lfht_destroy(qpdb->common.update_listeners, NULL));
 	}
 
-	isc_mem_putanddetachx(&qpdb->common.mctx, qpdb, sizeof(*qpdb),
-			      ISC_MEM_ALIGN(ISC_OS_CACHELINE_SIZE));
+	isc_mem_putx(isc_g_mctx, qpdb, sizeof(*qpdb),
+		     ISC_MEM_ALIGN(ISC_OS_CACHELINE_SIZE));
 }
 
 static void
@@ -594,7 +594,7 @@ qpzone_destroy(qpzonedb_t *qpdb) {
 	ISC_LIST_UNLINK(qpdb->open_versions, qpdb->current_version, link);
 	cds_wfs_destroy(&qpdb->current_version->glue_stack);
 	isc_rwlock_destroy(&qpdb->current_version->rwlock);
-	isc_mem_put(qpdb->common.mctx, qpdb->current_version,
+	isc_mem_put(isc_g_mctx, qpdb->current_version,
 		    sizeof(*qpdb->current_version));
 
 	dns_qpmulti_destroy(&qpdb->tree);
@@ -723,7 +723,7 @@ resign_lookup(qpz_heap_t *heap, dns_vecheader_t *header, qpznode_t *node,
  */
 static void
 resign_register(qpz_heap_t *heap, qpznode_t *node, dns_vecheader_t *header) {
-	qpz_resign_t *elem = qpz_resign_new(heap->mctx, node, header);
+	qpz_resign_t *elem = qpz_resign_new(node, header);
 	uint32_t hashval = resign_hash(header);
 
 	/* Verify invariant: element should not already be in hashmap */
@@ -758,22 +758,22 @@ resign_unregister(qpz_heap_t *heap, qpznode_t *node, dns_vecheader_t *header) {
 		isc_heap_delete(heap->heap, found_elem->heap_index);
 		isc_hashmap_delete(heap->hashmap, hashval, resign_match,
 				   found_elem);
-		qpz_resign_destroy(heap->mctx, &found_elem);
+		qpz_resign_destroy(&found_elem);
 	}
 }
 
 static qpz_heap_t *
-new_qpz_heap(isc_mem_t *mctx) {
-	qpz_heap_t *new_heap = isc_mem_get(mctx, sizeof(*new_heap));
+new_qpz_heap(void) {
+	qpz_heap_t *new_heap = isc_mem_get(isc_g_mctx, sizeof(*new_heap));
 	*new_heap = (qpz_heap_t){
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 	};
 
 	isc_mutex_init(&new_heap->lock);
-	isc_heap_create(mctx, resign_sooner, set_index, 0, &new_heap->heap);
-	isc_mem_attach(mctx, &new_heap->mctx);
+	isc_heap_create(isc_g_mctx, resign_sooner, set_index, 0,
+			&new_heap->heap);
 
-	isc_hashmap_create(mctx, 1u, &new_heap->hashmap);
+	isc_hashmap_create(isc_g_mctx, 1u, &new_heap->hashmap);
 
 	return new_heap;
 }
@@ -785,8 +785,7 @@ resign_rollback(qpzonedb_t *qpdb, qpznode_t *node, qpz_version_t *version,
 		return;
 	}
 
-	qpz_resigned_t *resigned = qpz_resigned_new(((dns_db_t *)qpdb)->mctx,
-						    node, header);
+	qpz_resigned_t *resigned = qpz_resigned_new(node, header);
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
 	ISC_LIST_APPEND(version->resigned_list, resigned, link);
@@ -804,19 +803,19 @@ qpz_heap_destroy(qpz_heap_t *qpheap) {
 		qpz_resign_t *elem = NULL;
 		isc_hashmap_iter_current(iter, (void **)&elem);
 		/* Release the node reference and deallocate */
-		qpz_resign_destroy(qpheap->mctx, &elem);
+		qpz_resign_destroy(&elem);
 	}
 	isc_hashmap_iter_destroy(&iter);
 	isc_hashmap_destroy(&qpheap->hashmap);
 
 	isc_mutex_destroy(&qpheap->lock);
 	isc_heap_destroy(&qpheap->heap);
-	isc_mem_putanddetach(&qpheap->mctx, qpheap, sizeof(*qpheap));
+	isc_mem_put(isc_g_mctx, qpheap, sizeof(*qpheap));
 }
 
 static qpznode_t *
-new_qpznode(qpzonedb_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
-	qpznode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
+new_qpznode(const dns_name_t *name, dns_namespace_t nspace) {
+	qpznode_t *newdata = isc_mem_get(isc_g_mctx, sizeof(*newdata));
 	*newdata = (qpznode_t){
 		.next_type = ISC_SLIST_INITIALIZER,
 		.methods = &qpznode_methods,
@@ -826,8 +825,7 @@ new_qpznode(qpzonedb_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.locknum = qpzone_get_locknum(),
 	};
 
-	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
-	dns_name_dup(name, qpdb->common.mctx, &newdata->name);
+	dns_name_dup(name, isc_g_mctx, &newdata->name);
 
 #if DNS_DB_NODETRACE
 	fprintf(stderr, "new_qpznode:%s:%s:%d:%p->references = 1\n", __func__,
@@ -837,9 +835,8 @@ new_qpznode(qpzonedb_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 }
 
 static qpz_version_t *
-allocate_version(isc_mem_t *mctx, uint32_t serial, unsigned int references,
-		 bool writer) {
-	qpz_version_t *version = isc_mem_get(mctx, sizeof(*version));
+allocate_version(uint32_t serial, unsigned int references, bool writer) {
+	qpz_version_t *version = isc_mem_get(isc_g_mctx, sizeof(*version));
 	*version = (qpz_version_t){
 		.serial = serial,
 		.writer = writer,
@@ -856,7 +853,7 @@ allocate_version(isc_mem_t *mctx, uint32_t serial, unsigned int references,
 }
 
 isc_result_t
-dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
+dns__qpzone_create(const dns_name_t *origin, dns_dbtype_t type,
 		   dns_rdataclass_t rdclass, unsigned int argc ISC_ATTR_UNUSED,
 		   char **argv ISC_ATTR_UNUSED, void *driverarg ISC_ATTR_UNUSED,
 		   dns_db_t **dbp) {
@@ -864,7 +861,7 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	isc_result_t result;
 	dns_qp_t *qp = NULL;
 
-	qpdb = isc_mem_getx(mctx, sizeof(*qpdb),
+	qpdb = isc_mem_getx(isc_g_mctx, sizeof(*qpdb),
 			    ISC_MEM_ALIGN(ISC_OS_CACHELINE_SIZE));
 	*qpdb = (qpzonedb_t){
 		.common.origin = DNS_NAME_INITEMPTY,
@@ -885,26 +882,19 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 
 	qpdb->common.update_listeners = cds_lfht_new(16, 16, 0, 0, NULL);
 
-	qpdb->heap = new_qpz_heap(mctx);
-
-	/*
-	 * Attach to the mctx.  The database will persist so long as there
-	 * are references to it, and attaching to the mctx ensures that our
-	 * mctx won't disappear out from under us.
-	 */
-	isc_mem_attach(mctx, &qpdb->common.mctx);
+	qpdb->heap = new_qpz_heap();
 
 	/*
 	 * Make a copy of the origin name.
 	 */
-	dns_name_dup(origin, mctx, &qpdb->common.origin);
+	dns_name_dup(origin, isc_g_mctx, &qpdb->common.origin);
 
-	dns_qpmulti_create(mctx, &qpmethods, qpdb, &qpdb->tree);
+	dns_qpmulti_create(isc_g_mctx, &qpmethods, qpdb, &qpdb->tree);
 
 	/*
 	 * Version initialization.
 	 */
-	qpdb->current_version = allocate_version(mctx, 1, 1, false);
+	qpdb->current_version = allocate_version(1, 1, false);
 	qpdb->current_version->qpdb = qpdb;
 
 	dns_qpmulti_write(qpdb->tree, &qp);
@@ -920,7 +910,7 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	 * We now explicitly create a node for the zone's origin, and then
 	 * we simply remember the node data's address.
 	 */
-	qpdb->origin = new_qpznode(qpdb, &qpdb->common.origin,
+	qpdb->origin = new_qpznode(&qpdb->common.origin,
 				   DNS_DBNAMESPACE_NORMAL);
 
 	result = dns_qp_insert(qp, qpdb->origin, 0);
@@ -930,7 +920,7 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	 * Add an apex node to the NSEC tree so that we can quickly skip over
 	 * the NSEC nodes while iterating over the full tree.
 	 */
-	qpdb->nsec_origin = new_qpznode(qpdb, &qpdb->common.origin,
+	qpdb->nsec_origin = new_qpznode(&qpdb->common.origin,
 					DNS_DBNAMESPACE_NSEC);
 	result = dns_qp_insert(qp, qpdb->nsec_origin, 0);
 	INSIST(result == ISC_R_SUCCESS);
@@ -940,7 +930,7 @@ dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	 * return partial matches when there is only a single NSEC3
 	 * record in the tree.
 	 */
-	qpdb->nsec3_origin = new_qpznode(qpdb, &qpdb->common.origin,
+	qpdb->nsec3_origin = new_qpznode(&qpdb->common.origin,
 					 DNS_DBNAMESPACE_NSEC3);
 	result = dns_qp_insert(qp, qpdb->nsec3_origin, 0);
 	INSIST(result == ISC_R_SUCCESS);
@@ -1098,7 +1088,7 @@ clean_zone_node(qpz_heap_t *heap, qpznode_t *node, uint32_t least_serial) {
 		dns_vectop_t *next = *iter;
 		if (ISC_SLIST_EMPTY(next->headers)) {
 			ISC_SLIST_PTR_REMOVE(iter, next, next_type);
-			dns_vectop_destroy(node->mctx, &next);
+			dns_vectop_destroy(isc_g_mctx, &next);
 		} else {
 			ISC_SLIST_PTR_ADVANCE(iter, next_type);
 		}
@@ -1374,8 +1364,7 @@ newversion(dns_db_t *db, dns_dbversion_t **versionp) {
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
 	INSIST(qpdb->next_serial != 0);
-	version = allocate_version(qpdb->common.mctx, qpdb->next_serial, 1,
-				   true);
+	version = allocate_version(qpdb->next_serial, 1, true);
 	version->qpdb = qpdb;
 	version->secure = qpdb->current_version->secure;
 	version->havensec3 = qpdb->current_version->havensec3;
@@ -1607,7 +1596,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		cleanup_gluelists(&cleanup_version->glue_stack);
 		cds_wfs_destroy(&cleanup_version->glue_stack);
 		isc_rwlock_destroy(&cleanup_version->rwlock);
-		isc_mem_put(qpdb->common.mctx, cleanup_version,
+		isc_mem_put(isc_g_mctx, cleanup_version,
 			    sizeof(*cleanup_version));
 	}
 
@@ -1629,7 +1618,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 			resign_register(qpdb->heap, resigned_node, header);
 			UNLOCK(&qpdb->heap->lock);
 		}
-		qpz_resigned_destroy(db->mctx, &resigned);
+		qpz_resigned_destroy(&resigned);
 		NODE_UNLOCK(nlock, &nlocktype);
 	}
 
@@ -1660,7 +1649,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		 * The node reference is released separately above, so
 		 * we just free the changed structure here.
 		 */
-		isc_mem_put(qpdb->common.mctx, changed, sizeof(*changed));
+		isc_mem_put(isc_g_mctx, changed, sizeof(*changed));
 	}
 
 	*versionp = NULL;
@@ -1759,7 +1748,6 @@ static void
 loading_addnode(qpz_load_t *loadctx, const dns_name_t *name,
 		dns_rdatatype_t type, dns_rdatatype_t covers,
 		qpznode_t **nodep) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)loadctx->db;
 	isc_result_t result;
 	qpznode_t *node = NULL, *nsecnode = NULL;
 
@@ -1770,7 +1758,7 @@ loading_addnode(qpz_load_t *loadctx, const dns_name_t *name,
 		if (result == ISC_R_SUCCESS) {
 			*nodep = node;
 		} else {
-			node = new_qpznode(qpdb, name, DNS_DBNAMESPACE_NSEC3);
+			node = new_qpznode(name, DNS_DBNAMESPACE_NSEC3);
 			result = dns_qp_insert(loadctx->tree, node, 0);
 			INSIST(result == ISC_R_SUCCESS);
 			*nodep = node;
@@ -1787,7 +1775,7 @@ loading_addnode(qpz_load_t *loadctx, const dns_name_t *name,
 		}
 	} else {
 		INSIST(node == NULL);
-		node = new_qpznode(qpdb, name, DNS_DBNAMESPACE_NORMAL);
+		node = new_qpznode(name, DNS_DBNAMESPACE_NORMAL);
 		result = dns_qp_insert(loadctx->tree, node, 0);
 		INSIST(result == ISC_R_SUCCESS);
 		qpznode_unref(node);
@@ -1805,7 +1793,7 @@ loading_addnode(qpz_load_t *loadctx, const dns_name_t *name,
 	 * move on.
 	 */
 	node->havensec = true;
-	nsecnode = new_qpznode(qpdb, name, DNS_DBNAMESPACE_NSEC);
+	nsecnode = new_qpznode(name, DNS_DBNAMESPACE_NSEC);
 	(void)dns_qp_insert(loadctx->tree, nsecnode, 0);
 	qpznode_detach(&nsecnode);
 
@@ -1856,8 +1844,7 @@ cname_and_other(qpznode_t *node, uint32_t serial) {
 static qpz_changed_t *
 add_changed(qpzonedb_t *qpdb, qpznode_t *node,
 	    qpz_version_t *version DNS__DB_FLARG) {
-	qpz_changed_t *changed = qpz_changed_new(qpdb->common.mctx,
-						 node DNS__DB_FLARG_PASS);
+	qpz_changed_t *changed = qpz_changed_new(node DNS__DB_FLARG_PASS);
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
 	REQUIRE(version->writer);
@@ -1973,7 +1960,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			}
 			if (result == ISC_R_SUCCESS) {
 				result = dns_rdatavec_merge(
-					header, newheader, qpdb->common.mctx,
+					header, newheader, isc_g_mctx,
 					qpdb->common.rdclass,
 					DNS_TYPEPAIR_TYPE(header->typepair),
 					flags, qpdb->maxrrperset, &merged);
@@ -2117,7 +2104,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			}
 
 			dns_vectop_t *newtop =
-				dns_vectop_new(node->mctx, newheader->typepair);
+				dns_vectop_new(isc_g_mctx, newheader->typepair);
 
 			ISC_SLIST_PREPEND(newtop->headers, newheader,
 					  next_header);
@@ -2153,8 +2140,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 }
 
 static void
-wildcardmagic(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name,
-	      dns_namespace_t nspace) {
+wildcardmagic(dns_qp_t *qp, const dns_name_t *name, dns_namespace_t nspace) {
 	isc_result_t result;
 	dns_name_t foundname;
 	unsigned int n;
@@ -2170,7 +2156,7 @@ wildcardmagic(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name,
 	result = dns_qp_getname(qp, &foundname, nspace, (void **)&node, NULL);
 	if (result != ISC_R_SUCCESS) {
 		INSIST(node == NULL);
-		node = new_qpznode(qpdb, &foundname, nspace);
+		node = new_qpznode(&foundname, nspace);
 		result = dns_qp_insert(qp, node, 0);
 		INSIST(result == ISC_R_SUCCESS);
 		qpznode_unref(node);
@@ -2192,7 +2178,7 @@ addwildcards(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name,
 	while (i < n) {
 		dns_name_getlabelsequence(name, n - i, i, &foundname);
 		if (dns_name_iswildcard(&foundname)) {
-			wildcardmagic(qpdb, qp, &foundname, nspace);
+			wildcardmagic(qp, &foundname, nspace);
 		}
 
 		i++;
@@ -2246,12 +2232,11 @@ loading_addrdataset(void *arg, const dns_name_t *name, dns_rdataset_t *rdataset,
 			return DNS_R_INVALIDNSEC3;
 		}
 
-		wildcardmagic(qpdb, loadctx->tree, name,
-			      DNS_DBNAMESPACE_NORMAL);
+		wildcardmagic(loadctx->tree, name, DNS_DBNAMESPACE_NORMAL);
 	}
 
 	loading_addnode(loadctx, name, rdataset->type, rdataset->covers, &node);
-	result = dns_rdatavec_fromrdataset(rdataset, node->mctx, &region,
+	result = dns_rdatavec_fromrdataset(rdataset, isc_g_mctx, &region,
 					   qpdb->maxrrperset);
 	if (result != ISC_R_SUCCESS) {
 		if (result == DNS_R_TOOMANYRECORDS) {
@@ -2319,7 +2304,7 @@ beginload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	REQUIRE(DNS_CALLBACK_VALID(callbacks));
 	REQUIRE(VALID_QPZONE(qpdb));
 
-	loadctx = isc_mem_get(qpdb->common.mctx, sizeof(*loadctx));
+	loadctx = isc_mem_get(isc_g_mctx, sizeof(*loadctx));
 	*loadctx = (qpz_load_t){ .db = db };
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
@@ -2370,7 +2355,7 @@ endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	callbacks->commit = NULL;
 	callbacks->add_private = NULL;
 
-	isc_mem_put(qpdb->common.mctx, loadctx, sizeof(*loadctx));
+	isc_mem_put(isc_g_mctx, loadctx, sizeof(*loadctx));
 
 	return ISC_R_SUCCESS;
 }
@@ -2640,7 +2625,7 @@ findnodeintree(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name,
 		 * ... if the lookup is unsuccessful, but the caller asked us to
 		 * create a new node, create one and insert it into the tree.
 		 */
-		node = new_qpznode(qpdb, name, nspace);
+		node = new_qpznode(name, nspace);
 		result = dns_qp_insert(qp, node, 0);
 		INSIST(result == ISC_R_SUCCESS);
 
@@ -2664,7 +2649,7 @@ findnodeintree(qpzonedb_t *qpdb, dns_qp_t *qp, const dns_name_t *name,
 			 */
 			addwildcards(qpdb, qp, name, nspace);
 			if (dns_name_iswildcard(name)) {
-				wildcardmagic(qpdb, qp, name, nspace);
+				wildcardmagic(qp, name, nspace);
 			}
 		}
 
@@ -3957,7 +3942,7 @@ qpzone_allrdatasets(dns_db_t *db, dns_dbnode_t *dbnode,
 		isc_refcount_increment(&version->references);
 	}
 
-	iterator = isc_mem_get(qpdb->common.mctx, sizeof(*iterator));
+	iterator = isc_mem_get(isc_g_mctx, sizeof(*iterator));
 	*iterator = (qpdb_rdatasetiter_t){
 		.common.methods = &rdatasetiter_methods,
 		.common.db = db,
@@ -4053,7 +4038,7 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 			     false DNS__DB_FLARG_PASS);
 	}
 	dns__db_detachnode(&qrditer->common.node DNS__DB_FLARG_PASS);
-	isc_mem_put(qrditer->common.db->mctx, qrditer, sizeof(*qrditer));
+	isc_mem_put(isc_g_mctx, qrditer, sizeof(*qrditer));
 
 	*iteratorp = NULL;
 }
@@ -4195,7 +4180,7 @@ dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	dns_qpsnap_destroy(qpdb->tree, &iter->snap);
 
-	isc_mem_put(db->mctx, iter, sizeof(*iter));
+	isc_mem_put(isc_g_mctx, iter, sizeof(*iter));
 	dns_db_detach(&db);
 
 	*iteratorp = NULL;
@@ -4743,7 +4728,7 @@ qpzone_createiterator(dns_db_t *db, unsigned int options,
 
 	REQUIRE(VALID_QPZONE(qpdb));
 
-	iter = isc_mem_get(qpdb->common.mctx, sizeof(*iter));
+	iter = isc_mem_get(isc_g_mctx, sizeof(*iter));
 	*iter = (qpdb_dbiterator_t){
 		.common.magic = DNS_DBITERATOR_MAGIC,
 		.common.methods = &dbiterator_methods,
@@ -4828,7 +4813,7 @@ qpzone_addrdataset_inner(qpzonedb_t *qpdb, qpznode_t *node,
 		 rdataset->type != dns_rdatatype_nsec3 &&
 		 rdataset->covers != dns_rdatatype_nsec3));
 
-	result = dns_rdatavec_fromrdataset(rdataset, node->mctx, &region,
+	result = dns_rdatavec_fromrdataset(rdataset, isc_g_mctx, &region,
 					   qpdb->maxrrperset);
 	if (result != ISC_R_SUCCESS) {
 		if (result == DNS_R_TOOMANYRECORDS) {
@@ -4879,8 +4864,7 @@ qpzone_addrdataset_inner(qpzonedb_t *qpdb, qpznode_t *node,
 		 * so we can detach the new one we created and
 		 * move on.
 		 */
-		qpznode_t *nsecnode = new_qpznode(qpdb, name,
-						  DNS_DBNAMESPACE_NSEC);
+		qpznode_t *nsecnode = new_qpznode(name, DNS_DBNAMESPACE_NSEC);
 		/*
 		 * We don't need a separate transaction since the NSEC tree and
 		 * the normal tree are part of the same qp-tree.
@@ -4969,7 +4953,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		 rdataset->covers != dns_rdatatype_nsec3));
 
 	dns_name_copy(&node->name, nodename);
-	result = dns_rdatavec_fromrdataset(rdataset, node->mctx, &region, 0);
+	result = dns_rdatavec_fromrdataset(rdataset, isc_g_mctx, &region, 0);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -5019,7 +5003,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		}
 		if (result == ISC_R_SUCCESS) {
 			result = dns_rdatavec_subtract(
-				header, newheader, qpdb->common.mctx,
+				header, newheader, isc_g_mctx,
 				qpdb->common.rdclass,
 				DNS_TYPEPAIR_TYPE(foundtop->typepair), flags,
 				&subresult);
@@ -5064,7 +5048,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			resign_unregister(qpdb->heap, node, newheader);
 			UNLOCK(&qpdb->heap->lock);
 			dns_vecheader_unref(newheader);
-			newheader = dns_vecheader_new(db->mctx);
+			newheader = dns_vecheader_new(isc_g_mctx);
 			newheader->ttl = 0;
 			newheader->typepair = foundtop->typepair;
 			atomic_init(&newheader->attributes,
@@ -5147,7 +5131,7 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	newheader = dns_vecheader_new(db->mctx);
+	newheader = dns_vecheader_new(isc_g_mctx);
 	newheader->typepair = DNS_TYPEPAIR_VALUE(type, covers);
 	newheader->ttl = 0;
 	atomic_init(&newheader->attributes, DNS_VECHEADERATTR_NONEXISTENT);
@@ -5164,27 +5148,26 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 }
 
 static dns_glue_t *
-new_glue(isc_mem_t *mctx, const dns_name_t *name) {
-	dns_glue_t *glue = isc_mem_get(mctx, sizeof(*glue));
+new_glue(const dns_name_t *name) {
+	dns_glue_t *glue = isc_mem_get(isc_g_mctx, sizeof(*glue));
 	*glue = (dns_glue_t){
 		.name = DNS_NAME_INITEMPTY,
 	};
 
-	dns_name_dup(name, mctx, &glue->name);
+	dns_name_dup(name, isc_g_mctx, &glue->name);
 
 	return glue;
 }
 
 static dns_gluelist_t *
-new_gluelist(dns_db_t *db, dns_vecheader_t *header,
-	     const dns_dbversion_t *dbversion) {
-	dns_gluelist_t *gluelist = isc_mem_get(db->mctx, sizeof(*gluelist));
+new_gluelist(dns_vecheader_t *header, const dns_dbversion_t *dbversion) {
+	dns_gluelist_t *gluelist = isc_mem_get(isc_g_mctx, sizeof(*gluelist));
 	*gluelist = (dns_gluelist_t){
 		.version = dbversion,
 		.header = header,
 	};
 
-	isc_mem_attach(db->mctx, &gluelist->mctx);
+	isc_mem_attach(isc_g_mctx, &gluelist->mctx);
 
 	cds_wfs_node_init(&gluelist->wfs_node);
 
@@ -5221,7 +5204,7 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 			     DNS_DBFIND_GLUEOK, 0, name_a, NULL, NULL,
 			     &rdataset_a, &sigrdataset_a DNS__DB_FLARG_PASS);
 	if (result == DNS_R_GLUE) {
-		glue = new_glue(ctx->db->mctx, name_a);
+		glue = new_glue(name_a);
 
 		/*
 		 * Move the header out of the rdataset, transferring
@@ -5240,7 +5223,7 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 			     &sigrdataset_aaaa DNS__DB_FLARG_PASS);
 	if (result == DNS_R_GLUE) {
 		if (glue == NULL) {
-			glue = new_glue(ctx->db->mctx, name_aaaa);
+			glue = new_glue(name_aaaa);
 		} else {
 			INSIST(dns_name_equal(name_a, name_aaaa));
 		}
@@ -5379,7 +5362,7 @@ create_gluelist(qpzonedb_t *qpdb, qpz_version_t *version,
 		.version = (dns_dbversion_t *)version,
 		.owner_name = owner_name,
 	};
-	dns_gluelist_t *gluelist = new_gluelist(ctx.db, header, ctx.version);
+	dns_gluelist_t *gluelist = new_gluelist(header, ctx.version);
 
 	/*
 	 * Get the owner name of the NS RRset - it will be necessary for
@@ -5573,7 +5556,7 @@ qpzone_beginupdate(dns_db_t *db, dns_dbversion_t *ver,
 	REQUIRE(ver != NULL);
 	REQUIRE(DNS_CALLBACK_VALID(callbacks));
 
-	qpzone_updatectx_t *ctx = isc_mem_get(qpdb->common.mctx, sizeof(*ctx));
+	qpzone_updatectx_t *ctx = isc_mem_get(isc_g_mctx, sizeof(*ctx));
 	*ctx = (qpzone_updatectx_t){
 		.base.db = db,
 		.base.ver = ver,
@@ -5600,7 +5583,7 @@ qpzone_commitupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	if (ctx != NULL) {
 		end_transaction(qpdb, ctx->qp, true);
 
-		isc_mem_put(qpdb->common.mctx, ctx, sizeof(*ctx));
+		isc_mem_put(isc_g_mctx, ctx, sizeof(*ctx));
 		/*
 		 * We need to allow the context to be committed or aborted
 		 * multiple times, so we set the callback data to NULL
@@ -5628,7 +5611,7 @@ qpzone_abortupdate(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	if (ctx != NULL) {
 		end_transaction(qpdb, ctx->qp, true);
 
-		isc_mem_put(qpdb->common.mctx, ctx, sizeof(*ctx));
+		isc_mem_put(isc_g_mctx, ctx, sizeof(*ctx));
 		/*
 		 * See qpzone_commitupdate.
 		 */
@@ -5683,11 +5666,11 @@ destroy_qpznode(qpznode_t *node) {
 			dns_vecheader_unref(header);
 		}
 
-		dns_vectop_destroy(node->mctx, &top);
+		dns_vectop_destroy(isc_g_mctx, &top);
 	}
 
-	dns_name_free(&node->name, node->mctx);
-	isc_mem_putanddetach(&node->mctx, node, sizeof(qpznode_t));
+	dns_name_free(&node->name, isc_g_mctx);
+	isc_mem_put(isc_g_mctx, node, sizeof(qpznode_t));
 }
 
 #if DNS_DB_NODETRACE

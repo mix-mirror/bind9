@@ -243,9 +243,8 @@ isc_crypto_quic_hp_protect_destroy(isc_crypto_quic_hp_protect_t **protp);
 
 isc_result_t
 isc_crypto_quic_hp_protect_create(
-	isc_mem_t *mctx, isc_constregion_t key,
-	isc_crypto_quic_hp_protect_algorithm_t algorithm,
-	isc_crypto_quic_hp_protect_t	     **protp);
+	isc_constregion_t key, isc_crypto_quic_hp_protect_algorithm_t algorithm,
+	isc_crypto_quic_hp_protect_t **protp);
 /**<
  * \brief
  * Create a new QUIC header protection context.

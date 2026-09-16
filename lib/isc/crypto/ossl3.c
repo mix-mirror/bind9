@@ -288,7 +288,7 @@ fail:
  */
 isc_result_t
 isc_hmac_key_create(isc_md_type_t type, const void *secret, const size_t len,
-		    isc_mem_t *mctx, isc_hmac_key_t **keyp) {
+		    isc_hmac_key_t **keyp) {
 	isc_hmac_key_t *key;
 	uint8_t digest[ISC_MAX_MD_SIZE];
 	unsigned int digest_len = sizeof(digest);
@@ -309,14 +309,13 @@ isc_hmac_key_create(isc_md_type_t type, const void *secret, const size_t len,
 		key_len = len;
 	}
 
-	key = isc_mem_get(mctx, STRUCT_FLEX_SIZE(key, secret, key_len));
+	key = isc_mem_get(isc_g_mctx, STRUCT_FLEX_SIZE(key, secret, key_len));
 	*key = (isc_hmac_key_t){
 		.magic = hmac_key_magic,
 		.len = key_len,
 		.params = md_to_hmac_params[type],
 	};
 	memmove(key->secret, secret, key_len);
-	isc_mem_attach(mctx, &key->mctx);
 
 	*keyp = key;
 
@@ -827,8 +826,7 @@ isc_crypto_quic_hp_protect_destroy(isc_crypto_quic_hp_protect_t **protp) {
 
 isc_result_t
 isc_crypto_quic_hp_protect_create(
-	isc_mem_t *mctx, isc_constregion_t key,
-	isc_crypto_quic_hp_protect_algorithm_t algorithm,
+	isc_constregion_t key, isc_crypto_quic_hp_protect_algorithm_t algorithm,
 	isc_crypto_quic_hp_protect_t **protp) {
 	isc_crypto_quic_hp_protect_t *prot;
 	const EVP_CIPHER *evp;
@@ -871,12 +869,11 @@ isc_crypto_quic_hp_protect_create(
 		return CRYPTO_ERROR("EVP_CipherInit_ex2");
 	}
 
-	prot = isc_mem_get(mctx, sizeof(*prot));
+	prot = isc_mem_get(isc_g_mctx, sizeof(*prot));
 	*prot = (isc_crypto_quic_hp_protect_t){
 		.magic = quic_hp_protect_magic,
 		.ctx = ctx,
 	};
-	isc_mem_attach(mctx, &prot->mctx);
 
 	*protp = prot;
 

@@ -77,8 +77,8 @@ typedef struct dns_journal dns_journal_t;
 /**************************************************************************/
 
 isc_result_t
-dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
-		      dns_diffop_t op, dns_difftuple_t **tp);
+dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, dns_diffop_t op,
+		      dns_difftuple_t **tp);
 /*!< brief
  * Create a diff tuple for the current database SOA.
  * XXX this probably belongs somewhere else.
@@ -100,7 +100,7 @@ dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
  */
 
 isc_result_t
-dns_journal_open(isc_mem_t *mctx, const char *filename, unsigned int mode,
+dns_journal_open(const char *filename, unsigned int mode,
 		 dns_journal_t **journalp);
 /*%<
  * Open the journal file 'filename' and create a dns_journal_t object for it.
@@ -274,14 +274,12 @@ dns_journal_rollforward(dns_journal_t *j, dns_db_t *db, unsigned int options);
  */
 
 isc_result_t
-dns_journal_print(isc_mem_t *mctx, uint32_t flags, const char *filename,
-		  FILE *file);
+dns_journal_print(uint32_t flags, const char *filename, FILE *file);
 /* For debugging not general use */
 
 isc_result_t
-dns_db_diff(isc_mem_t *mctx, dns_db_t *dba, dns_dbversion_t *dbvera,
-	    dns_db_t *dbb, dns_dbversion_t *dbverb,
-	    const char *journal_filename);
+dns_db_diff(dns_db_t *dba, dns_dbversion_t *dbvera, dns_db_t *dbb,
+	    dns_dbversion_t *dbverb, const char *journal_filename);
 
 isc_result_t
 dns_db_diffx(dns_diff_t *diff, dns_db_t *dba, dns_dbversion_t *dbvera,
@@ -297,8 +295,8 @@ dns_db_diffx(dns_diff_t *diff, dns_db_t *dba, dns_dbversion_t *dbvera,
  */
 
 isc_result_t
-dns_journal_compact(isc_mem_t *mctx, char *filename, uint32_t serial,
-		    uint32_t flags, uint32_t target_size);
+dns_journal_compact(char *filename, uint32_t serial, uint32_t flags,
+		    uint32_t target_size);
 /*%<
  * Attempt to compact the journal if it is greater that 'target_size'.
  * Changes from 'serial' onwards will be preserved. Changes prior than

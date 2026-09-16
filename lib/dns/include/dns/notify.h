@@ -48,7 +48,6 @@ struct dns_notifyctx {
 struct dns_notify {
 	unsigned int	 magic;
 	unsigned int	 flags;
-	isc_mem_t	*mctx;
 	dns_zone_t	*zone;
 	dns_adbfind_t	*find;
 	dns_request_t	*request;
@@ -80,8 +79,8 @@ dns_notifyctx_init(dns_notifyctx_t *nctx, dns_rdatatype_t type);
  */
 
 void
-dns_notify_create(isc_mem_t *mctx, dns_rdatatype_t type, in_port_t port,
-		  unsigned int flags, dns_notify_t **notifyp);
+dns_notify_create(dns_rdatatype_t type, in_port_t port, unsigned int flags,
+		  dns_notify_t **notifyp);
 /*%<
  *	Create a notify structure to maintain state.
  *

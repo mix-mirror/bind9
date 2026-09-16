@@ -789,18 +789,16 @@ collect(void *varg) {
 
 static void
 startup(void *arg ISC_ATTR_UNUSED) {
-	isc_loop_t *loop = isc_loop();
-	isc_mem_t *mctx = isc_loop_getmctx(loop);
 	uint32_t nloops = isc_loopmgr_nloops();
 	size_t bytes = sizeof(struct bench_state) +
 		       sizeof(struct thread_args) * nloops;
-	struct bench_state *bctx = isc_mem_cget(mctx, 1, bytes);
+	struct bench_state *bctx = isc_mem_cget(isc_g_mctx, 1, bytes);
 
 	*bctx = (struct bench_state){
 		.bytes = bytes,
 		.nloops = nloops,
 	};
-	isc_mem_attach(mctx, &bctx->mctx);
+	isc_mem_attach(isc_g_mctx, &bctx->mctx);
 
 	dispatch(bctx);
 }

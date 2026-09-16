@@ -1072,7 +1072,7 @@ main(int argc, char *argv[]) {
 
 	isc_commandline_errprint = false;
 
-#define OPTIONS "a:c:Dd:f:i:ms:T:uv:V"
+#define OPTIONS "a:c:Dd:f:i:s:T:uv:V"
 	while ((ch = isc_commandline_parse(argc, argv, OPTIONS)) != -1) {
 		switch (ch) {
 		case 'a':
@@ -1103,10 +1103,6 @@ main(int argc, char *argv[]) {
 			} else {
 				inplace = isc_commandline_argument;
 			}
-			break;
-		case 'm':
-			isc_mem_debugon(ISC_MEM_DEBUGTRACE |
-					ISC_MEM_DEBUGRECORD);
 			break;
 		case 's':
 			startstr = isc_commandline_argument;

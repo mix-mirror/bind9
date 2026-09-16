@@ -89,7 +89,6 @@ typedef struct MDB_env MDB_env;
 struct dns_view {
 	/* Unlocked. */
 	unsigned int	   magic;
-	isc_mem_t	  *mctx;
 	dns_rdataclass_t   rdclass;
 	char		  *name;
 	dns_zt_t	  *zonetable;
@@ -243,11 +242,11 @@ struct dns_view {
 
 	/* Registered module instances */
 	void *plugins;
-	void (*plugins_free)(isc_mem_t *, void **);
+	void (*plugins_free)(void **);
 
 	/* Hook table */
 	void *hooktable; /* ns_hooktable */
-	void (*hooktable_free)(isc_mem_t *, void **);
+	void (*hooktable_free)(void **);
 };
 
 #define DNS_VIEW_MAGIC	     ISC_MAGIC('V', 'i', 'e', 'w')
@@ -275,8 +274,8 @@ struct dns_view {
 #endif /* __OpenBSD__ */
 
 void
-dns_view_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispmgr,
-		dns_rdataclass_t rdclass, const char *name, dns_view_t **viewp);
+dns_view_create(dns_dispatchmgr_t *dispmgr, dns_rdataclass_t rdclass,
+		const char *name, dns_view_t **viewp);
 /*%<
  * Create a view.
  *

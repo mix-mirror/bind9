@@ -68,8 +68,6 @@ setup_workers(void **state ISC_ATTR_UNUSED) {
 
 int
 setup_mctx(void **state ISC_ATTR_UNUSED) {
-	isc_mem_debugon(ISC_MEM_DEBUGRECORD);
-
 	return 0;
 }
 

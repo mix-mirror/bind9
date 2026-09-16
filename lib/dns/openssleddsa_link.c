@@ -111,7 +111,7 @@ openssleddsa_createctx(dst_key_t *key, dst_context_t *dctx) {
 	UNUSED(key);
 	REQUIRE(alginfo != NULL);
 
-	isc_buffer_allocate(dctx->mctx, &buf, 64);
+	isc_buffer_allocate(isc_g_mctx, &buf, 64);
 	dctx->ctxdata.generic = buf;
 
 	return ISC_R_SUCCESS;
@@ -148,7 +148,7 @@ openssleddsa_adddata(dst_context_t *dctx, const isc_region_t *data) {
 	}
 
 	length = isc_buffer_length(buf) + data->length + 64;
-	isc_buffer_allocate(dctx->mctx, &nbuf, length);
+	isc_buffer_allocate(isc_g_mctx, &nbuf, length);
 	isc_buffer_usedregion(buf, &r);
 	(void)isc_buffer_copyregion(nbuf, &r);
 	(void)isc_buffer_copyregion(nbuf, data);
@@ -388,7 +388,7 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 
 	if (dst__openssl_keypair_isprivate(key)) {
 		len = alginfo->key_size;
-		buf = isc_mem_get(key->mctx, len);
+		buf = isc_mem_get(isc_g_mctx, len);
 		if (EVP_PKEY_get_raw_private_key(key->keydata.pkeypair.priv,
 						 buf, &len) == 1)
 		{
@@ -420,7 +420,7 @@ openssleddsa_tofile(const dst_key_t *key, const char *directory) {
 
 cleanup:
 	if (buf != NULL) {
-		isc_mem_put(key->mctx, buf, alginfo->key_size);
+		isc_mem_put(isc_g_mctx, buf, alginfo->key_size);
 	}
 	return result;
 }
@@ -433,12 +433,11 @@ openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 	int i, privkey_index = -1;
 	const char *label = NULL;
 	EVP_PKEY *pkey = NULL;
-	isc_mem_t *mctx = key->mctx;
 
 	REQUIRE(alginfo != NULL);
 
 	/* read private key file */
-	CHECK(dst__privstruct_parse(key, DST_ALG_ED25519, lexer, mctx, &priv));
+	CHECK(dst__privstruct_parse(key, DST_ALG_ED25519, lexer, &priv));
 
 	if (key->external) {
 		if (priv.nelements != 0) {
@@ -503,7 +502,7 @@ openssleddsa_parse(dst_key_t *key, isc_lex_t *lexer, dst_key_t *pub) {
 
 cleanup:
 	EVP_PKEY_free(pkey);
-	dst__privstruct_free(&priv, mctx);
+	dst__privstruct_free(&priv);
 	isc_safe_memwipe(&priv, sizeof(priv));
 	return result;
 }
@@ -520,7 +519,7 @@ openssleddsa_fromlabel(dst_key_t *key, const char *label, const char *pin) {
 	CHECK(dst__openssl_fromlabel(alginfo->pkey_type, label, pin, &pubpkey,
 				     &privpkey));
 
-	key->label = isc_mem_strdup(key->mctx, label);
+	key->label = isc_mem_strdup(isc_g_mctx, label);
 	key->key_size = EVP_PKEY_bits(privpkey);
 	key->keydata.pkeypair.priv = privpkey;
 	key->keydata.pkeypair.pub = pubpkey;

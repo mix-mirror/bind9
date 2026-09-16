@@ -40,26 +40,22 @@ struct dns_order {
 	unsigned int magic;
 	isc_refcount_t references;
 	ISC_LIST(dns_order_ent_t) ents;
-	isc_mem_t *mctx;
 };
 
 #define DNS_ORDER_MAGIC	       ISC_MAGIC('O', 'r', 'd', 'r')
 #define DNS_ORDER_VALID(order) ISC_MAGIC_VALID(order, DNS_ORDER_MAGIC)
 
 void
-dns_order_create(isc_mem_t *mctx, dns_order_t **orderp) {
-	dns_order_t *order = NULL;
-
+dns_order_create(dns_order_t **orderp) {
 	REQUIRE(orderp != NULL && *orderp == NULL);
 
-	order = isc_mem_get(mctx, sizeof(*order));
+	dns_order_t *order = isc_mem_get(isc_g_mctx, sizeof(*order));
 	*order = (dns_order_t){
 		.ents = ISC_LIST_INITIALIZER,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.magic = DNS_ORDER_MAGIC,
 	};
 
-	isc_mem_attach(mctx, &order->mctx);
 	*orderp = order;
 }
 
@@ -67,11 +63,9 @@ void
 dns_order_add(dns_order_t *order, const dns_name_t *name,
 	      dns_rdatatype_t rdtype, dns_rdataclass_t rdclass,
 	      dns_orderopt_t mode) {
-	dns_order_ent_t *ent = NULL;
-
 	REQUIRE(DNS_ORDER_VALID(order));
 
-	ent = isc_mem_get(order->mctx, sizeof(*ent));
+	dns_order_ent_t *ent = isc_mem_get(isc_g_mctx, sizeof(*ent));
 	*ent = (dns_order_ent_t){
 		.rdtype = rdtype,
 		.rdclass = rdclass,
@@ -133,8 +127,8 @@ dns_order_detach(dns_order_t **orderp) {
 		order->magic = 0;
 		ISC_LIST_FOREACH(order->ents, ent, link) {
 			ISC_LIST_UNLINK(order->ents, ent, link);
-			isc_mem_put(order->mctx, ent, sizeof(*ent));
+			isc_mem_put(isc_g_mctx, ent, sizeof(*ent));
 		}
-		isc_mem_putanddetach(&order->mctx, order, sizeof(*order));
+		isc_mem_put(isc_g_mctx, order, sizeof(*order));
 	}
 }

@@ -111,32 +111,7 @@ main(int argc, char *argv[]) {
 	FILE *f;
 	int ch;
 
-#define CMDLINE_FLAGS "bdm:prst"
-	/*
-	 * Process memory debugging argument first.
-	 */
-	while ((ch = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
-		switch (ch) {
-		case 'm':
-			if (strcasecmp(isc_commandline_argument, "record") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGRECORD);
-			}
-			if (strcasecmp(isc_commandline_argument, "trace") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGTRACE);
-			}
-			if (strcasecmp(isc_commandline_argument, "usage") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGUSAGE);
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	isc_commandline_reset = true;
-
+#define CMDLINE_FLAGS "bdprst"
 	while ((ch = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
 		switch (ch) {
 		case 'b':

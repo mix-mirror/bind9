@@ -39,19 +39,17 @@ isc__proxy2_handler_init_direct(isc_proxy2_handler_t *restrict handler,
 }
 
 void
-isc_proxy2_handler_init(isc_proxy2_handler_t *restrict handler, isc_mem_t *mctx,
+isc_proxy2_handler_init(isc_proxy2_handler_t *restrict handler,
 			const size_t max_size, isc_proxy2_handler_cb_t cb,
 			void *cbarg) {
 	REQUIRE(handler != NULL);
-	REQUIRE(mctx != NULL);
 	REQUIRE(max_size == 0 || (max_size >= ISC_PROXY2_HEADER_SIZE &&
 				  max_size <= ISC_PROXY2_MAX_SIZE));
 	REQUIRE(cb != NULL);
 
 	isc__proxy2_handler_init_direct(handler, max_size, NULL, cb, cbarg);
 
-	isc_mem_attach(mctx, &handler->mctx);
-	isc_buffer_setmctx(&handler->hdrbuf, handler->mctx);
+	isc_buffer_setmctx(&handler->hdrbuf, isc_g_mctx);
 }
 
 void
@@ -63,10 +61,7 @@ isc_proxy2_handler_uninit(isc_proxy2_handler_t *restrict handler) {
 	 * make any sense.
 	 */
 	INSIST(handler->calling_cb == false);
-	if (handler->mctx != NULL) {
-		isc_buffer_clearmctx(&handler->hdrbuf);
-		isc_mem_detach(&handler->mctx);
-	}
+	isc_buffer_clearmctx(&handler->hdrbuf);
 	isc_buffer_invalidate(&handler->hdrbuf);
 }
 
@@ -75,7 +70,6 @@ isc_proxy2_handler_clear(isc_proxy2_handler_t *restrict handler) {
 	REQUIRE(handler != NULL);
 
 	*handler = (isc_proxy2_handler_t){ .result = ISC_R_UNSET,
-					   .mctx = handler->mctx,
 					   .cb = handler->cb,
 					   .cbarg = handler->cbarg,
 					   .hdrbuf = handler->hdrbuf,
@@ -86,15 +80,14 @@ isc_proxy2_handler_clear(isc_proxy2_handler_t *restrict handler) {
 }
 
 isc_proxy2_handler_t *
-isc_proxy2_handler_new(isc_mem_t *mctx, const size_t max_size,
-		       isc_proxy2_handler_cb_t cb, void *cbarg) {
+isc_proxy2_handler_new(const size_t max_size, isc_proxy2_handler_cb_t cb,
+		       void *cbarg) {
 	isc_proxy2_handler_t *newhandler;
 
-	REQUIRE(mctx != NULL);
 	REQUIRE(cb != NULL);
 
-	newhandler = isc_mem_get(mctx, sizeof(*newhandler));
-	isc_proxy2_handler_init(newhandler, mctx, max_size, cb, cbarg);
+	newhandler = isc_mem_get(isc_g_mctx, sizeof(*newhandler));
+	isc_proxy2_handler_init(newhandler, max_size, cb, cbarg);
 
 	return newhandler;
 }
@@ -102,14 +95,12 @@ isc_proxy2_handler_new(isc_mem_t *mctx, const size_t max_size,
 void
 isc_proxy2_handler_free(isc_proxy2_handler_t **restrict phandler) {
 	isc_proxy2_handler_t *restrict handler = NULL;
-	isc_mem_t *mctx = NULL;
 	REQUIRE(phandler != NULL && *phandler != NULL);
 
 	handler = *phandler;
 
-	isc_mem_attach(handler->mctx, &mctx);
 	isc_proxy2_handler_uninit(handler);
-	isc_mem_putanddetach(&mctx, handler, sizeof(*handler));
+	isc_mem_put(isc_g_mctx, handler, sizeof(*handler));
 
 	*phandler = NULL;
 }

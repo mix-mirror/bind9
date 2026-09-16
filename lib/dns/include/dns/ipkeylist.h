@@ -43,7 +43,7 @@ dns_ipkeylist_init(dns_ipkeylist_t *ipkl);
  */
 
 void
-dns_ipkeylist_clear(isc_mem_t *mctx, dns_ipkeylist_t *ipkl);
+dns_ipkeylist_clear(dns_ipkeylist_t *ipkl);
 /*%<
  * Free `ipkl` contents using `mctx`.
  *
@@ -56,8 +56,7 @@ dns_ipkeylist_clear(isc_mem_t *mctx, dns_ipkeylist_t *ipkl);
  */
 
 isc_result_t
-dns_ipkeylist_copy(isc_mem_t *mctx, const dns_ipkeylist_t *src,
-		   dns_ipkeylist_t *dst);
+dns_ipkeylist_copy(const dns_ipkeylist_t *src, dns_ipkeylist_t *dst);
 /*%<
  * Deep copy `src` into empty `dst`, allocating `dst`'s contents.
  *
@@ -73,7 +72,7 @@ dns_ipkeylist_copy(isc_mem_t *mctx, const dns_ipkeylist_t *src,
  */
 
 void
-dns_ipkeylist_resize(isc_mem_t *mctx, dns_ipkeylist_t *ipkl, unsigned int n);
+dns_ipkeylist_resize(dns_ipkeylist_t *ipkl, unsigned int n);
 /*%<
  * Resize ipkl to contain n elements. Size (count) is not changed, and the
  * added space is zeroed.

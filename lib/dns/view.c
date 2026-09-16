@@ -84,9 +84,8 @@
 #define UNREACH_BACKOFF_ELIGIBLE_SEC  ((uint16_t)120)
 
 void
-dns_view_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
-		dns_rdataclass_t rdclass, const char *name,
-		dns_view_t **viewp) {
+dns_view_create(dns_dispatchmgr_t *dispatchmgr, dns_rdataclass_t rdclass,
+		const char *name, dns_view_t **viewp) {
 	dns_view_t *view = NULL;
 	isc_result_t result;
 	char buffer[1024];
@@ -110,11 +109,11 @@ dns_view_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
 	result = isc_file_sanitize(NULL, name, "nta", buffer, sizeof(buffer));
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-	view = isc_mem_get(mctx, sizeof(*view));
+	view = isc_mem_get(isc_g_mctx, sizeof(*view));
 	*view = (dns_view_t){
 		.rdclass = rdclass,
-		.name = isc_mem_strdup(mctx, name),
-		.nta_file = isc_mem_strdup(mctx, buffer),
+		.name = isc_mem_strdup(isc_g_mctx, name),
+		.nta_file = isc_mem_strdup(isc_g_mctx, buffer),
 		.recursion = true,
 		.enablevalidation = true,
 		.minimalresponses = dns_minimal_no,
@@ -145,35 +144,33 @@ dns_view_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
 
 	ISC_LINK_INIT(view, link);
 
-	isc_mem_attach(mctx, &view->mctx);
-
 	if (dispatchmgr != NULL) {
 		dns_dispatchmgr_attach(dispatchmgr, &view->dispatchmgr);
 	}
 
 	isc_mutex_init(&view->lock);
 
-	dns_zt_create(mctx, view, &view->zonetable);
+	dns_zt_create(view, &view->zonetable);
 
-	dns_fwdtable_create(mctx, view, &view->fwdtable);
+	dns_fwdtable_create(view, &view->fwdtable);
 
-	dns_tsigkeyring_create(view->mctx, &view->dynamickeys);
+	dns_tsigkeyring_create(&view->dynamickeys);
 
-	view->failcache = dns_badcache_new(view->mctx);
+	view->failcache = dns_badcache_new();
 
-	view->unreachcache = dns_unreachcache_new(
-		view->mctx, UNREACH_HOLD_TIME_INITIAL_SEC,
-		UNREACH_HOLD_TIME_MAX_SEC, UNREACH_BACKOFF_ELIGIBLE_SEC);
+	view->unreachcache = dns_unreachcache_new(UNREACH_HOLD_TIME_INITIAL_SEC,
+						  UNREACH_HOLD_TIME_MAX_SEC,
+						  UNREACH_BACKOFF_ELIGIBLE_SEC);
 
 	isc_mutex_init(&view->newzone.lock);
 
-	dns_order_create(view->mctx, &view->order);
+	dns_order_create(&view->order);
 
-	dns_peerlist_new(view->mctx, &view->peers);
+	dns_peerlist_new(&view->peers);
 
-	dns_aclenv_create(view->mctx, &view->aclenv);
+	dns_aclenv_create(&view->aclenv);
 
-	dns_nametree_create(view->mctx, DNS_NAMETREE_COUNT, "sfd", &view->sfd);
+	dns_nametree_create(DNS_NAMETREE_COUNT, "sfd", &view->sfd);
 
 	view->magic = DNS_VIEW_MAGIC;
 	*viewp = view;
@@ -359,7 +356,7 @@ destroy(dns_view_t *view) {
 		view->newzone.dbenv = NULL;
 	}
 	if (view->newzone.db != NULL) {
-		isc_mem_free(view->mctx, view->newzone.db);
+		isc_mem_free(isc_g_mctx, view->newzone.db);
 	}
 	dns_fwdtable_destroy(&view->fwdtable);
 	dns_aclenv_detach(&view->aclenv);
@@ -373,15 +370,15 @@ destroy(dns_view_t *view) {
 	isc_mutex_destroy(&view->lock);
 	isc_refcount_destroy(&view->references);
 	isc_refcount_destroy(&view->weakrefs);
-	isc_mem_free(view->mctx, view->nta_file);
-	isc_mem_free(view->mctx, view->name);
+	isc_mem_free(isc_g_mctx, view->nta_file);
+	isc_mem_free(isc_g_mctx, view->name);
 	if (view->hooktable != NULL && view->hooktable_free != NULL) {
-		view->hooktable_free(view->mctx, &view->hooktable);
+		view->hooktable_free(&view->hooktable);
 	}
 	if (view->plugins != NULL && view->plugins_free != NULL) {
-		view->plugins_free(view->mctx, &view->plugins);
+		view->plugins_free(&view->plugins);
 	}
-	isc_mem_putanddetach(&view->mctx, view, sizeof(*view));
+	isc_mem_put(isc_g_mctx, view, sizeof(*view));
 }
 
 void
@@ -555,9 +552,8 @@ dns_view_createresolver(dns_view_t *view, unsigned int options,
 	dns_adb_create(mctx, view, &view->adb);
 	isc_mem_detach(&mctx);
 
-	result = dns_requestmgr_create(view->mctx, view->dispatchmgr,
-				       dispatchv4, dispatchv6,
-				       &view->requestmgr);
+	result = dns_requestmgr_create(view->dispatchmgr, dispatchv4,
+				       dispatchv6, &view->requestmgr);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_adb;
 	}
@@ -1115,7 +1111,7 @@ dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
 		 * the same, and this avoid adding extra code here to extract
 		 * A/AAAA rdataset if any.
 		 */
-		dns_delegset_fromnsrdataset(view->mctx, &rdataset, delegsetp);
+		dns_delegset_fromnsrdataset(isc_g_mctx, &rdataset, delegsetp);
 	}
 
 	dns_rdataset_cleanup(&rdataset);
@@ -1701,7 +1697,7 @@ dns_view_loadnta(dns_view_t *view) {
 		return ISC_R_SUCCESS;
 	}
 
-	isc_lex_create(view->mctx, 1025, &lex);
+	isc_lex_create(isc_g_mctx, 1025, &lex);
 	CHECK(isc_lex_openfile(lex, view->nta_file));
 	CHECK(dns_view_getntatable(view, &ntatable));
 

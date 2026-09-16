@@ -43,8 +43,6 @@
 #include <isc/util.h>
 #include <isc/uv.h>
 
-#include "../loop_p.h"
-#include "../openssl_shim.h"
 #include "netmgr-int.h"
 
 isc__netmgr_t *isc__netmgr = NULL;
@@ -104,7 +102,7 @@ static const isc_statscounter_t tcp6statsindex[] = {
 static void
 nmsocket_maybe_destroy(isc_nmsocket_t *sock FLARG);
 static void
-nmhandle_free(isc_nmsocket_t *sock, isc_nmhandle_t *handle);
+nmhandle_free(isc_nmhandle_t *handle);
 
 /*%<
  * Issue a 'handle closed' callback on the socket.
@@ -153,7 +151,7 @@ netmgr_teardown(void *arg ISC_ATTR_UNUSED) {
 #endif
 
 void
-isc_netmgr_create(isc_mem_t *mctx) {
+isc_netmgr_create(void) {
 	isc__netmgr_t *netmgr = NULL;
 	in_port_t port_low, port_high;
 
@@ -173,12 +171,11 @@ isc_netmgr_create(isc_mem_t *mctx) {
 			    uv_version_string(), UV_VERSION_STRING);
 	}
 
-	netmgr = isc_mem_get(mctx, sizeof(*netmgr));
+	netmgr = isc_mem_get(isc_g_mctx, sizeof(*netmgr));
 	*netmgr = (isc__netmgr_t){
 		.nloops = isc_loopmgr_nloops(),
 	};
 
-	isc_mem_attach(mctx, &netmgr->mctx);
 	isc_refcount_init(&netmgr->references, 1);
 	atomic_init(&netmgr->maxudp, 0);
 	atomic_init(&netmgr->shuttingdown, false);
@@ -207,7 +204,7 @@ isc_netmgr_create(isc_mem_t *mctx) {
 	atomic_init(&netmgr->advertised, 30000);
 	atomic_init(&netmgr->primaries, 30000);
 
-	netmgr->workers = isc_mem_cget(mctx, netmgr->nloops,
+	netmgr->workers = isc_mem_cget(isc_g_mctx, netmgr->nloops,
 				       sizeof(netmgr->workers[0]));
 
 	isc_loopmgr_teardown(netmgr_teardown, netmgr);
@@ -219,21 +216,19 @@ isc_netmgr_create(isc_mem_t *mctx) {
 		isc__networker_t *worker = &netmgr->workers[i];
 
 		*worker = (isc__networker_t){
-			.recvbuf = isc_mem_get(loop->mctx,
+			.recvbuf = isc_mem_get(isc_g_mctx,
 					       ISC_NETMGR_RECVBUF_SIZE),
 			.active_sockets = ISC_LIST_INITIALIZER,
 		};
 
 		isc__netmgr_ref(netmgr);
 
-		isc_mem_attach(loop->mctx, &worker->mctx);
-
-		isc_mempool_create(worker->mctx, sizeof(isc_nmsocket_t),
+		isc_mempool_create(isc_g_mctx, sizeof(isc_nmsocket_t),
 				   "nmsocket_pool", &worker->nmsocket_pool);
 		isc_mempool_setfreemax(worker->nmsocket_pool,
 				       ISC_NM_NMSOCKET_MAX);
 
-		isc_mempool_create(worker->mctx, sizeof(isc__nm_uvreq_t),
+		isc_mempool_create(isc_g_mctx, sizeof(isc__nm_uvreq_t),
 				   "uvreq_pool", &worker->uvreq_pool);
 		isc_mempool_setfreemax(worker->uvreq_pool, ISC_NM_UVREQS_MAX);
 
@@ -269,9 +264,9 @@ netmgr_destroy(isc__netmgr_t *netmgr) {
 		isc_stats_detach(&netmgr->stats);
 	}
 
-	isc_mem_cput(netmgr->mctx, netmgr->workers, netmgr->nloops,
+	isc_mem_cput(isc_g_mctx, netmgr->workers, netmgr->nloops,
 		     sizeof(netmgr->workers[0]));
-	isc_mem_putanddetach(&netmgr->mctx, netmgr, sizeof(*netmgr));
+	isc_mem_put(isc_g_mctx, netmgr, sizeof(*netmgr));
 }
 
 #if ISC_NETMGR_TRACE
@@ -481,8 +476,8 @@ nmsocket_cleanup(void *arg) {
 		/*
 		 * Now free them.
 		 */
-		isc_mem_cput(sock->worker->mctx, sock->children,
-			     sock->nchildren, sizeof(*sock));
+		isc_mem_cput(isc_g_mctx, sock->children, sock->nchildren,
+			     sizeof(*sock));
 		sock->nchildren = 0;
 	}
 
@@ -498,7 +493,7 @@ nmsocket_cleanup(void *arg) {
 
 	ISC_LIST_FOREACH(sock->inactive_handles, handle, inactive_link) {
 		ISC_LIST_DEQUEUE(sock->inactive_handles, handle, inactive_link);
-		nmhandle_free(sock, handle);
+		nmhandle_free(handle);
 	}
 
 	INSIST(sock->server == NULL);
@@ -811,8 +806,8 @@ isc__nm_free_uvbuf(isc_nmsocket_t *sock, const uv_buf_t *buf) {
 }
 
 static isc_nmhandle_t *
-alloc_handle(isc_nmsocket_t *sock) {
-	isc_nmhandle_t *handle = isc_mem_get(sock->worker->mctx,
+alloc_handle(void) {
+	isc_nmhandle_t *handle = isc_mem_get(isc_g_mctx,
 					     sizeof(isc_nmhandle_t));
 
 	*handle = (isc_nmhandle_t){
@@ -851,7 +846,7 @@ isc___nmhandle_get(isc_nmsocket_t *sock, isc_sockaddr_t const *peer,
 
 	isc_nmhandle_t *handle = dequeue_handle(sock);
 	if (handle == NULL) {
-		handle = alloc_handle(sock);
+		handle = alloc_handle();
 	}
 
 	NETMGR_TRACE_LOG(
@@ -927,14 +922,14 @@ isc_nmhandle_is_stream(isc_nmhandle_t *handle) {
 }
 
 static void
-nmhandle_free(isc_nmsocket_t *sock, isc_nmhandle_t *handle) {
+nmhandle_free(isc_nmhandle_t *handle) {
 	handle->magic = 0;
 
 	if (handle->dofree != NULL) {
 		handle->dofree(handle->opaque);
 	}
 
-	isc_mem_put(sock->worker->mctx, handle, sizeof(*handle));
+	isc_mem_put(isc_g_mctx, handle, sizeof(*handle));
 }
 
 static void
@@ -951,7 +946,7 @@ nmhandle__destroy(isc_nmhandle_t *handle) {
 		sock->inactive_handles_cur++;
 		ISC_LIST_APPEND(sock->inactive_handles, handle, inactive_link);
 	} else {
-		nmhandle_free(sock, handle);
+		nmhandle_free(handle);
 	}
 #endif
 
@@ -2519,9 +2514,8 @@ settlsctx_cb(void *arg) {
 	const isc_tid_t tid = isc_tid();
 	isc_nmsocket_t *listener = data->listener;
 	isc_tlsctx_t *tlsctx = data->tlsctx;
-	isc__networker_t *worker = isc__networker_current();
 
-	isc_mem_put(worker->loop->mctx, data, sizeof(*data));
+	isc_mem_put(isc_g_mctx, data, sizeof(*data));
 
 	REQUIRE(listener->type == isc_nm_tlslistener);
 
@@ -2537,7 +2531,7 @@ set_tlsctx_workers(isc_nmsocket_t *listener, isc_tlsctx_t *tlsctx) {
 	/* Update the TLS context reference for every worker thread. */
 	for (size_t i = 0; i < nworkers; i++) {
 		isc__networker_t *worker = isc__networker_get(i);
-		settlsctx_data_t *data = isc_mem_cget(worker->loop->mctx, 1,
+		settlsctx_data_t *data = isc_mem_cget(isc_g_mctx, 1,
 						      sizeof(*data));
 
 		isc__nmsocket_attach(listener, &data->listener);
@@ -2628,8 +2622,7 @@ isc__networker_destroy(isc__networker_t *worker) {
 	isc_mempool_destroy(&worker->uvreq_pool);
 	isc_mempool_destroy(&worker->nmsocket_pool);
 
-	isc_mem_putanddetach(&worker->mctx, worker->recvbuf,
-			     ISC_NETMGR_RECVBUF_SIZE);
+	isc_mem_put(isc_g_mctx, worker->recvbuf, ISC_NETMGR_RECVBUF_SIZE);
 
 	isc__netmgr_unref(isc__netmgr);
 }

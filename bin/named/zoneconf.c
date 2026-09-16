@@ -199,14 +199,13 @@ configure_zone_ssutable(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 			dns_zone_t *zone, const char *zname) {
 	const cfg_obj_t *updatepolicy = NULL;
 	dns_ssutable_t *table = NULL;
-	isc_mem_t *mctx = dns_zone_getmctx(zone);
 	bool autoddns = false;
 	isc_result_t result = ISC_R_SUCCESS;
 	char debug[1024];
 	isc_buffer_t dbuf;
 
 	isc_buffer_init(&dbuf, debug, sizeof(debug));
-	isc_buffer_setmctx(&dbuf, mctx);
+	isc_buffer_setmctx(&dbuf, isc_g_mctx);
 
 	(void)named_config_findopt(zconfig, tconfig, "update-policy",
 				   &updatepolicy);
@@ -222,7 +221,7 @@ configure_zone_ssutable(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 		updatepolicy = NULL;
 	}
 
-	dns_ssutable_create(mctx, &table);
+	dns_ssutable_create(isc_g_mctx, &table);
 
 	CFG_LIST_FOREACH(updatepolicy, element) {
 		const cfg_obj_t *stmt = cfg_listelt_value(element);
@@ -303,7 +302,7 @@ configure_zone_ssutable(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 		if (n == 0) {
 			types = NULL;
 		} else {
-			types = isc_mem_cget(mctx, n, sizeof(*types));
+			types = isc_mem_cget(isc_g_mctx, n, sizeof(*types));
 		}
 
 		i = 0;
@@ -332,7 +331,7 @@ configure_zone_ssutable(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 					cfg_obj_log(identity, ISC_LOG_ERROR,
 						    "'%s' is not a valid count",
 						    bracket);
-					isc_mem_cput(mctx, types, n,
+					isc_mem_cput(isc_g_mctx, types, n,
 						     sizeof(*types));
 					goto cleanup;
 				}
@@ -346,7 +345,8 @@ configure_zone_ssutable(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 				cfg_obj_log(identity, ISC_LOG_ERROR,
 					    "'%.*s' is not a valid type",
 					    (int)r.length, str);
-				isc_mem_cput(mctx, types, n, sizeof(*types));
+				isc_mem_cput(isc_g_mctx, types, n,
+					     sizeof(*types));
 				goto cleanup;
 			}
 		}
@@ -357,7 +357,7 @@ configure_zone_ssutable(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 				     mtype, dns_fixedname_name(&fname), n,
 				     types, isc_buffer_base(&dbuf));
 		if (types != NULL) {
-			isc_mem_cput(mctx, types, n, sizeof(*types));
+			isc_mem_cput(isc_g_mctx, types, n, sizeof(*types));
 		}
 	}
 
@@ -412,7 +412,6 @@ configure_staticstub_serveraddrs(const cfg_obj_t *zconfig, dns_zone_t *zone,
 				 dns_rdatalist_t *rdatalist_ns,
 				 dns_rdatalist_t *rdatalist_a,
 				 dns_rdatalist_t *rdatalist_aaaa) {
-	isc_mem_t *mctx = dns_zone_getmctx(zone);
 	isc_region_t region, sregion;
 	dns_rdata_t *rdata = NULL;
 	isc_result_t result = ISC_R_SUCCESS;
@@ -451,7 +450,7 @@ configure_staticstub_serveraddrs(const cfg_obj_t *zconfig, dns_zone_t *zone,
 			break;
 		}
 
-		rdata = isc_mem_get(mctx, sizeof(*rdata) + region.length);
+		rdata = isc_mem_get(isc_g_mctx, sizeof(*rdata) + region.length);
 		region.base = (unsigned char *)(rdata + 1);
 		memmove(region.base, &na.type, region.length);
 		dns_rdata_init(rdata);
@@ -472,7 +471,7 @@ configure_staticstub_serveraddrs(const cfg_obj_t *zconfig, dns_zone_t *zone,
 
 	/* Add to the list an apex NS with the ns name being the origin name */
 	dns_name_toregion(dns_zone_getorigin(zone), &sregion);
-	rdata = isc_mem_get(mctx, sizeof(*rdata) + sregion.length);
+	rdata = isc_mem_get(isc_g_mctx, sizeof(*rdata) + sregion.length);
 	region.length = sregion.length;
 	region.base = (unsigned char *)(rdata + 1);
 	memmove(region.base, sregion.base, region.length);
@@ -494,7 +493,6 @@ static isc_result_t
 configure_staticstub_servernames(const cfg_obj_t *zconfig, dns_zone_t *zone,
 				 dns_rdatalist_t *rdatalist,
 				 const char *zname) {
-	isc_mem_t *mctx = dns_zone_getmctx(zone);
 	dns_rdata_t *rdata = NULL;
 	isc_region_t sregion, region;
 	isc_result_t result = ISC_R_SUCCESS;
@@ -530,7 +528,8 @@ configure_staticstub_servernames(const cfg_obj_t *zconfig, dns_zone_t *zone,
 		}
 
 		dns_name_toregion(nsname, &sregion);
-		rdata = isc_mem_get(mctx, sizeof(*rdata) + sregion.length);
+		rdata = isc_mem_get(isc_g_mctx,
+				    sizeof(*rdata) + sregion.length);
 		region.length = sregion.length;
 		region.base = (unsigned char *)(rdata + 1);
 		memmove(region.base, sregion.base, region.length);
@@ -551,7 +550,6 @@ configure_staticstub(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 		     dns_zone_t *zone, const char *zname, const char *dbtype) {
 	int i = 0;
 	const cfg_obj_t *obj;
-	isc_mem_t *mctx = dns_zone_getmctx(zone);
 	dns_db_t *db = NULL;
 	dns_dbversion_t *dbversion = NULL;
 	dns_dbnode_t *apexnode = NULL;
@@ -564,7 +562,7 @@ configure_staticstub(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 	isc_region_t region;
 
 	/* Create the DB beforehand */
-	RETERR(dns_db_create(mctx, dbtype, dns_zone_getorigin(zone),
+	RETERR(dns_db_create(isc_g_mctx, dbtype, dns_zone_getorigin(zone),
 			     dns_dbtype_stub, dns_zone_getclass(zone), 0, NULL,
 			     &db));
 
@@ -667,7 +665,7 @@ cleanup:
 		ISC_LIST_FOREACH(rdatalists[i]->rdata, rdata, link) {
 			ISC_LIST_UNLINK(rdatalists[i]->rdata, rdata, link);
 			dns_rdata_toregion(rdata, &region);
-			isc_mem_put(mctx, rdata,
+			isc_mem_put(isc_g_mctx, rdata,
 				    sizeof(*rdata) + region.length);
 		}
 	}
@@ -983,7 +981,6 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	static char default_dbtype[] = ZONEDB_DEFAULT;
 	static char dlz_dbtype[] = "dlz";
 	char *cpval = default_dbtype;
-	isc_mem_t *mctx = dns_zone_getmctx(zone);
 	dns_zonetype_t ztype;
 	int i;
 	int32_t journal_size;
@@ -1066,7 +1063,7 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	obj = NULL;
 	result = named_config_get(nooptions, "database", &obj);
 	if (result == ISC_R_SUCCESS) {
-		cpval = isc_mem_strdup(mctx, cfg_obj_asstring(obj));
+		cpval = isc_mem_strdup(isc_g_mctx, cfg_obj_asstring(obj));
 	}
 
 	obj = NULL;
@@ -1074,13 +1071,13 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	if (result == ISC_R_SUCCESS) {
 		const char *dlzname = cfg_obj_asstring(obj);
 		size_t len = strlen(dlzname) + 5;
-		cpval = isc_mem_allocate(mctx, len);
+		cpval = isc_mem_allocate(isc_g_mctx, len);
 		snprintf(cpval, len, "dlz %s", dlzname);
 	}
 
-	result = strtoargv(mctx, cpval, &dbargc, &dbargv);
+	result = strtoargv(isc_g_mctx, cpval, &dbargc, &dbargv);
 	if (result != ISC_R_SUCCESS && cpval != default_dbtype) {
-		isc_mem_free(mctx, cpval);
+		isc_mem_free(isc_g_mctx, cpval);
 		CHECK(result);
 	}
 
@@ -1090,9 +1087,9 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	 * compiler w/o generating a warning.
 	 */
 	dns_zone_setdbtype(zone, dbargc, (const char *const *)dbargv);
-	isc_mem_cput(mctx, dbargv, dbargc, sizeof(*dbargv));
+	isc_mem_cput(isc_g_mctx, dbargv, dbargc, sizeof(*dbargv));
 	if (cpval != default_dbtype && cpval != dlz_dbtype) {
-		isc_mem_free(mctx, cpval);
+		isc_mem_free(isc_g_mctx, cpval);
 	}
 
 	obj = NULL;
@@ -1166,12 +1163,12 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 
 		dns_zone_setfile(raw, filename, initial_file, masterformat,
 				 masterstyle);
-		signedname = isc_mem_get(mctx, signedlen);
+		signedname = isc_mem_get(isc_g_mctx, signedlen);
 
 		(void)snprintf(signedname, signedlen, "%s" SIGNED, filename);
 		dns_zone_setfile(zone, signedname, NULL, dns_masterformat_raw,
 				 NULL);
-		isc_mem_put(mctx, signedname, signedlen);
+		isc_mem_put(isc_g_mctx, signedname, signedlen);
 	} else {
 		dns_zone_setfile(zone, filename, initial_file, masterformat,
 				 masterstyle);
@@ -1231,9 +1228,10 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	rcvquerystats = NULL;
 	dnssecsignstats = NULL;
 	if (statlevel == dns_zonestat_full) {
-		isc_stats_create(mctx, &zoneqrystats, ns_statscounter_max);
-		dns_rdatatypestats_create(mctx, &rcvquerystats);
-		dns_dnssecsignstats_create(mctx, &dnssecsignstats);
+		isc_stats_create(isc_g_mctx, &zoneqrystats,
+				 ns_statscounter_max);
+		dns_rdatatypestats_create(isc_g_mctx, &rcvquerystats);
+		dns_dnssecsignstats_create(isc_g_mctx, &dnssecsignstats);
 	}
 	dns_zone_setrequeststats(zone, zoneqrystats);
 	dns_zone_setrcvquerystats(zone, rcvquerystats);
@@ -1335,12 +1333,12 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 			dns_ipkeylist_t ipkl;
 			dns_ipkeylist_init(&ipkl);
 
-			CHECK(named_config_getipandkeylist(config, obj, mctx,
-							   &ipkl));
+			CHECK(named_config_getipandkeylist(config, obj,
+							   isc_g_mctx, &ipkl));
 			dns_zone_setalsonotify(zone, ipkl.addrs, ipkl.sources,
 					       ipkl.keys, ipkl.tlss,
 					       ipkl.count);
-			dns_ipkeylist_clear(mctx, &ipkl);
+			dns_ipkeylist_clear(isc_g_mctx, &ipkl);
 		} else {
 			dns_zone_setalsonotify(zone, NULL, NULL, NULL, NULL, 0);
 		}
@@ -1535,7 +1533,7 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 			dns_name_t *zn = dns_zone_getorigin(zone);
 
 			CHECK(dns_name_fromstring(rad, adstr, dns_rootname, 0,
-						  mctx));
+						  isc_g_mctx));
 			if (logreports || dns_name_isroot(rad)) {
 				/* Disable RC for error-logging zones or root */
 				dns_zone_setrad(zone, NULL);
@@ -1714,10 +1712,10 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 			dns_ipkeylist_t ipkl;
 			dns_ipkeylist_init(&ipkl);
 			CHECK(named_config_getipandkeylist(config, parentals,
-							   mctx, &ipkl));
+							   isc_g_mctx, &ipkl));
 			dns_zone_setparentals(zone, ipkl.addrs, ipkl.sources,
 					      ipkl.keys, ipkl.tlss, ipkl.count);
-			dns_ipkeylist_clear(mctx, &ipkl);
+			dns_ipkeylist_clear(isc_g_mctx, &ipkl);
 		} else {
 			dns_zone_setparentals(zone, NULL, NULL, NULL, NULL, 0);
 		}
@@ -1863,7 +1861,7 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		(void)named_config_get(nooptions, "allow-transfer", &obj);
 		if (obj == NULL) {
 			dns_acl_t *none = NULL;
-			dns_acl_none(mctx, &none);
+			dns_acl_none(isc_g_mctx, &none);
 			dns_zone_setxfracl(zone, none);
 			dns_acl_detach(&none);
 		}
@@ -1894,13 +1892,13 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 			dns_ipkeylist_t ipkl;
 			dns_ipkeylist_init(&ipkl);
 
-			CHECK(named_config_getipandkeylist(config, obj, mctx,
-							   &ipkl));
+			CHECK(named_config_getipandkeylist(config, obj,
+							   isc_g_mctx, &ipkl));
 			dns_zone_setprimaries(mayberaw, ipkl.addrs,
 					      ipkl.sources, ipkl.keys,
 					      ipkl.tlss, ipkl.count);
 			count = ipkl.count;
-			dns_ipkeylist_clear(mctx, &ipkl);
+			dns_ipkeylist_clear(isc_g_mctx, &ipkl);
 		} else {
 			dns_zone_setprimaries(mayberaw, NULL, NULL, NULL, NULL,
 					      0);
@@ -2208,13 +2206,12 @@ named_zone_loadplugins(dns_zone_t *zone, const cfg_obj_t *config,
 			.pluginctx = { .source = NS_HOOKSOURCE_ZONE,
 				       .origin = dns_zone_getorigin(zone) }
 		};
-		isc_mem_t *zmctx = dns_zone_getmctx(zone);
 
-		ns_hooktable_create(zmctx, &hookdata.hooktable);
+		ns_hooktable_create(isc_g_mctx, &hookdata.hooktable);
 		dns_zone_sethooktable(zone, hookdata.hooktable,
 				      ns_hooktable_free);
 
-		ns_plugins_create(zmctx, &hookdata.plugins);
+		ns_plugins_create(isc_g_mctx, &hookdata.plugins);
 		dns_zone_setplugins(zone, hookdata.plugins, ns_plugins_free);
 
 		RETERR(cfg_pluginlist_foreach(config, tpluginlist, aclctx,

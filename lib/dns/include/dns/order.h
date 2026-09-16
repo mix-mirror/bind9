@@ -20,7 +20,7 @@
 #include <dns/types.h>
 
 void
-dns_order_create(isc_mem_t *mctx, dns_order_t **orderp);
+dns_order_create(dns_order_t **orderp);
 /*%<
  * Create a order object.
  *

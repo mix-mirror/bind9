@@ -97,11 +97,10 @@ cancel:
 	dns__zone_lock(zone);
 
 	dns_name_t *zname = dns_fixedname_name(&fetch->name);
-	isc_mem_t *mctx = dns_zone_getmctx(zone);
 	bool free_needed;
 
 	isc_refcount_decrement(dns__zone_irefs(zone));
-	dns_name_free(zname, mctx);
+	dns_name_free(zname, isc_g_mctx);
 
 	fetch->fetchmethods.cancel_fetch(fetch);
 

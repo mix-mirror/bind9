@@ -39,7 +39,6 @@
 
 struct dns_zt {
 	unsigned int magic;
-	isc_mem_t *mctx;
 	dns_qpmulti_t *multi;
 
 	atomic_bool flush;
@@ -95,23 +94,21 @@ static dns_qpmethods_t ztqpmethods = {
 };
 
 void
-dns_zt_create(isc_mem_t *mctx, dns_view_t *view, dns_zt_t **ztp) {
+dns_zt_create(dns_view_t *view, dns_zt_t **ztp) {
 	dns_qpmulti_t *multi = NULL;
 	dns_zt_t *zt = NULL;
 
 	REQUIRE(ztp != NULL && *ztp == NULL);
 	REQUIRE(view != NULL);
 
-	dns_qpmulti_create(mctx, &ztqpmethods, view, &multi);
+	dns_qpmulti_create(isc_g_mctx, &ztqpmethods, view, &multi);
 
-	zt = isc_mem_get(mctx, sizeof(*zt));
+	zt = isc_mem_get(isc_g_mctx, sizeof(*zt));
 	*zt = (dns_zt_t){
 		.magic = ZTMAGIC,
 		.multi = multi,
 		.references = 1,
 	};
-
-	isc_mem_attach(mctx, &zt->mctx);
 
 	*ztp = zt;
 }
@@ -259,7 +256,7 @@ zt_destroy(dns_zt_t *zt) {
 
 	dns_qpmulti_destroy(&zt->multi);
 	zt->magic = 0;
-	isc_mem_putanddetach(&zt->mctx, zt, sizeof(*zt));
+	isc_mem_put(isc_g_mctx, zt, sizeof(*zt));
 }
 
 void
@@ -287,7 +284,7 @@ loaded_all(struct zt_load_params *params) {
 	if (params->loaddone != NULL) {
 		params->loaddone(params->loaddone_arg);
 	}
-	isc_mem_put(params->zt->mctx, params, sizeof(*params));
+	isc_mem_put(isc_g_mctx, params, sizeof(*params));
 }
 
 /*
@@ -359,7 +356,7 @@ dns_zt_asyncload(dns_zt_t *zt, bool newonly, dns_zt_callback_t *loaddone,
 	loads_pending = isc_refcount_increment0(&zt->loads_pending);
 	INSIST(loads_pending == 0);
 
-	params = isc_mem_get(zt->mctx, sizeof(*params));
+	params = isc_mem_get(isc_g_mctx, sizeof(*params));
 	*params = (struct zt_load_params){
 		.zt = zt,
 		.newonly = newonly,

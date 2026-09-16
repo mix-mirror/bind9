@@ -260,7 +260,6 @@ sub construct_ns_command {
 		}
 	} else {
 		$command .= "-D $test-$server ";
-		$command .= "-m record ";
 
 		foreach my $t_option(
 			"dropedns", "ednsformerr", "ednsnotimp", "ednsrefused",

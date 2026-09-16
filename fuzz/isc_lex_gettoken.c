@@ -13,6 +13,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include <isc/buffer.h>
 #include <isc/lex.h>
@@ -25,9 +26,15 @@ bool debug = false;
 
 static isc_lex_t *lex = NULL;
 
+static void
+cleanup_lex(void) {
+	isc_lex_destroy(&lex);
+}
+
 int
 LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	isc_lex_create(isc_g_mctx, 1024, &lex);
+	RUNTIME_CHECK(atexit(cleanup_lex) == 0);
 
 	return 0;
 }

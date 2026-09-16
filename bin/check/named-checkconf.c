@@ -581,29 +581,7 @@ main(int argc, char **argv) {
 	/*
 	 * Process memory debugging argument first.
 	 */
-#define CMDLINE_FLAGS "abcdehijklm:nt:pvxz"
-	while ((c = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != -1) {
-		switch (c) {
-		case 'm':
-			if (strcasecmp(isc_commandline_argument, "record") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGRECORD);
-			}
-			if (strcasecmp(isc_commandline_argument, "trace") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGTRACE);
-			}
-			if (strcasecmp(isc_commandline_argument, "usage") == 0)
-			{
-				isc_mem_debugon(ISC_MEM_DEBUGUSAGE);
-			}
-			break;
-		default:
-			break;
-		}
-	}
-	isc_commandline_reset = true;
-
+#define CMDLINE_FLAGS "abcdehijklnt:pvxz"
 	while ((c = isc_commandline_parse(argc, argv, CMDLINE_FLAGS)) != EOF) {
 		switch (c) {
 		case 'a':

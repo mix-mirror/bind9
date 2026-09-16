@@ -130,13 +130,13 @@ dns_keytable_create(dns_view_t *view, dns_keytable_t **keytablep) {
 
 	REQUIRE(keytablep != NULL && *keytablep == NULL);
 
-	keytable = isc_mem_get(view->mctx, sizeof(*keytable));
+	keytable = isc_mem_get(isc_g_mctx, sizeof(*keytable));
 	*keytable = (dns_keytable_t){
 		.magic = KEYTABLE_MAGIC,
 	};
 
-	isc_mem_attach(view->mctx, &keytable->mctx);
-	dns_qpmulti_create(view->mctx, &qpmethods, view, &keytable->table);
+	isc_mem_attach(isc_g_mctx, &keytable->mctx);
+	dns_qpmulti_create(isc_g_mctx, &qpmethods, view, &keytable->table);
 	isc_refcount_init(&keytable->references, 1);
 	*keytablep = keytable;
 }

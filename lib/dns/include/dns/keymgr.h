@@ -55,10 +55,9 @@ dns_keymgr_key_init(dns_dnsseckey_t *key, dns_kasp_t *kasp, isc_stdtime_t now,
 
 isc_result_t
 dns_keymgr_run(const dns_name_t *origin, dns_rdataclass_t rdclass,
-	       isc_mem_t *mctx, dns_dnsseckeylist_t *keyring,
-	       dns_dnsseckeylist_t *dnskeys, const char *keydir,
-	       dns_kasp_t *kasp, uint8_t options, isc_stdtime_t now,
-	       isc_stdtime_t *nexttime);
+	       dns_dnsseckeylist_t *keyring, dns_dnsseckeylist_t *dnskeys,
+	       const char *keydir, dns_kasp_t *kasp, uint8_t options,
+	       isc_stdtime_t now, isc_stdtime_t *nexttime);
 /*%<
  * Manage keys in 'keyring' and update timing data according to 'kasp' policy.
  * Create new keys for 'origin' if necessary.  Append all such keys, along

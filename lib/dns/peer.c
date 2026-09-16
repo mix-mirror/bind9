@@ -35,8 +35,6 @@ struct dns_peerlist {
 	unsigned int magic;
 	isc_refcount_t refs;
 
-	isc_mem_t *mem;
-
 	ISC_LIST(dns_peer_t) elements;
 };
 
@@ -113,19 +111,16 @@ static void
 peer_delete(dns_peer_t **peer);
 
 void
-dns_peerlist_new(isc_mem_t *mem, dns_peerlist_t **list) {
-	dns_peerlist_t *l;
+dns_peerlist_new(dns_peerlist_t **listp) {
+	REQUIRE(listp != NULL && listp == NULL);
 
-	REQUIRE(list != NULL);
+	dns_peerlist_t *list = isc_mem_get(isc_g_mctx, sizeof(*list));
 
-	l = isc_mem_get(mem, sizeof(*l));
+	ISC_LIST_INIT(list->elements);
+	isc_refcount_init(&list->refs, 1);
+	list->magic = DNS_PEERLIST_MAGIC;
 
-	ISC_LIST_INIT(l->elements);
-	l->mem = mem;
-	isc_refcount_init(&l->refs, 1);
-	l->magic = DNS_PEERLIST_MAGIC;
-
-	*list = l;
+	*listp = list;
 }
 
 void
@@ -173,7 +168,7 @@ peerlist_delete(dns_peerlist_t **list) {
 	}
 
 	l->magic = 0;
-	isc_mem_put(l->mem, l, sizeof(*l));
+	isc_mem_put(isc_g_mctx, l, sizeof(*l));
 }
 
 void
@@ -222,7 +217,7 @@ dns_peerlist_currpeer(dns_peerlist_t *peers, dns_peer_t **retval) {
 }
 
 isc_result_t
-dns_peer_new(isc_mem_t *mem, const isc_netaddr_t *addr, dns_peer_t **peerptr) {
+dns_peer_new(const isc_netaddr_t *addr, dns_peer_t **peerptr) {
 	unsigned int prefixlen = 0;
 
 	REQUIRE(peerptr != NULL);
@@ -237,23 +232,19 @@ dns_peer_new(isc_mem_t *mem, const isc_netaddr_t *addr, dns_peer_t **peerptr) {
 		UNREACHABLE();
 	}
 
-	return dns_peer_newprefix(mem, addr, prefixlen, peerptr);
+	return dns_peer_newprefix(addr, prefixlen, peerptr);
 }
 
 isc_result_t
-dns_peer_newprefix(isc_mem_t *mem, const isc_netaddr_t *addr,
-		   unsigned int prefixlen, dns_peer_t **peerptr) {
-	dns_peer_t *peer;
-
+dns_peer_newprefix(const isc_netaddr_t *addr, unsigned int prefixlen,
+		   dns_peer_t **peerptr) {
 	REQUIRE(peerptr != NULL && *peerptr == NULL);
 
-	peer = isc_mem_get(mem, sizeof(*peer));
-
+	dns_peer_t *peer = isc_mem_get(isc_g_mctx, sizeof(*peer));
 	*peer = (dns_peer_t){
 		.magic = DNS_PEER_MAGIC,
 		.address = *addr,
 		.prefixlen = prefixlen,
-		.mem = mem,
 		.transfer_format = dns_one_answer,
 	};
 

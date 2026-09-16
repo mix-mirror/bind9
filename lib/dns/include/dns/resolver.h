@@ -79,7 +79,6 @@ typedef struct dns_fetchresponse dns_fetchresponse_t;
 
 struct dns_fetchresponse {
 	dns_fetch_t	     *fetch;
-	isc_mem_t	     *mctx;
 	isc_result_t	      result;
 	isc_result_t	      vresult;
 	dns_edectx_t	     *edectx;

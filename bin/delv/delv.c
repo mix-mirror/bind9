@@ -1386,7 +1386,7 @@ plus_option(char *option) {
 /*
  * options: "46a:b:c:d:himp:q:t:vx:";
  */
-static const char *single_dash_opts = "46Fhimv";
+static const char *single_dash_opts = "46Fhiv";
 static const char *dash_opts = "46abcdFhimpqtvx";
 
 static bool
@@ -1615,10 +1615,6 @@ preparse_args(int argc, char **argv) {
 				if (isc_crypto_fips_enable() != ISC_R_SUCCESS) {
 					fatal("setting FIPS mode failed");
 				}
-				break;
-			case 'm':
-				isc_mem_debugon(ISC_MEM_DEBUGTRACE |
-						ISC_MEM_DEBUGRECORD);
 				break;
 			case '4':
 				if (ipv6only) {

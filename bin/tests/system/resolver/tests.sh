@@ -781,7 +781,7 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "check logged command line ($n)"
 ret=0
-grep "running as: .* -m record " ns1/named.run >/dev/null || ret=1
+grep "running as: .* " ns1/named.run >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 

@@ -119,7 +119,6 @@ ISC_REFCOUNT_DECL(isc_httpd);
 struct isc_httpdmgr {
 	unsigned int magic; /* HTTPDMGR_MAGIC */
 	isc_refcount_t references;
-	isc_mem_t *mctx;
 	isc_nmsocket_t *sock;
 
 	isc_httpdclientok_t *client_ok;	 /*%< client validator */
@@ -151,7 +150,6 @@ ISC_REFCOUNT_DECL(isc_httpdmgr);
 #endif
 
 typedef struct isc_httpd_sendreq {
-	isc_mem_t *mctx;
 	isc_httpd_t *httpd;
 
 	/*%
@@ -218,17 +216,15 @@ static void (*finishhook)(void) = NULL;
 #endif /* ENABLE_AFL */
 
 isc_result_t
-isc_httpdmgr_create(isc_mem_t *mctx, isc_sockaddr_t *addr,
-		    isc_httpdclientok_t *client_ok,
+isc_httpdmgr_create(isc_sockaddr_t *addr, isc_httpdclientok_t *client_ok,
 		    isc_httpdondestroy_t *ondestroy, void *cb_arg,
 		    isc_httpdmgr_t **httpdmgrp) {
 	isc_result_t result;
 	isc_httpdmgr_t *httpdmgr = NULL;
 
-	REQUIRE(mctx != NULL);
 	REQUIRE(httpdmgrp != NULL && *httpdmgrp == NULL);
 
-	httpdmgr = isc_mem_get(mctx, sizeof(isc_httpdmgr_t));
+	httpdmgr = isc_mem_get(isc_g_mctx, sizeof(isc_httpdmgr_t));
 	*httpdmgr = (isc_httpdmgr_t){ .client_ok = client_ok,
 				      .ondestroy = ondestroy,
 				      .cb_arg = cb_arg,
@@ -236,7 +232,6 @@ isc_httpdmgr_create(isc_mem_t *mctx, isc_sockaddr_t *addr,
 				      .render_500 = render_500 };
 
 	isc_mutex_init(&httpdmgr->lock);
-	isc_mem_attach(mctx, &httpdmgr->mctx);
 
 	ISC_LIST_INIT(httpdmgr->running);
 	ISC_LIST_INIT(httpdmgr->urls);
@@ -255,9 +250,8 @@ cleanup:
 	httpdmgr->magic = 0;
 	isc_refcount_decrementz(&httpdmgr->references);
 	isc_refcount_destroy(&httpdmgr->references);
-	isc_mem_detach(&httpdmgr->mctx);
 	isc_mutex_destroy(&httpdmgr->lock);
-	isc_mem_put(mctx, httpdmgr, sizeof(isc_httpdmgr_t));
+	isc_mem_put(isc_g_mctx, httpdmgr, sizeof(isc_httpdmgr_t));
 
 	return result;
 }
@@ -282,9 +276,9 @@ destroy_httpdmgr(isc_httpdmgr_t *httpdmgr) {
 	 * memory.
 	 */
 	ISC_LIST_FOREACH(httpdmgr->urls, url, link) {
-		isc_mem_free(httpdmgr->mctx, url->url);
+		isc_mem_free(isc_g_mctx, url->url);
 		ISC_LIST_UNLINK(httpdmgr->urls, url, link);
-		isc_mem_put(httpdmgr->mctx, url, sizeof(isc_httpdurl_t));
+		isc_mem_put(isc_g_mctx, url, sizeof(isc_httpdurl_t));
 	}
 
 	UNLOCK(&httpdmgr->lock);
@@ -293,7 +287,7 @@ destroy_httpdmgr(isc_httpdmgr_t *httpdmgr) {
 	if (httpdmgr->ondestroy != NULL) {
 		(httpdmgr->ondestroy)(httpdmgr->cb_arg);
 	}
-	isc_mem_putanddetach(&httpdmgr->mctx, httpdmgr, sizeof(isc_httpdmgr_t));
+	isc_mem_put(isc_g_mctx, httpdmgr, sizeof(isc_httpdmgr_t));
 }
 
 #if ISC_HTTPD_TRACE
@@ -543,7 +537,7 @@ httpd_free(isc_httpd_t *httpd) {
 	httpd->magic = 0;
 	httpd->mgr = NULL;
 
-	isc_mem_put(httpdmgr->mctx, httpd, sizeof(*httpd));
+	isc_mem_put(isc_g_mctx, httpd, sizeof(*httpd));
 
 	isc_httpdmgr_detach(&httpdmgr);
 
@@ -566,7 +560,7 @@ isc__httpd_sendreq_free(isc_httpd_sendreq_t *req) {
 
 	isc_buffer_free(&req->sendbuffer);
 
-	isc_mem_putanddetach(&req->mctx, req, sizeof(*req));
+	isc_mem_put(isc_g_mctx, req, sizeof(*req));
 }
 
 static isc_httpd_sendreq_t *
@@ -576,15 +570,13 @@ isc__httpd_sendreq_new(isc_httpd_t *httpd) {
 
 	REQUIRE(VALID_HTTPDMGR(httpdmgr));
 
-	req = isc_mem_get(httpdmgr->mctx, sizeof(*req));
+	req = isc_mem_get(isc_g_mctx, sizeof(*req));
 	*req = (isc_httpd_sendreq_t){ 0 };
-
-	isc_mem_attach(httpdmgr->mctx, &req->mctx);
 
 	/*
 	 * Initialize the buffer for our headers.
 	 */
-	isc_buffer_allocate(req->mctx, &req->sendbuffer, HTTP_SENDLEN);
+	isc_buffer_allocate(isc_g_mctx, &req->sendbuffer, HTTP_SENDLEN);
 	isc_buffer_clear(req->sendbuffer);
 
 	isc_buffer_initnull(&req->bodybuffer);
@@ -600,7 +592,7 @@ new_httpd(isc_httpdmgr_t *httpdmgr, isc_nmhandle_t *handle) {
 
 	REQUIRE(VALID_HTTPDMGR(httpdmgr));
 
-	httpd = isc_mem_get(httpdmgr->mctx, sizeof(*httpd));
+	httpd = isc_mem_get(isc_g_mctx, sizeof(*httpd));
 	*httpd = (isc_httpd_t){
 		.magic = HTTPD_MAGIC,
 		.link = ISC_LINK_INITIALIZER,
@@ -715,7 +707,7 @@ httpd_compress(isc_httpd_sendreq_t *req) {
 		return ISC_R_FAILURE;
 	}
 
-	isc_buffer_allocate(req->mctx, &req->compbuffer, inputlen);
+	isc_buffer_allocate(isc_g_mctx, &req->compbuffer, inputlen);
 	isc_buffer_clear(req->compbuffer);
 
 	zstr = (z_stream){
@@ -1069,9 +1061,9 @@ isc_httpdmgr_addurl(isc_httpdmgr_t *httpdmgr, const char *url, bool isstatic,
 		return ISC_R_SUCCESS;
 	}
 
-	item = isc_mem_get(httpdmgr->mctx, sizeof(isc_httpdurl_t));
+	item = isc_mem_get(isc_g_mctx, sizeof(isc_httpdurl_t));
 
-	item->url = isc_mem_strdup(httpdmgr->mctx, url);
+	item->url = isc_mem_strdup(isc_g_mctx, url);
 
 	item->action = func;
 	item->action_arg = arg;

@@ -499,7 +499,7 @@ isc_nm_listentcp(uint32_t workers, isc_sockaddr_t *iface,
 	sock->nchildren = (workers == ISC_NM_LISTEN_ALL)
 				  ? (uint32_t)isc__netmgr->nloops
 				  : workers;
-	sock->children = isc_mem_cget(worker->mctx, sock->nchildren,
+	sock->children = isc_mem_cget(isc_g_mctx, sock->nchildren,
 				      sizeof(sock->children[0]));
 
 	isc__nmsocket_barrier_init(sock);

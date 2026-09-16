@@ -69,7 +69,6 @@ STATIC_ASSERT(sizeof(dns_edecode_t) == sizeof(uint16_t),
 typedef struct dns_edectx dns_edectx_t;
 struct dns_edectx {
 	int	       magic;
-	isc_mem_t     *mctx;
 	dns_ednsopt_t *ede[DNS_EDE_MAX_ERRORS];
 	uint64_t       edeused;
 	size_t	       nextede;
@@ -91,7 +90,7 @@ STATIC_ASSERT(DNS_EDE_MAX_CODE <=
  */
 
 void
-dns_ede_init(isc_mem_t *mctx, dns_edectx_t *edectx);
+dns_ede_init(dns_edectx_t *edectx);
 /*%<
  * Initialize "edectx" so it is valid to use. Can be called after
  * dns_ede_invalidate" is being called to reuse the object.

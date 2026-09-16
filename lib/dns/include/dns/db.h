@@ -174,8 +174,7 @@ typedef struct dns_db_methods {
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
 } dns_dbmethods_t;
 
-typedef isc_result_t (*dns_dbcreatefunc_t)(isc_mem_t	    *mctx,
-					   const dns_name_t *name,
+typedef isc_result_t (*dns_dbcreatefunc_t)(const dns_name_t *name,
 					   dns_dbtype_t	     type,
 					   dns_rdataclass_t  rdclass,
 					   unsigned int argc, char *argv[],
@@ -190,7 +189,6 @@ typedef isc_result_t (*dns_dbupdate_callback_t)(dns_db_t *db, void *fn_arg);
 	unsigned int	      magic;   \
 	uint16_t	      locknum; \
 	dns_dbnode_methods_t *methods; \
-	isc_mem_t	     *mctx;    \
 	dns_name_t	      name;
 
 struct dns_dbnode {
@@ -214,7 +212,6 @@ struct dns_db {
 	dns_rdataclass_t rdclass;
 	dns_name_t	 origin;
 	dns_ttl_t	 serve_stale_ttl; /* for cache DB's only */
-	isc_mem_t	*mctx;
 	isc_refcount_t	 references;
 	struct cds_lfht *update_listeners;
 };
@@ -225,7 +222,6 @@ enum {
 };
 
 struct dns_dbonupdatelistener {
-	isc_mem_t	       *mctx;
 	dns_dbupdate_callback_t onupdate;
 	void		       *onupdate_arg;
 	struct cds_lfht_node	ht_node;
@@ -344,9 +340,9 @@ ISC_REFCOUNT_DECL(dns_db);
 #endif
 
 isc_result_t
-dns_db_create(isc_mem_t *mctx, const char *db_type, const dns_name_t *origin,
-	      dns_dbtype_t type, dns_rdataclass_t rdclass, unsigned int argc,
-	      char *argv[], dns_db_t **dbp);
+dns_db_create(const char *db_type, const dns_name_t *origin, dns_dbtype_t type,
+	      dns_rdataclass_t rdclass, unsigned int argc, char *argv[],
+	      dns_db_t **dbp);
 /*%<
  * Create a new database using implementation 'db_type'.
  *
@@ -1446,7 +1442,7 @@ dns_db_ispersistent(dns_db_t *db);
 
 isc_result_t
 dns_db_register(const char *name, dns_dbcreatefunc_t create, void *driverarg,
-		isc_mem_t *mctx, dns_dbimplementation_t **dbimp);
+		dns_dbimplementation_t **dbimp);
 
 /*%<
  * Register a new database implementation and add it to the list of

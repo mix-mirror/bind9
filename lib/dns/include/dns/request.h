@@ -49,7 +49,7 @@
 #define DNS_REQUESTOPT_LARGE   0x00000008U
 
 isc_result_t
-dns_requestmgr_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
+dns_requestmgr_create(dns_dispatchmgr_t *dispatchmgr,
 		      dns_dispatch_t *dispatchv4, dns_dispatch_t *dispatchv6,
 		      dns_requestmgr_t **requestmgrp);
 /*%<

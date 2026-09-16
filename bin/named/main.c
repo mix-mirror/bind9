@@ -374,58 +374,6 @@ parse_int(const char *arg, const char *desc) {
 	return tmp;
 }
 
-static unsigned int mem_debugging = 0;
-
-static struct flag_def {
-	const char *name;
-	unsigned int value;
-	bool negate;
-} mem_debug_flags[] = { { "none", 0, false },
-			{ "trace", ISC_MEM_DEBUGTRACE, false },
-			{ "record", ISC_MEM_DEBUGRECORD, false },
-			{ "usage", ISC_MEM_DEBUGUSAGE, false },
-			{ NULL, 0, false } };
-
-static void
-set_flags(const char *arg, struct flag_def *defs, unsigned int *ret) {
-	bool clear = false;
-
-	for (;;) {
-		const struct flag_def *def;
-		const char *end = strchr(arg, ',');
-		int arglen;
-		if (end == NULL) {
-			end = arg + strlen(arg);
-		}
-		arglen = (int)(end - arg);
-		for (def = defs; def->name != NULL; def++) {
-			if (arglen == (int)strlen(def->name) &&
-			    memcmp(arg, def->name, arglen) == 0)
-			{
-				if (def->value == 0) {
-					clear = true;
-				}
-				if (def->negate) {
-					*ret &= ~(def->value);
-				} else {
-					*ret |= def->value;
-				}
-				goto found;
-			}
-		}
-		named_main_earlyfatal("unrecognized flag '%.*s'", arglen, arg);
-	found:
-		if (clear || (*end == '\0')) {
-			break;
-		}
-		arg = end + 1;
-	}
-
-	if (clear) {
-		*ret = 0;
-	}
-}
-
 static void
 list_dnssec_algorithms(isc_buffer_t *b) {
 	for (dst_algorithm_t i = DST_ALG_UNKNOWN; i < DST_MAX_ALGS; i++) {
@@ -894,9 +842,7 @@ parse_command_line(int argc, char *argv[]) {
 			named_main_earlywarning("option '-M' has been removed");
 			break;
 		case 'm':
-			set_flags(isc_commandline_argument, mem_debug_flags,
-				  &mem_debugging);
-			isc_mem_debugon(mem_debugging);
+			named_main_earlywarning("option '-m' has been removed");
 			break;
 		case 'N': /* Deprecated. */
 		case 'n':

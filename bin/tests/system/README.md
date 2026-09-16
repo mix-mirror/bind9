@@ -639,7 +639,7 @@ By default, `named` server is started with the following options:
 -g              Runs the server in the foreground and logs everything to
                 stderr.
 
--m record
+
                 Turns on these memory usage debugging flags.
 ```
 

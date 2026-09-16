@@ -207,7 +207,6 @@ typedef struct isc__nm_uvreq isc__nm_uvreq_t;
  * Single network event loop worker.
  */
 typedef struct isc__networker {
-	isc_mem_t *mctx;
 	isc_refcount_t references;
 	isc_loop_t *loop;
 	bool shuttingdown;
@@ -322,7 +321,6 @@ struct isc__nm_uvreq {
 typedef struct isc__netmgr {
 	int magic;
 	isc_refcount_t references;
-	isc_mem_t *mctx;
 	uint32_t nloops;
 	isc__networker_t *workers;
 
@@ -447,7 +445,6 @@ typedef struct isc_nm_httphandler {
 
 struct isc_nm_http_endpoints {
 	uint32_t magic;
-	isc_mem_t *mctx;
 
 	ISC_LIST(isc_nm_httphandler_t) handlers;
 
@@ -1107,12 +1104,12 @@ isc__nm_parse_httpquery(const char *query_string, const char **start,
 			size_t *len);
 
 char *
-isc__nm_base64url_to_base64(isc_mem_t *mem, const char *base64url,
-			    const size_t base64url_len, size_t *res_len);
+isc__nm_base64url_to_base64(const char *base64url, const size_t base64url_len,
+			    size_t *res_len);
 
 char *
-isc__nm_base64_to_base64url(isc_mem_t *mem, const char *base64,
-			    const size_t base64_len, size_t *res_len);
+isc__nm_base64_to_base64url(const char *base64, const size_t base64_len,
+			    size_t *res_len);
 
 void
 isc__nm_httpsession_attach(isc_nm_http_session_t *source,

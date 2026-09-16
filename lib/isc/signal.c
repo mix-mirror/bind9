@@ -23,8 +23,7 @@ isc_signal_t *
 isc_signal_new(isc_signal_cb cb, void *cbarg, int signum) {
 	int r;
 	isc_loop_t *loop = isc_loop_main();
-	isc_signal_t *signal = isc_mem_get(isc_loop_getmctx(loop),
-					   sizeof(*signal));
+	isc_signal_t *signal = isc_mem_get(isc_g_mctx, sizeof(*signal));
 
 	*signal = (isc_signal_t){
 		.magic = SIGNAL_MAGIC,

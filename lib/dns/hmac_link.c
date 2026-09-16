@@ -327,7 +327,7 @@ hmac_fromdns(isc_md_type_t type, dst_key_t *key, isc_buffer_t *data) {
 		return ISC_R_SUCCESS;
 	}
 
-	result = isc_hmac_key_create(type, r.base, r.length, key->mctx, &hkey);
+	result = isc_hmac_key_create(type, r.base, r.length, &hkey);
 	if (result != ISC_R_SUCCESS) {
 		return DST_R_OPENSSLFAILURE;
 	}
@@ -436,12 +436,11 @@ hmac_parse(isc_md_type_t type, dst_key_t *key, isc_lex_t *lexer,
 	dst_private_t priv;
 	isc_result_t result = ISC_R_SUCCESS, tresult;
 	isc_buffer_t b;
-	isc_mem_t *mctx = key->mctx;
 	unsigned int i;
 
 	UNUSED(pub);
 	/* read private key file */
-	RETERR(dst__privstruct_parse(key, hmac__to_dst_alg(type), lexer, mctx,
+	RETERR(dst__privstruct_parse(key, hmac__to_dst_alg(type), lexer,
 				     &priv));
 
 	if (key->external) {
@@ -481,7 +480,7 @@ hmac_parse(isc_md_type_t type, dst_key_t *key, isc_lex_t *lexer,
 			break;
 		}
 	}
-	dst__privstruct_free(&priv, mctx);
+	dst__privstruct_free(&priv);
 	isc_safe_memwipe(&priv, sizeof(priv));
 	return result;
 }

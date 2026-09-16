@@ -3164,7 +3164,7 @@ create_empty_zone(dns_zone_t *pzone, dns_name_t *name, dns_view_t *view,
 	}
 
 	if (pzone == NULL) {
-		CHECK(dns_zonemgr_createzone(named_g_server->zonemgr, &zone));
+		dns_zonemgr_createzone(named_g_server->zonemgr, &zone);
 		dns_zone_setorigin(zone, name);
 		CHECK(dns_zonemgr_managezone(named_g_server->zonemgr, zone));
 		if (db == NULL) {
@@ -6154,8 +6154,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 			dns_zone_attach(pview->redirect, &zone);
 			dns_zone_setview(zone, view);
 		} else {
-			CHECK(dns_zonemgr_createzone(named_g_server->zonemgr,
-						     &zone));
+			dns_zonemgr_createzone(named_g_server->zonemgr, &zone);
 			dns_zone_setorigin(zone, origin);
 			dns_zone_setview(zone, view);
 			CHECK(dns_zonemgr_managezone(named_g_server->zonemgr,
@@ -6258,7 +6257,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 		 * We cannot reuse an existing zone, we have
 		 * to create a new one.
 		 */
-		CHECK(dns_zonemgr_createzone(named_g_server->zonemgr, &zone));
+		dns_zonemgr_createzone(named_g_server->zonemgr, &zone);
 		dns_zone_setorigin(zone, origin);
 		dns_zone_setview(zone, view);
 		CHECK(dns_zonemgr_managezone(named_g_server->zonemgr, zone));
@@ -6319,7 +6318,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 	if (inline_signing) {
 		dns_zone_getraw(zone, &raw);
 		if (raw == NULL) {
-			dns_zone_create(&raw, dns_zone_getmctx(zone),
+			dns_zone_create(&raw, isc_g_mctx,
 					dns_zone_gettid(zone));
 			dns_zone_setorigin(raw, origin);
 			dns_zone_setview(raw, view);
@@ -6425,7 +6424,7 @@ add_keydata_zone(dns_view_t *view, const char *directory, isc_mem_t *mctx) {
 	}
 
 	/* No existing keydata zone was found; create one */
-	CHECK(dns_zonemgr_createzone(named_g_server->zonemgr, &zone));
+	dns_zonemgr_createzone(named_g_server->zonemgr, &zone);
 	dns_zone_setorigin(zone, dns_rootname);
 
 	defaultview = (strcmp(view->name, "_default") == 0);
@@ -8560,26 +8559,6 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *bindkeys,
 					    NS_SERVER_LOGRESPONSES,
 					    cfg_obj_asboolean(obj));
 		}
-	}
-
-	obj = NULL;
-	if (options != NULL &&
-	    cfg_map_get(options, "memstatistics", &obj) == ISC_R_SUCCESS)
-	{
-		named_g_memstatistics = cfg_obj_asboolean(obj);
-	} else {
-		named_g_memstatistics =
-			((isc_mem_debugon(0) & ISC_MEM_DEBUGRECORD) != 0);
-	}
-
-	obj = NULL;
-	if (named_config_get(maps, "memstatistics-file", &obj) == ISC_R_SUCCESS)
-	{
-		named_main_setmemstats(cfg_obj_asstring(obj));
-	} else if (named_g_memstatistics) {
-		named_main_setmemstats("named.memstats");
-	} else {
-		named_main_setmemstats(NULL);
 	}
 
 	obj = NULL;
@@ -13590,7 +13569,7 @@ cleanup:
 
 	ISC_LIST_FOREACH(keys, key, link) {
 		ISC_LIST_UNLINK(keys, key, link);
-		dns_dnsseckey_destroy(dns_zone_getmctx(zone), &key);
+		dns_dnsseckey_destroy(isc_g_mctx, &key);
 	}
 
 	if (zone != NULL) {
@@ -13879,14 +13858,13 @@ cleanup:
 	}
 	if (incfiles != NULL && mayberaw != NULL) {
 		int i;
-		isc_mem_t *mctx = dns_zone_getmctx(mayberaw);
 
 		for (i = 0; i < nfiles; i++) {
 			if (incfiles[i] != NULL) {
-				isc_mem_free(mctx, incfiles[i]);
+				isc_mem_free(isc_g_mctx, incfiles[i]);
 			}
 		}
-		isc_mem_free(mctx, incfiles);
+		isc_mem_free(isc_g_mctx, incfiles);
 	}
 	if (raw != NULL) {
 		dns_zone_detach(&raw);

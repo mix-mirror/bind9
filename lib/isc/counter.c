@@ -35,17 +35,15 @@ struct isc_counter {
 };
 
 void
-isc_counter_create(isc_mem_t *mctx, int limit, isc_counter_t **counterp) {
+isc_counter_create(int limit, isc_counter_t **counterp) {
 	REQUIRE(counterp != NULL && *counterp == NULL);
 
-	isc_counter_t *counter = isc_mem_get(mctx, sizeof(*counter));
+	isc_counter_t *counter = isc_mem_get(isc_g_mctx, sizeof(*counter));
 	*counter = (isc_counter_t){
 		.magic = COUNTER_MAGIC,
 		.references = 1,
 		.limit = limit,
 	};
-
-	isc_mem_attach(mctx, &counter->mctx);
 
 	*counterp = counter;
 }

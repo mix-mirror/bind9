@@ -93,7 +93,6 @@ struct dns_compress {
 	uint16_t	     mask;
 	uint16_t	     count;
 	uint16_t	     coff;
-	isc_mem_t	    *mctx;
 	dns_compress_slot_t *set;
 	dns_compress_slot_t  smallset[1 << DNS_COMPRESS_SMALLBITS];
 };
@@ -109,8 +108,7 @@ enum dns_decompress {
 };
 
 void
-dns_compress_init(dns_compress_t *cctx, isc_mem_t *mctx,
-		  dns_compress_flags_t flags);
+dns_compress_init(dns_compress_t *cctx, dns_compress_flags_t flags);
 /*%<
  *	Initialise the compression context structure pointed to by
  *	'cctx'.

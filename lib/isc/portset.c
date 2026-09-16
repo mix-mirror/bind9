@@ -56,24 +56,22 @@ portset_remove(isc_portset_t *portset, in_port_t port) {
 }
 
 void
-isc_portset_create(isc_mem_t *mctx, isc_portset_t **portsetp) {
-	isc_portset_t *portset;
-
+isc_portset_create(isc_portset_t **portsetp) {
 	REQUIRE(portsetp != NULL && *portsetp == NULL);
 
-	portset = isc_mem_get(mctx, sizeof(*portset));
+	isc_portset_t *portset = isc_mem_get(isc_g_mctx, sizeof(*portset));
 	*portset = (isc_portset_t){ 0 };
 	*portsetp = portset;
 }
 
 void
-isc_portset_destroy(isc_mem_t *mctx, isc_portset_t **portsetp) {
+isc_portset_destroy(isc_portset_t **portsetp) {
 	isc_portset_t *portset;
 
 	REQUIRE(portsetp != NULL);
 	portset = *portsetp;
 
-	isc_mem_put(mctx, portset, sizeof(*portset));
+	isc_mem_put(isc_g_mctx, portset, sizeof(*portset));
 }
 
 bool

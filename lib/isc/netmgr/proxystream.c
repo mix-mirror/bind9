@@ -83,12 +83,11 @@ static void
 proxystream_read_extra_cb(void *arg);
 
 static proxystream_send_req_t *
-proxystream_get_send_req(isc_mem_t *mctx, isc_nmsocket_t *sock,
-			 isc_nmhandle_t *proxyhandle, isc_nm_cb_t cb,
-			 void *cbarg);
+proxystream_get_send_req(isc_nmsocket_t *sock, isc_nmhandle_t *proxyhandle,
+			 isc_nm_cb_t cb, void *cbarg);
 
 static void
-proxystream_put_send_req(isc_mem_t *mctx, proxystream_send_req_t *send_req,
+proxystream_put_send_req(proxystream_send_req_t *send_req,
 			 const bool force_destroy);
 
 static void
@@ -250,10 +249,9 @@ proxystream_sock_new(isc__networker_t *worker, const isc_nmsocket_type_t type,
 			 * support. An adequate value for both IPv4 and IPv6.
 			 */
 			sock->proxy.proxy2.handler = isc_proxy2_handler_new(
-				worker->mctx, NM_MAXSEG,
-				proxystream_on_header_data_cb, sock);
+				NM_MAXSEG, proxystream_on_header_data_cb, sock);
 		} else {
-			isc_buffer_allocate(worker->mctx,
+			isc_buffer_allocate(isc_g_mctx,
 					    &sock->proxy.proxy2.outbuf,
 					    ISC_NM_PROXY2_DEFAULT_BUFFER_SIZE);
 		}
@@ -556,7 +554,6 @@ isc__nm_proxystream_cleanup_data(isc_nmsocket_t *sock) {
 	case isc_nm_proxystreamsocket:
 		if (sock->proxy.send_req != NULL) {
 			proxystream_put_send_req(
-				sock->worker->mctx,
 				(proxystream_send_req_t *)sock->proxy.send_req,
 				true);
 		}
@@ -968,9 +965,8 @@ isc__nm_proxystream_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb,
 }
 
 static proxystream_send_req_t *
-proxystream_get_send_req(isc_mem_t *mctx, isc_nmsocket_t *sock,
-			 isc_nmhandle_t *proxyhandle, isc_nm_cb_t cb,
-			 void *cbarg) {
+proxystream_get_send_req(isc_nmsocket_t *sock, isc_nmhandle_t *proxyhandle,
+			 isc_nm_cb_t cb, void *cbarg) {
 	proxystream_send_req_t *send_req = NULL;
 
 	if (sock->proxy.send_req != NULL) {
@@ -982,7 +978,7 @@ proxystream_get_send_req(isc_mem_t *mctx, isc_nmsocket_t *sock,
 		sock->proxy.send_req = NULL;
 	} else {
 		/* Allocate a new object. */
-		send_req = isc_mem_get(mctx, sizeof(*send_req));
+		send_req = isc_mem_get(isc_g_mctx, sizeof(*send_req));
 		*send_req = (proxystream_send_req_t){ 0 };
 	}
 
@@ -997,7 +993,7 @@ proxystream_get_send_req(isc_mem_t *mctx, isc_nmsocket_t *sock,
 }
 
 static void
-proxystream_put_send_req(isc_mem_t *mctx, proxystream_send_req_t *send_req,
+proxystream_put_send_req(proxystream_send_req_t *send_req,
 			 const bool force_destroy) {
 	/*
 	 * Attempt to put the object for reuse later if we are not
@@ -1017,13 +1013,12 @@ proxystream_put_send_req(isc_mem_t *mctx, proxystream_send_req_t *send_req,
 		}
 	}
 
-	isc_mem_put(mctx, send_req, sizeof(*send_req));
+	isc_mem_put(isc_g_mctx, send_req, sizeof(*send_req));
 }
 
 static void
 proxystream_send_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	proxystream_send_req_t *send_req = (proxystream_send_req_t *)cbarg;
-	isc_mem_t *mctx;
 	isc_nm_cb_t cb;
 	void *send_cbarg;
 	isc_nmhandle_t *proxyhandle = NULL;
@@ -1033,13 +1028,12 @@ proxystream_send_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg) {
 	REQUIRE(VALID_NMSOCK(send_req->proxyhandle->sock));
 	REQUIRE(send_req->proxyhandle->sock->tid == isc_tid());
 
-	mctx = send_req->proxyhandle->sock->worker->mctx;
 	cb = send_req->cb;
 	send_cbarg = send_req->cbarg;
 
 	isc_nmhandle_attach(send_req->proxyhandle, &proxyhandle);
 	/* try to keep the send request object for reuse */
-	proxystream_put_send_req(mctx, send_req, false);
+	proxystream_put_send_req(send_req, false);
 	cb(proxyhandle, result, send_cbarg);
 	proxystream_try_close_unused(proxyhandle->sock);
 	isc_nmhandle_detach(&proxyhandle);
@@ -1078,8 +1072,7 @@ proxystream_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 		return;
 	}
 
-	send_req = proxystream_get_send_req(sock->worker->mctx, sock, handle,
-					    cb, cbarg);
+	send_req = proxystream_get_send_req(sock, handle, cb, cbarg);
 	if (dnsmsg) {
 		isc__nm_senddns(sock->outerhandle, region, proxystream_send_cb,
 				send_req);

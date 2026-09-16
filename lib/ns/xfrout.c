@@ -174,7 +174,6 @@ log_rr(dns_name_t *name, dns_rdata_t *rdata, uint32_t ttl) {
 typedef struct rrstream_methods rrstream_methods_t;
 
 typedef struct rrstream {
-	isc_mem_t *mctx;
 	rrstream_methods_t *methods;
 } rrstream_t;
 
@@ -220,21 +219,18 @@ static rrstream_methods_t ixfr_rrstream_methods;
  */
 
 static isc_result_t
-ixfr_rrstream_create(isc_mem_t *mctx, const char *journal_filename,
-		     uint32_t begin_serial, uint32_t end_serial, size_t *sizep,
-		     rrstream_t **sp) {
+ixfr_rrstream_create(const char *journal_filename, uint32_t begin_serial,
+		     uint32_t end_serial, size_t *sizep, rrstream_t **sp) {
 	isc_result_t result;
 	ixfr_rrstream_t *s = NULL;
 
 	INSIST(sp != NULL && *sp == NULL);
 
-	s = isc_mem_get(mctx, sizeof(*s));
-	s->common.mctx = NULL;
-	isc_mem_attach(mctx, &s->common.mctx);
+	s = isc_mem_get(isc_g_mctx, sizeof(*s));
 	s->common.methods = &ixfr_rrstream_methods;
 	s->journal = NULL;
 
-	CHECK(dns_journal_open(mctx, journal_filename, DNS_JOURNAL_READ,
+	CHECK(dns_journal_open(journal_filename, DNS_JOURNAL_READ,
 			       &s->journal));
 	CHECK(dns_journal_iter_init(s->journal, begin_serial, end_serial,
 				    sizep));
@@ -272,7 +268,7 @@ ixfr_rrstream_destroy(rrstream_t **rsp) {
 	if (s->journal != NULL) {
 		dns_journal_destroy(&s->journal);
 	}
-	isc_mem_putanddetach(&s->common.mctx, s, sizeof(*s));
+	isc_mem_put(isc_g_mctx, s, sizeof(*s));
 }
 
 static rrstream_methods_t ixfr_rrstream_methods = {
@@ -304,16 +300,13 @@ axfr_rrstream_destroy(rrstream_t **rsp);
 static rrstream_methods_t axfr_rrstream_methods;
 
 static isc_result_t
-axfr_rrstream_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *ver,
-		     rrstream_t **sp) {
+axfr_rrstream_create(dns_db_t *db, dns_dbversion_t *ver, rrstream_t **sp) {
 	axfr_rrstream_t *s;
 	isc_result_t result;
 
 	INSIST(sp != NULL && *sp == NULL);
 
-	s = isc_mem_get(mctx, sizeof(*s));
-	s->common.mctx = NULL;
-	isc_mem_attach(mctx, &s->common.mctx);
+	s = isc_mem_get(isc_g_mctx, sizeof(*s));
 	s->common.methods = &axfr_rrstream_methods;
 	s->it_valid = false;
 
@@ -392,7 +385,7 @@ axfr_rrstream_destroy(rrstream_t **rsp) {
 	if (s->it_valid) {
 		dns_rriterator_destroy(&s->it);
 	}
-	isc_mem_putanddetach(&s->common.mctx, s, sizeof(*s));
+	isc_mem_put(isc_g_mctx, s, sizeof(*s));
 }
 
 static rrstream_methods_t axfr_rrstream_methods = {
@@ -420,21 +413,17 @@ soa_rrstream_destroy(rrstream_t **rsp);
 static rrstream_methods_t soa_rrstream_methods;
 
 static isc_result_t
-soa_rrstream_create(isc_mem_t *mctx, dns_db_t *db, dns_dbversion_t *ver,
-		    rrstream_t **sp) {
+soa_rrstream_create(dns_db_t *db, dns_dbversion_t *ver, rrstream_t **sp) {
 	soa_rrstream_t *s;
 	isc_result_t result;
 
 	INSIST(sp != NULL && *sp == NULL);
 
-	s = isc_mem_get(mctx, sizeof(*s));
-	s->common.mctx = NULL;
-	isc_mem_attach(mctx, &s->common.mctx);
+	s = isc_mem_get(isc_g_mctx, sizeof(*s));
 	s->common.methods = &soa_rrstream_methods;
 	s->soa_tuple = NULL;
 
-	CHECK(dns_db_createsoatuple(db, ver, mctx, DNS_DIFFOP_EXISTS,
-				    &s->soa_tuple));
+	CHECK(dns_db_createsoatuple(db, ver, DNS_DIFFOP_EXISTS, &s->soa_tuple));
 
 	*sp = (rrstream_t *)s;
 	return ISC_R_SUCCESS;
@@ -471,7 +460,7 @@ soa_rrstream_destroy(rrstream_t **rsp) {
 	if (s->soa_tuple != NULL) {
 		dns_difftuple_free(&s->soa_tuple);
 	}
-	isc_mem_putanddetach(&s->common.mctx, s, sizeof(*s));
+	isc_mem_put(isc_g_mctx, s, sizeof(*s));
 }
 
 static rrstream_methods_t soa_rrstream_methods = {
@@ -522,15 +511,13 @@ static rrstream_methods_t compound_rrstream_methods;
  *	when the compound_rrstream_t is destroyed.
  */
 static isc_result_t
-compound_rrstream_create(isc_mem_t *mctx, rrstream_t **soa_stream,
-			 rrstream_t **data_stream, rrstream_t **sp) {
+compound_rrstream_create(rrstream_t **soa_stream, rrstream_t **data_stream,
+			 rrstream_t **sp) {
 	compound_rrstream_t *s;
 
 	INSIST(sp != NULL && *sp == NULL);
 
-	s = isc_mem_get(mctx, sizeof(*s));
-	s->common.mctx = NULL;
-	isc_mem_attach(mctx, &s->common.mctx);
+	s = isc_mem_get(isc_g_mctx, sizeof(*s));
 	s->common.methods = &compound_rrstream_methods;
 	s->components[0] = *soa_stream;
 	s->components[1] = *data_stream;
@@ -602,7 +589,7 @@ compound_rrstream_destroy(rrstream_t **rsp) {
 	s->components[0]->methods->destroy(&s->components[0]);
 	s->components[1]->methods->destroy(&s->components[1]);
 	s->components[2] = NULL; /* Copy of components[0]. */
-	isc_mem_putanddetach(&s->common.mctx, s, sizeof(*s));
+	isc_mem_put(isc_g_mctx, s, sizeof(*s));
 }
 
 static rrstream_methods_t compound_rrstream_methods = {
@@ -629,7 +616,6 @@ struct xfr_stats {
  * in progress.
  */
 typedef struct {
-	isc_mem_t *mctx;
 	ns_client_t *client;
 	unsigned int id;       /* ID of request */
 	dns_name_t *qname;     /* Question name of request */
@@ -669,14 +655,13 @@ typedef struct {
 } xfrout_ctx_t;
 
 static void
-xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
-		  dns_name_t *qname, dns_rdatatype_t qtype,
-		  dns_rdataclass_t qclass, dns_zone_t *zone, dns_db_t *db,
-		  dns_dbversion_t *ver, rrstream_t *stream,
-		  dns_tsigkey_t *tsigkey, isc_buffer_t *lasttsig,
-		  bool verified_tsig, unsigned int maxtime,
-		  unsigned int idletime, bool many_answers,
-		  xfrout_ctx_t **xfrp);
+xfrout_ctx_create(ns_client_t *client, unsigned int id, dns_name_t *qname,
+		  dns_rdatatype_t qtype, dns_rdataclass_t qclass,
+		  dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
+		  rrstream_t *stream, dns_tsigkey_t *tsigkey,
+		  isc_buffer_t *lasttsig, bool verified_tsig,
+		  unsigned int maxtime, unsigned int idletime,
+		  bool many_answers, xfrout_ctx_t **xfrp);
 
 static void
 sendstream(xfrout_ctx_t *xfr);
@@ -725,7 +710,6 @@ ns_xfr_start(ns_client_t *client, dns_rdatatype_t reqtype) {
 	dns_rdata_t soa_rdata = DNS_RDATA_INIT;
 	bool have_soa = false;
 	const char *mnemonic = NULL;
-	isc_mem_t *mctx = client->manager->mctx;
 	dns_message_t *request = client->message;
 	xfrout_ctx_t *xfr = NULL;
 	dns_transfer_format_t format = client->inner.view->transfer_format;
@@ -944,7 +928,7 @@ got_soa:
 		dns_db_currentversion(db, &ver);
 	}
 
-	CHECK(dns_db_createsoatuple(db, ver, mctx, DNS_DIFFOP_EXISTS,
+	CHECK(dns_db_createsoatuple(db, ver, DNS_DIFFOP_EXISTS,
 				    &current_soa_tuple));
 
 	current_serial = dns_soa_getserial(&current_soa_tuple->rdata);
@@ -972,7 +956,7 @@ got_soa:
 		if (DNS_SERIAL_GE(begin_serial, current_serial) ||
 		    !client->inner.tcp)
 		{
-			CHECK(soa_rrstream_create(mctx, db, ver, &stream));
+			CHECK(soa_rrstream_create(db, ver, &stream));
 			is_poll = true;
 			goto have_stream;
 		}
@@ -1001,9 +985,9 @@ got_soa:
 
 		journalfile = is_dlz ? NULL : dns_zone_getjournal(zone);
 		if (journalfile != NULL) {
-			result = ixfr_rrstream_create(
-				mctx, journalfile, begin_serial, current_serial,
-				&jsize, &data_stream);
+			result = ixfr_rrstream_create(journalfile, begin_serial,
+						      current_serial, &jsize,
+						      &data_stream);
 		} else {
 			result = ISC_R_NOTFOUND;
 		}
@@ -1046,35 +1030,34 @@ got_soa:
 		is_ixfr = true;
 	} else {
 	axfr_fallback:
-		CHECK(axfr_rrstream_create(mctx, db, ver, &data_stream));
+		CHECK(axfr_rrstream_create(db, ver, &data_stream));
 	}
 
 	/*
 	 * Bracket the data stream with SOAs.
 	 */
-	CHECK(soa_rrstream_create(mctx, db, ver, &soa_stream));
-	CHECK(compound_rrstream_create(mctx, &soa_stream, &data_stream,
-				       &stream));
+	CHECK(soa_rrstream_create(db, ver, &soa_stream));
+	CHECK(compound_rrstream_create(&soa_stream, &data_stream, &stream));
 	soa_stream = NULL;
 	data_stream = NULL;
 
 have_stream:
-	CHECK(dns_message_getquerytsig(request, mctx, &tsigbuf));
+	CHECK(dns_message_getquerytsig(request, &tsigbuf));
 	/*
 	 * Create the xfrout context object.  This transfers the ownership
 	 * of "stream", "db" and "ver" to the xfrout context object.
 	 */
 
 	if (is_dlz) {
-		xfrout_ctx_create(mctx, client, request->id, question_name,
-				  reqtype, question_class, zone, db, ver,
-				  stream, dns_message_gettsigkey(request),
-				  tsigbuf, request->verified_sig, 3600, 3600,
+		xfrout_ctx_create(client, request->id, question_name, reqtype,
+				  question_class, zone, db, ver, stream,
+				  dns_message_gettsigkey(request), tsigbuf,
+				  request->verified_sig, 3600, 3600,
 				  (format == dns_many_answers) ? true : false,
 				  &xfr);
 	} else {
 		xfrout_ctx_create(
-			mctx, client, request->id, question_name, reqtype,
+			client, request->id, question_name, reqtype,
 			question_class, zone, db, ver, stream,
 			dns_message_gettsigkey(request), tsigbuf,
 			request->verified_sig, dns_zone_getmaxxfrout(zone),
@@ -1195,21 +1178,20 @@ cleanup:
 }
 
 static void
-xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
-		  dns_name_t *qname, dns_rdatatype_t qtype,
-		  dns_rdataclass_t qclass, dns_zone_t *zone, dns_db_t *db,
-		  dns_dbversion_t *ver, rrstream_t *stream,
-		  dns_tsigkey_t *tsigkey, isc_buffer_t *lasttsig,
-		  bool verified_tsig, unsigned int maxtime,
-		  unsigned int idletime, bool many_answers,
-		  xfrout_ctx_t **xfrp) {
+xfrout_ctx_create(ns_client_t *client, unsigned int id, dns_name_t *qname,
+		  dns_rdatatype_t qtype, dns_rdataclass_t qclass,
+		  dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
+		  rrstream_t *stream, dns_tsigkey_t *tsigkey,
+		  isc_buffer_t *lasttsig, bool verified_tsig,
+		  unsigned int maxtime, unsigned int idletime,
+		  bool many_answers, xfrout_ctx_t **xfrp) {
 	xfrout_ctx_t *xfr = NULL;
 	unsigned int len = NS_CLIENT_TCP_BUFFER_SIZE;
 	void *mem = NULL;
 
 	REQUIRE(xfrp != NULL && *xfrp == NULL);
 
-	xfr = isc_mem_get(mctx, sizeof(*xfr));
+	xfr = isc_mem_get(isc_g_mctx, sizeof(*xfr));
 	*xfr = (xfrout_ctx_t){
 		.client = client,
 		.id = id,
@@ -1223,8 +1205,6 @@ xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
 		.verified_tsig = verified_tsig,
 		.many_answers = many_answers,
 	};
-
-	isc_mem_attach(mctx, &xfr->mctx);
 
 	if (zone != NULL) { /* zone will be NULL if it's DLZ */
 		dns_zone_attach(zone, &xfr->zone);
@@ -1252,14 +1232,14 @@ xfrout_ctx_create(isc_mem_t *mctx, ns_client_t *client, unsigned int id,
 	 * because the message and RR headers would push the size of the
 	 * TCP message over the 65535 byte limit.
 	 */
-	mem = isc_mem_get(mctx, len);
+	mem = isc_mem_get(isc_g_mctx, len);
 	isc_buffer_init(&xfr->buf, mem, len);
 
 	/*
 	 * Allocate another temporary buffer for the compressed
 	 * response message.
 	 */
-	mem = isc_mem_get(mctx, len);
+	mem = isc_mem_get(isc_g_mctx, len);
 	isc_buffer_init(&xfr->txbuf, (char *)mem, len);
 	xfr->txmem = mem;
 	xfr->txmemlen = len;
@@ -1383,8 +1363,8 @@ sendstream(xfrout_ctx_t *xfr) {
 		 * message.
 		 */
 
-		dns_message_create(xfr->mctx, NULL, NULL,
-				   DNS_MESSAGE_INTENTRENDER, &tcpmsg);
+		dns_message_create(NULL, NULL, DNS_MESSAGE_INTENTRENDER,
+				   &tcpmsg);
 		msg = tcpmsg;
 
 		msg->id = xfr->id;
@@ -1571,7 +1551,7 @@ sendstream(xfrout_ctx_t *xfr) {
 	}
 
 	if (is_tcp) {
-		dns_compress_init(&cctx, xfr->mctx,
+		dns_compress_init(&cctx,
 				  DNS_COMPRESS_CASE | DNS_COMPRESS_LARGE);
 		cleanup_cctx = true;
 		CHECK(dns_message_renderbegin(msg, &cctx, &xfr->txbuf));
@@ -1594,7 +1574,7 @@ sendstream(xfrout_ctx_t *xfr) {
 	}
 
 	/* Advance lasttsig to be the last TSIG generated */
-	CHECK(dns_message_getquerytsig(msg, xfr->mctx, &xfr->lasttsig));
+	CHECK(dns_message_getquerytsig(msg, &xfr->lasttsig));
 
 cleanup:
 	if (tcpmsg != NULL) {
@@ -1634,10 +1614,10 @@ xfrout_ctx_destroy(xfrout_ctx_t **xfrp) {
 		xfr->stream->methods->destroy(&xfr->stream);
 	}
 	if (xfr->buf.base != NULL) {
-		isc_mem_put(xfr->mctx, xfr->buf.base, xfr->buf.length);
+		isc_mem_put(isc_g_mctx, xfr->buf.base, xfr->buf.length);
 	}
 	if (xfr->txmem != NULL) {
-		isc_mem_put(xfr->mctx, xfr->txmem, xfr->txmemlen);
+		isc_mem_put(isc_g_mctx, xfr->txmem, xfr->txmemlen);
 	}
 	if (xfr->lasttsig != NULL) {
 		isc_buffer_free(&xfr->lasttsig);
@@ -1655,7 +1635,7 @@ xfrout_ctx_destroy(xfrout_ctx_t **xfrp) {
 		dns_db_detach(&xfr->db);
 	}
 
-	isc_mem_putanddetach(&xfr->mctx, xfr, sizeof(*xfr));
+	isc_mem_put(isc_g_mctx, xfr, sizeof(*xfr));
 }
 
 static void
