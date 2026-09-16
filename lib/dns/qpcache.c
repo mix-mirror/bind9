@@ -1687,17 +1687,6 @@ qpcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	return result;
 }
 
-static isc_result_t
-setcachestats(dns_db_t *db, isc_stats_t *stats) {
-	qpcache_t *qpdb = (qpcache_t *)db;
-
-	REQUIRE(VALID_QPDB(qpdb));
-	REQUIRE(stats != NULL);
-
-	isc_stats_attach(stats, &qpdb->cachestats);
-	return ISC_R_SUCCESS;
-}
-
 static dns_stats_t *
 getrrsetstats(dns_db_t *db) {
 	qpcache_t *qpdb = (qpcache_t *)db;
@@ -1725,17 +1714,6 @@ getservestalettl(dns_db_t *db, dns_ttl_t *ttl) {
 	REQUIRE(VALID_QPDB(qpdb));
 
 	*ttl = qpdb->common.serve_stale_ttl;
-	return ISC_R_SUCCESS;
-}
-
-static isc_result_t
-setservestalerefresh(dns_db_t *db, uint32_t interval) {
-	qpcache_t *qpdb = (qpcache_t *)db;
-
-	REQUIRE(VALID_QPDB(qpdb));
-
-	/* currently no bounds checking.  0 means disable. */
-	qpdb->serve_stale_refresh = interval;
 	return ISC_R_SUCCESS;
 }
 
@@ -3237,10 +3215,8 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.deleterdataset = qpcache_deleterdataset,
 	.nodecount = nodecount,
 	.getrrsetstats = getrrsetstats,
-	.setcachestats = setcachestats,
 	.setservestalettl = setservestalettl,
 	.getservestalettl = getservestalettl,
-	.setservestalerefresh = setservestalerefresh,
 	.getservestalerefresh = getservestalerefresh,
 	.setmaxrrperset = setmaxrrperset,
 	.setmaxtypepername = setmaxtypepername,

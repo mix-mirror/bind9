@@ -331,15 +331,6 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			    sigrdataset DNS__DB_FLARG_PASS);
 }
 
-static isc_result_t
-setcachestats(dns_db_t *db, isc_stats_t *stats) {
-	sampledb_t *sampledb = (sampledb_t *)db;
-
-	REQUIRE(VALID_SAMPLEDB(sampledb));
-
-	return dns_db_setcachestats(sampledb->db, stats);
-}
-
 static void
 addglue(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *owner_name,
 	dns_rdataset_t *rdataset, dns_message_t *msg,
@@ -378,7 +369,6 @@ static dns_dbmethods_t sampledb_methods = {
 	.getrrsetstats = getrrsetstats,
 	.findnode = findnode,
 	.find = find,
-	.setcachestats = setcachestats,
 	.addglue = addglue,
 };
 

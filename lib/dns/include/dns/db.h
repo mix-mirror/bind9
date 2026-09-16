@@ -157,12 +157,10 @@ typedef struct dns_db_methods {
 			     dns_clientinfo_t		*clientinfo,
 			     dns_rdataset_t		*rdataset,
 			     dns_rdataset_t *sigrdataset DNS__DB_FLARG);
-	isc_result_t (*setcachestats)(dns_db_t *db, isc_stats_t *stats);
 	isc_result_t (*getsize)(dns_db_t *db, dns_dbversion_t *version,
 				uint64_t *records, uint64_t *bytes);
 	isc_result_t (*setservestalettl)(dns_db_t *db, dns_ttl_t ttl);
 	isc_result_t (*getservestalettl)(dns_db_t *db, dns_ttl_t *ttl);
-	isc_result_t (*setservestalerefresh)(dns_db_t *db, uint32_t interval);
 	isc_result_t (*getservestalerefresh)(dns_db_t *db, uint32_t *interval);
 	isc_result_t (*setgluecachestats)(dns_db_t *db, isc_stats_t *stats);
 	void (*addglue)(dns_db_t *db, dns_dbversion_t *version,
@@ -1627,21 +1625,6 @@ dns_db_getrrsetstats(dns_db_t *db);
  *	dns_rdatasetstats_create(); otherwise NULL.
  */
 
-isc_result_t
-dns_db_setcachestats(dns_db_t *db, isc_stats_t *stats);
-/*%<
- * Set the location in which to collect cache statistics.
- * This option may not exist depending on the DB implementation.
- *
- * Requires:
- *
- * \li	'db' is a valid database (cache only).
- *
- * Returns:
- * \li	when available, a pointer to a statistics object created by
- *	dns_rdatasetstats_create(); otherwise NULL.
- */
-
 void
 dns_db_updatenotify_register(dns_db_t *db, dns_dbupdate_callback_t fn,
 			     void *fn_arg);
@@ -1694,23 +1677,6 @@ dns_db_getservestalettl(dns_db_t *db, dns_ttl_t *ttl);
  * Requires:
  * \li	'db' is a valid cache database.
  * \li	'ttl' is the number of seconds to retain data past its normal expiry.
- *
- * Returns:
- * \li	#ISC_R_SUCCESS
- * \li	#ISC_R_NOTIMPLEMENTED - Not supported by this DB implementation.
- */
-
-isc_result_t
-dns_db_setservestalerefresh(dns_db_t *db, uint32_t interval);
-/*%<
- * Sets the length of time to wait before attempting to refresh a rrset
- * if a previous attempt in doing so has failed.
- * During this time window if stale rrset are available in cache they
- * will be directly returned to client.
- *
- * Requires:
- * \li	'db' is a valid cache database.
- * \li	'interval' is number of seconds before attempting to refresh data.
  *
  * Returns:
  * \li	#ISC_R_SUCCESS
