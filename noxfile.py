@@ -28,9 +28,18 @@ Environment variables:
 
     NOX_BUILD_DIR              build directory (default: build-nox)
     TEST_PARALLEL_JOBS         number of pytest workers (default: 20)
+    NOX_SYSTEM_SITE_PACKAGES=1 let the virtual environments see the packages
+                               installed on the system and install only
+                               those that are missing or differ from the
+                               pinned versions (meant for the CI images,
+                               which ship the packages)
+
+`nox --no-venv` runs the tools installed on the system without installing
+anything.
 """
 
 import os
+import sys
 
 import nox
 
@@ -54,13 +63,34 @@ BUILD_DIR = os.environ.get("NOX_BUILD_DIR", "build-nox")
 TEST_REQUIREMENTS = "bin/tests/system/requirements.txt"
 LINT_REQUIREMENTS = "requirements-lint.txt"
 
+# pip skips the packages that the system already provides in the pinned
+# version, so only the missing or differing ones get downloaded
+if os.environ.get("NOX_SYSTEM_SITE_PACKAGES") == "1":
+    VENV_PARAMS = ["--system-site-packages"]
+else:
+    VENV_PARAMS = []
+
 # configure and compile BIND only once per nox invocation
 _bind = {"configured": False, "compiled": False}
 
 
+def pysession(*args, **kwargs):
+    """nox.session for the sessions that need the Python dependencies"""
+    return nox.session(*args, venv_params=VENV_PARAMS, **kwargs)
+
+
 def install(session, requirements):
     """Install a pinned requirements file into the session venv."""
+    if session.venv_backend == "none":
+        return  # `nox --no-venv`: use whatever is installed on the system
     session.install("-r", requirements)
+
+
+def python(session):
+    """The Python interpreter of the session"""
+    if session.venv_backend == "none":
+        return sys.executable
+    return "python"
 
 
 def git_ls_files(session, *patterns):
@@ -131,7 +161,7 @@ def unit_tests(session):
     session.run("meson", "test", "-C", BUILD_DIR, *session.posargs, external=True)
 
 
-@nox.session
+@pysession
 def system_tests(session):
     "Run the system tests (extra arguments are passed to pytest)"
     install(session, TEST_REQUIREMENTS)
@@ -142,17 +172,17 @@ def system_tests(session):
     # run from the system test directory like the README describes so that
     # test directories can be given as arguments (`-- rrchecker`)
     with session.chdir("bin/tests/system"):
-        session.run("python", "-m", "pytest", *args)
+        session.run(python(session), "-m", "pytest", *args)
 
 
-@nox.session
+@pysession
 def mypy(session):
     "Run mypy on the system test library"
     install(session, LINT_REQUIREMENTS)
     session.run("mypy", "bin/tests/system/isctest/")
 
 
-@nox.session
+@pysession
 def pylint(session):
     "Run pylint"
     install(session, LINT_REQUIREMENTS)
@@ -161,35 +191,35 @@ def pylint(session):
     session.run("pylint", *git_ls_files(session, "*.py"))
 
 
-@nox.session
+@pysession
 def black(session):
     "Check the Python formatting with black"
     install(session, LINT_REQUIREMENTS)
     session.run("black", "--check", *git_ls_files(session, "*.py"))
 
 
-@nox.session
+@pysession
 def black_fix(session):
     "Reformat the Python files with black"
     install(session, LINT_REQUIREMENTS)
     session.run("black", *git_ls_files(session, "*.py"))
 
 
-@nox.session
+@pysession
 def ruff(session):
     "Run ruff"
     install(session, LINT_REQUIREMENTS)
     session.run("ruff", "check")
 
 
-@nox.session
+@pysession
 def ruff_fix(session):
     "Apply the ruff fixes"
     install(session, LINT_REQUIREMENTS)
     session.run("ruff", "check", "--fix")
 
 
-@nox.session
+@pysession
 def vulture(session):
     "Look for dead Python code with vulture"
     install(session, LINT_REQUIREMENTS)
