@@ -414,7 +414,59 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	isc_loopmgr_shutdown();
 }
 
+/* Configuration follows the replacement cache, while old DBs stay valid. */
+ISC_LOOP_TEST_IMPL(cache_flush_configuration) {
+	dns_cache_t *cache = NULL;
+	dns_db_t *db = NULL;
+
+	dns_cache_create(dns_rdataclass_in, "flush", isc_g_mctx, &cache);
+	for (unsigned int i = 0; i < 2; i++) {
+		dns_db_t *old = NULL;
+		dns_ttl_t ttl = i == 0 ? 86400 : 0;
+		dns_ttl_t refresh = i == 0 ? 30 : 0;
+		uint32_t maxrr = i == 0 ? 100 : 0;
+		uint32_t maxtype = i == 0 ? 20 : 0;
+		size_t size = DNS_CACHE_MINSIZE * (i + 1);
+
+		dns_cache_setservestalettl(cache, ttl);
+		dns_cache_setservestalerefresh(cache, refresh);
+		dns_cache_setmaxrrperset(cache, maxrr);
+		dns_cache_setmaxtypepername(cache, maxtype);
+		dns_cache_setcachesize(cache, size);
+		dns_cache_attachdb(cache, &old);
+		overmempurge_addrdataset(old, isc_stdtime_now(), 0, 50053, 0,
+					 false);
+
+		dns_cache_flush(cache);
+		dns_cache_attachdb(cache, &db);
+		qpcache_t *qpdb = (qpcache_t *)db;
+		assert_ptr_not_equal(db, old);
+		assert_int_equal(dns_cache_getservestalettl(cache), ttl);
+		assert_int_equal(dns_cache_getservestalerefresh(cache),
+				 refresh);
+		assert_int_equal(dns_cache_getcachesize(cache), size);
+		assert_int_equal(qpdb->maxrrperset, maxrr);
+		assert_int_equal(qpdb->maxtypepername, maxtype);
+		assert_int_equal(dns_db_nodecount(db), 0);
+		assert_true(dns_db_nodecount(old) > 0);
+		assert_int_equal(dns__qpcache_getcachesize((qpcache_t *)old),
+				 0);
+		assert_int_equal(old->serve_stale_ttl, ttl);
+		dns_db_detach(&old);
+		dns_db_detach(&db);
+	}
+
+	/* The final database can also outlive its dns_cache owner. */
+	dns_cache_attachdb(cache, &db);
+	dns_cache_detach(&cache);
+	assert_int_equal(dns_db_nodecount(db), 0);
+	dns_db_detach(&db);
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY_CUSTOM(cache_flush_configuration, setup_managers,
+		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(allrdatasets_expiredok_skips_deleted_header,

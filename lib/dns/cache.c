@@ -64,11 +64,7 @@ struct dns_cache {
 	/* Locked by 'lock'. */
 	dns_rdataclass_t rdclass;
 	qpcache_t *db;
-	dns_ttl_t serve_stale_ttl;
-	dns_ttl_t serve_stale_refresh;
 	isc_stats_t *stats;
-	uint32_t maxrrperset;
-	uint32_t maxtypepername;
 };
 
 /***
@@ -83,10 +79,6 @@ cache_create_db(dns_cache_t *cache, qpcache_t **dbp) {
 	isc_mem_create("cache", &tmctx);
 	dns__qpcache_new(tmctx, dns_rootname, cache->rdclass, &db);
 	isc_stats_attach(cache->stats, &db->cachestats);
-	db->common.serve_stale_ttl = cache->serve_stale_ttl;
-	db->serve_stale_refresh = cache->serve_stale_refresh;
-	db->maxrrperset = cache->maxrrperset;
-	db->maxtypepername = cache->maxtypepername;
 	*dbp = db;
 	isc_mem_detach(&tmctx);
 }
@@ -196,16 +188,18 @@ dns_cache_setservestalettl(dns_cache_t *cache, dns_ttl_t ttl) {
 	REQUIRE(VALID_CACHE(cache));
 
 	LOCK(&cache->lock);
-	cache->serve_stale_ttl = ttl;
-	UNLOCK(&cache->lock);
-
 	cache->db->common.serve_stale_ttl = ttl;
+	UNLOCK(&cache->lock);
 }
 
 dns_ttl_t
 dns_cache_getservestalettl(dns_cache_t *cache) {
 	REQUIRE(VALID_CACHE(cache));
-	return cache->db->common.serve_stale_ttl;
+
+	LOCK(&cache->lock);
+	dns_ttl_t value = cache->db->common.serve_stale_ttl;
+	UNLOCK(&cache->lock);
+	return value;
 }
 
 void
@@ -213,16 +207,18 @@ dns_cache_setservestalerefresh(dns_cache_t *cache, dns_ttl_t interval) {
 	REQUIRE(VALID_CACHE(cache));
 
 	LOCK(&cache->lock);
-	cache->serve_stale_refresh = interval;
-	UNLOCK(&cache->lock);
-
 	cache->db->serve_stale_refresh = interval;
+	UNLOCK(&cache->lock);
 }
 
 dns_ttl_t
 dns_cache_getservestalerefresh(dns_cache_t *cache) {
 	REQUIRE(VALID_CACHE(cache));
-	return cache->db->serve_stale_refresh;
+
+	LOCK(&cache->lock);
+	dns_ttl_t value = cache->db->serve_stale_refresh;
+	UNLOCK(&cache->lock);
+	return value;
 }
 
 void
@@ -234,6 +230,11 @@ dns_cache_flush(dns_cache_t *cache) {
 	LOCK(&cache->lock);
 	size_t size = dns__qpcache_getcachesize(cache->db);
 	olddb = cache->db;
+	/* Preserve configuration from the instance being replaced. */
+	db->common.serve_stale_ttl = olddb->common.serve_stale_ttl;
+	db->serve_stale_refresh = olddb->serve_stale_refresh;
+	db->maxrrperset = olddb->maxrrperset;
+	db->maxtypepername = olddb->maxtypepername;
 	dns__qpcache_setcachesize(olddb, 0);
 	cache->db = db;
 	dns__qpcache_setcachesize(cache->db, size);
@@ -386,20 +387,18 @@ void
 dns_cache_setmaxrrperset(dns_cache_t *cache, uint32_t value) {
 	REQUIRE(VALID_CACHE(cache));
 
-	cache->maxrrperset = value;
-	if (cache->db != NULL) {
-		cache->db->maxrrperset = value;
-	}
+	LOCK(&cache->lock);
+	cache->db->maxrrperset = value;
+	UNLOCK(&cache->lock);
 }
 
 void
 dns_cache_setmaxtypepername(dns_cache_t *cache, uint32_t value) {
 	REQUIRE(VALID_CACHE(cache));
 
-	cache->maxtypepername = value;
-	if (cache->db != NULL) {
-		cache->db->maxtypepername = value;
-	}
+	LOCK(&cache->lock);
+	cache->db->maxtypepername = value;
+	UNLOCK(&cache->lock);
 }
 
 /*
