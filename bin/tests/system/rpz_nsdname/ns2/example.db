@@ -1,0 +1,6 @@
+$TTL 300
+example.        SOA  ns1.example. hostmaster.example. 1 600 600 1200 600
+example.        NS      ns1.example.
+ns1.example.    A       10.53.0.2
+a.example.      A       10.0.0.1
+b.example. 	A	10.0.0.2
