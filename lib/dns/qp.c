@@ -503,6 +503,8 @@ static void
 qp_init_reclaim(dns_qp_t *qp) {
 	qp->reclaim_head = INVALID_CHUNK;
 	qp->reclaim_tail = INVALID_CHUNK;
+	qp->free_slot = INVALID_CHUNK;
+	qp->chunk_frontier = 0;
 }
 
 /*
@@ -595,19 +597,25 @@ realloc_chunk_arrays(dns_qp_t *qp, dns_qpchunk_t newmax) {
 
 /*
  * There was no space in the bump chunk, so find a place to put a fresh
- * chunk in the chunk arrays, then allocate some twigs from it.
+ * chunk in the chunk arrays, then allocate some twigs from it. Slots
+ * that have held a chunk before are kept on a list by chunk_detach(),
+ * so this never has to scan the arrays; the rest are handed out in
+ * order from the frontier.
  */
 static dns_qpref_t
 alloc_slow(dns_qp_t *qp, dns_qpweight_t size) {
-	dns_qpchunk_t chunk;
+	dns_qpchunk_t chunk = qp->free_slot;
 
-	for (chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (!qp->usage[chunk].exists) {
-			return chunk_alloc(qp, chunk, size);
-		}
+	if (chunk != INVALID_CHUNK) {
+		INSIST(chunk < qp->chunk_frontier);
+		INSIST(!qp->usage[chunk].exists);
+		qp->free_slot = qp->usage[chunk].reclaim_next;
+		return chunk_alloc(qp, chunk, size);
 	}
-	ENSURE(chunk == qp->chunk_max);
-	realloc_chunk_arrays(qp, GROWTH_FACTOR(chunk));
+	if (qp->chunk_frontier == qp->chunk_max) {
+		realloc_chunk_arrays(qp, GROWTH_FACTOR(qp->chunk_max));
+	}
+	chunk = qp->chunk_frontier++;
 	return chunk_alloc(qp, chunk, size);
 }
 
@@ -784,7 +792,8 @@ chunk_detach(dns_qp_t *qp, dns_qpchunk_t chunk, qp_freechunk_t *fc) {
 	};
 	chunk_discount(qp, chunk);
 	qp->base->ptr[chunk] = NULL;
-	qp->usage[chunk] = (qp_usage_t){};
+	qp->usage[chunk] = (qp_usage_t){ .reclaim_next = qp->free_slot };
+	qp->free_slot = chunk;
 }
 
 /*

@@ -2160,6 +2160,93 @@ ISC_RUN_TEST_IMPL(qp_memusage) {
 	assert_null(qp);
 }
 
+/*
+ * Count the chunk slots currently holding a chunk.
+ */
+static unsigned int
+count_chunks(dns_qp_t *qp) {
+	unsigned int n = 0;
+	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
+		if (qp->usage[c].exists) {
+			n++;
+		}
+	}
+	return n;
+}
+
+#define SLOT_NAMES 2000
+
+/* leaf pointers must be 4-byte aligned, so the names get fixed rows */
+static char slot_names[SLOT_NAMES][16] __attribute__((__aligned__(8)));
+
+static void
+slot_delete(dns_qp_t *qp, const char *str) {
+	dns_fixedname_t fname;
+	isc_result_t result;
+
+	dns_test_namefromstring(str, &fname);
+	result = dns_qp_deletename(qp, dns_fixedname_name(&fname),
+				   DNS_DBNAMESPACE_NORMAL, NULL, NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+}
+
+/*
+ * Chunk slots that were freed are handed out again from a list, and the
+ * frontier only advances once that list is empty.
+ */
+ISC_RUN_TEST_IMPL(qp_chunk_slot_reuse) {
+	dns_qp_t *qp = NULL;
+	dns_qpchunk_t frontier, freed = 0;
+	unsigned int before, allocated;
+
+	for (unsigned int i = 0; i < SLOT_NAMES; i++) {
+		snprintf(slot_names[i], sizeof(slot_names[i]), "h%04u.test.",
+			 i);
+	}
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	for (unsigned int i = 0; i < SLOT_NAMES; i++) {
+		insert_name(qp, slot_names[i], DNS_DBNAMESPACE_NORMAL);
+	}
+	assert_true(qp->chunk_frontier > 2);
+	assert_int_equal(qp->free_slot, INVALID_CHUNK);
+
+	/*
+	 * Empty the trie; compaction opens a fresh bump chunk and then
+	 * frees every other chunk.
+	 */
+	for (unsigned int i = 0; i < SLOT_NAMES; i++) {
+		slot_delete(qp, slot_names[i]);
+	}
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	frontier = qp->chunk_frontier;
+	before = count_chunks(qp);
+	for (dns_qpchunk_t c = qp->free_slot; c != INVALID_CHUNK;
+	     c = qp->usage[c].reclaim_next)
+	{
+		assert_false(qp->usage[c].exists);
+		assert_true(c < frontier);
+		freed++;
+	}
+	assert_true(freed > 2);
+
+	/* refilling takes the freed slots before the frontier moves */
+	for (unsigned int i = 0; i < SLOT_NAMES; i++) {
+		insert_name(qp, slot_names[i], DNS_DBNAMESPACE_NORMAL);
+	}
+	allocated = count_chunks(qp) - before;
+	assert_true(allocated > 0);
+	if (allocated <= freed) {
+		assert_int_equal(qp->chunk_frontier, frontier);
+	} else {
+		assert_int_equal(qp->chunk_frontier,
+				 frontier + allocated - freed);
+		assert_int_equal(qp->free_slot, INVALID_CHUNK);
+	}
+	assert_int_equal(dns_qp_memusage(qp).leaves, SLOT_NAMES);
+
+	dns_qp_destroy(&qp);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(qp_basics)
 ISC_TEST_ENTRY(qp_memusage)
@@ -2171,6 +2258,7 @@ ISC_TEST_ENTRY(qpchain)
 ISC_TEST_ENTRY(predecessors)
 ISC_TEST_ENTRY(fixiterator)
 ISC_TEST_ENTRY(qpkey_delete)
+ISC_TEST_ENTRY(qp_chunk_slot_reuse)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

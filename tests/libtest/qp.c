@@ -180,6 +180,8 @@ qp_test_dumpchunks(dns_qp_t *qp) {
 	dns_qpcell_t used_count = 0;
 	dns_qpcell_t free_count = 0;
 	dumpqp(qp, "qp");
+	printf("qp %p free_slot %u chunk_frontier %u chunk_max %u\n", qp,
+	       qp->free_slot, qp->chunk_frontier, qp->chunk_max);
 	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
 		printf("qp %p chunk %u base %p "
 		       "used %u free %u generation %llu discounted %u "
