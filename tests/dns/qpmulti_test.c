@@ -338,6 +338,24 @@ one_transaction(dns_qpmulti_t *qpm) {
 	assert_true(ok);
 }
 
+/*
+ * The writer's fields belong to whoever holds the mutex, and the RCU
+ * thread that frees chunks takes it too, so even the test must.
+ */
+static void
+set_budget(dns_qpmulti_t *qpm, dns_qpcell_t budget) {
+	LOCK(&qpm->mutex);
+	qpm->writer.compact_budget = budget;
+	UNLOCK(&qpm->mutex);
+}
+
+static void
+force_cycle(dns_qpmulti_t *qpm) {
+	LOCK(&qpm->mutex);
+	qpm->writer.compact_all = true;
+	UNLOCK(&qpm->mutex);
+}
+
 static void
 many_transactions(void *arg) {
 	UNUSED(arg);
@@ -345,9 +363,14 @@ many_transactions(void *arg) {
 	dns_qpmulti_t *qpm = NULL;
 	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
 	qpm->writer.write_protect = true;
+	/* many small compaction steps among the random transactions */
+	set_budget(qpm, 64);
 
 	for (size_t n = 0; n < TRANSACTION_COUNT; n++) {
 		TRACE("transaction %zu", n);
+		if (n % 100 == 0) {
+			force_cycle(qpm);
+		}
 		one_transaction(qpm);
 		rcu_quiescent_state();
 	}
@@ -717,6 +740,325 @@ ISC_RUN_TEST_IMPL(qpmulti_refs_destroy) {
 			 atomic_load_relaxed(&detaches));
 }
 
+static dns_qpcell_t
+chunk_usage_of(dns_qpmulti_t *qpm, dns_qpchunk_t c) {
+	return qpm->writer.usage[c].used - qpm->writer.usage[c].free;
+}
+
+/*
+ * Insert every item in write transactions of `batch`, and mark them
+ * present for checkallrw().
+ */
+
+/*
+ * Run empty write transactions until no compaction cycle is active,
+ * checking the contents now and then. Returns the number of commits.
+ */
+static unsigned int
+compact_to_completion(dns_qpmulti_t *qpm, unsigned int limit) {
+	dns_qp_t *qp = NULL;
+	unsigned int commits = 0;
+
+	while (qpm->writer.compact_active) {
+		assert_true(commits < limit);
+		dns_qpmulti_write(qpm, &qp);
+		if (commits % 16 == 0) {
+			assert_true(checkallrw(qp));
+		}
+		dns_qpmulti_commit(qpm, &qp);
+		commits++;
+	}
+	return commits;
+}
+
+/* A forced cycle copies the whole trie in bounded steps across commits. */
+ISC_RUN_TEST_IMPL(qpmulti_compact_incremental) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qp_memusage_t mu;
+	dns_qpcell_t evacuated;
+	unsigned int commits = 0, height;
+	uint64_t gen;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	set_budget(qpm, 256);
+	insert_all(qpm, 100);
+	compact_to_completion(qpm, 10000);
+
+	mu = dns_qpmulti_memusage(qpm);
+	gen = qpm->writer.generation;
+	height = qp_test_getheight(&qpm->writer);
+
+	force_cycle(qpm);
+	dns_qpmulti_write(qpm, &qp);
+	dns_qpmulti_commit(qpm, &qp);
+	assert_true(qpm->writer.compact_active);
+	assert_non_null(qpm->writer.compact_key);
+	evacuated = qpm->writer.compact_evacuated;
+
+	while (qpm->writer.compact_active) {
+		dns_qpcell_t delta;
+
+		/* every vector is visited and copied at most once */
+		assert_true(commits <= 2 * mu.live / 256 + 2);
+		dns_qpmulti_write(qpm, &qp);
+		if (commits % 16 == 0) {
+			assert_true(checkallrw(qp));
+		}
+		dns_qpmulti_commit(qpm, &qp);
+		/* bounded: budget, the last vector, and the resume path */
+		delta = qpm->writer.compact_evacuated - evacuated;
+		assert_true(delta <= 256 + 96 + 96 * height);
+		evacuated = qpm->writer.compact_evacuated;
+		commits++;
+	}
+	assert_true(commits > 1);
+	assert_null(qpm->writer.compact_key);
+	assert_false(qpm->writer.compact_all);
+
+	/* everything still in use was written by the cycle */
+	rcu_barrier();
+	LOCK(&qpm->mutex);
+	for (dns_qpchunk_t c = 0; c < qpm->writer.chunk_max; c++) {
+		if (qpm->writer.usage[c].exists && chunk_usage_of(qpm, c) > 0) {
+			assert_true(qpm->writer.usage[c].generation > gen);
+		}
+	}
+	UNLOCK(&qpm->mutex);
+
+	mu = dns_qpmulti_memusage(qpm);
+	assert_int_equal(mu.leaves, ITEM_COUNT);
+	/* the only garbage left is the resume path copied by each step */
+	assert_true(mu.free <= (size_t)(commits + 2) * 48 * (height + 1));
+	check_refcounts(false);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/* Commits collect garbage on their own; nothing calls dns_qp_compact(). */
+ISC_RUN_TEST_IMPL(qpmulti_compact_needgc) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qp_memusage_t mu;
+	unsigned int commits = 0;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	set_budget(qpm, 1024);
+	insert_all(qpm, 100);
+	compact_to_completion(qpm, 10000);
+	rcu_barrier();
+	mu = dns_qpmulti_memusage(qpm);
+	size_t chunks_full = mu.chunk_count;
+
+	for (size_t i = 16; i < ITEM_COUNT; i += 100) {
+		dns_qpmulti_write(qpm, &qp);
+		for (size_t j = i; j < i + 100 && j < ITEM_COUNT; j++) {
+			assert_int_equal(dns_qp_deletekey(qp, item[j].key,
+							  item[j].len, NULL,
+							  NULL),
+					 ISC_R_SUCCESS);
+			item[j].in_rw = false;
+		}
+		dns_qpmulti_commit(qpm, &qp);
+	}
+
+	while (qpm->writer.compact_active ||
+	       dns_qpmulti_memusage(qpm).fragmented)
+	{
+		assert_true(commits < 10000);
+		dns_qpmulti_write(qpm, &qp);
+		dns_qpmulti_commit(qpm, &qp);
+		commits++;
+	}
+
+	rcu_barrier();
+	mu = dns_qpmulti_memusage(qpm);
+	assert_int_equal(mu.leaves, 16);
+	assert_false(mu.fragmented);
+	/*
+	 * The memory of the deleted items was collected along the way:
+	 * what is left is the bump chunk and at most a couple of chunks
+	 * that the last cycles left too tightly packed to bother with.
+	 */
+	assert_true(mu.chunk_count * 2 < chunks_full);
+	check_refcounts(false);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/* Emptying the trie in the middle of a cycle ends the cycle cleanly. */
+ISC_RUN_TEST_IMPL(qpmulti_compact_empty) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qp_memusage_t mu;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	set_budget(qpm, 64);
+	insert_all(qpm, 100);
+	compact_to_completion(qpm, 10000);
+
+	force_cycle(qpm);
+	dns_qpmulti_write(qpm, &qp);
+	dns_qpmulti_commit(qpm, &qp);
+	assert_true(qpm->writer.compact_active);
+
+	dns_qpmulti_write(qpm, &qp);
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		assert_int_equal(dns_qp_deletekey(qp, item[i].key, item[i].len,
+						  NULL, NULL),
+				 ISC_R_SUCCESS);
+		item[i].in_rw = false;
+	}
+	dns_qpmulti_commit(qpm, &qp);
+	compact_to_completion(qpm, 10);
+
+	rcu_barrier();
+	mu = dns_qpmulti_memusage(qpm);
+	assert_int_equal(mu.leaves, 0);
+	assert_null(qpm->writer.compact_key);
+	check_refcounts(false);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/*
+ * Random inserts and deletes while cycles run, with explicit calls to
+ * dns_qp_compact() that share the transaction's step, and with the
+ * cursor's own key deleted from under the collector now and then.
+ */
+ISC_RUN_TEST_IMPL(qpmulti_compact_mutate) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qp_memusage_t mu;
+	unsigned int cursor_deleted = 0;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	set_budget(qpm, 128);
+	insert_all(qpm, 100);
+
+	for (unsigned int n = 0; n < 3000; n++) {
+		size_t i = isc_random_uniform(ITEM_COUNT);
+
+		if (n % 500 == 0) {
+			force_cycle(qpm);
+		}
+		dns_qpmulti_write(qpm, &qp);
+		if (item[i].in_rw) {
+			assert_int_equal(dns_qp_deletekey(qp, item[i].key,
+							  item[i].len, NULL,
+							  NULL),
+					 ISC_R_SUCCESS);
+			item[i].in_rw = false;
+		} else {
+			assert_int_equal(dns_qp_insert(qp, &item[i], i),
+					 ISC_R_SUCCESS);
+			item[i].in_rw = true;
+		}
+		if (n % 7 == 0 && qp->compact_key != NULL) {
+			void *pval = NULL;
+			uint32_t ival = 0;
+			if (dns_qp_getkey(qp, *qp->compact_key,
+					  qp->compact_keylen, &pval,
+					  &ival) == ISC_R_SUCCESS)
+			{
+				assert_int_equal(
+					dns_qp_deletekey(qp, *qp->compact_key,
+							 qp->compact_keylen,
+							 NULL, NULL),
+					ISC_R_SUCCESS);
+				item[ival].in_rw = false;
+				cursor_deleted++;
+			}
+		}
+		if (n % 5 == 0) {
+			dns_qp_compact(qp, DNS_QPGC_MAYBE);
+		}
+		if (n % 250 == 0) {
+			assert_true(checkallrw(qp));
+		}
+		dns_qpmulti_commit(qpm, &qp);
+	}
+	assert_true(cursor_deleted > 0);
+	compact_to_completion(qpm, 10000);
+
+	rcu_barrier();
+	mu = dns_qpmulti_memusage(qpm);
+	size_t expected = 0;
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		expected += item[i].in_rw;
+	}
+	assert_int_equal(mu.leaves, expected);
+	check_refcounts(false);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/* A snapshot keeps its version readable across a whole cycle. */
+ISC_RUN_TEST_IMPL(qpmulti_compact_snapshot) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpsnap_t *snap = NULL;
+	dns_qp_memusage_t held, released;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	set_budget(qpm, 256);
+	insert_all(qpm, 100);
+	compact_to_completion(qpm, 10000);
+
+	dns_qpmulti_snapshot(qpm, &snap);
+	force_cycle(qpm);
+	dns_qpmulti_write(qpm, &qp);
+	dns_qpmulti_commit(qpm, &qp);
+	compact_to_completion(qpm, 10000);
+	assert_true(checkallrw(snap));
+
+	rcu_barrier();
+	held = dns_qpmulti_memusage(qpm);
+	dns_qpsnap_destroy(qpm, &snap);
+	rcu_barrier();
+	released = dns_qpmulti_memusage(qpm);
+	assert_true(released.chunk_count < held.chunk_count);
+	check_refcounts(false);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/* Destroying a trie with a saved cursor must not leak it. */
+ISC_RUN_TEST_IMPL(qpmulti_compact_destroy) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	set_budget(qpm, 64);
+	insert_all(qpm, 100);
+	compact_to_completion(qpm, 10000);
+
+	force_cycle(qpm);
+	dns_qpmulti_write(qpm, &qp);
+	dns_qpmulti_commit(qpm, &qp);
+	assert_non_null(qpm->writer.compact_key);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(qpmulti)
 ISC_TEST_ENTRY(qpmulti_memusage)
@@ -727,6 +1069,12 @@ ISC_TEST_ENTRY(qpmulti_refs_reader)
 ISC_TEST_ENTRY(qpmulti_refs_snapshot)
 ISC_TEST_ENTRY(qpmulti_refs_reinsert)
 ISC_TEST_ENTRY(qpmulti_refs_destroy)
+ISC_TEST_ENTRY(qpmulti_compact_incremental)
+ISC_TEST_ENTRY(qpmulti_compact_needgc)
+ISC_TEST_ENTRY(qpmulti_compact_empty)
+ISC_TEST_ENTRY(qpmulti_compact_mutate)
+ISC_TEST_ENTRY(qpmulti_compact_snapshot)
+ISC_TEST_ENTRY(qpmulti_compact_destroy)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

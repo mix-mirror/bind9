@@ -488,11 +488,12 @@ static void
 maybe_reclaim_chunk(dns_qp_t *qp, dns_qpchunk_t chunk);
 
 static void
-qp_init_reclaim(dns_qp_t *qp) {
+qp_init_writer(dns_qp_t *qp) {
 	qp->reclaim_head = INVALID_CHUNK;
 	qp->reclaim_tail = INVALID_CHUNK;
 	qp->free_slot = INVALID_CHUNK;
 	qp->chunk_frontier = 0;
+	qp->compact_budget = QP_COMPACT_BUDGET;
 }
 
 /*
@@ -535,6 +536,7 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 					 .used = size,
 					 .capacity = qp->chunk_capacity };
 	qp->used_count += size;
+	qp->alloc_count += size;
 	qp->bump = chunk;
 	qp->fender = 0;
 
@@ -626,6 +628,7 @@ alloc_twigs(dns_qp_t *qp, dns_qpweight_t size) {
 	if (cell + size <= qp->usage[chunk].capacity) {
 		qp->usage[chunk].used += size;
 		qp->used_count += size;
+		qp->alloc_count += size;
 		return make_ref(chunk, cell);
 	} else {
 		return alloc_slow(qp, size);
@@ -755,6 +758,17 @@ chunk_usage(dns_qp_t *qp, dns_qpchunk_t chunk) {
 	return qp->usage[chunk].used - qp->usage[chunk].free;
 }
 
+/*
+ * Does this chunk hold enough garbage to be worth evacuating? The
+ * threshold is relative to the chunk's own size, see QP_MAX_FREE. The
+ * bump chunk is never evacuated; compact() abandons it instead.
+ */
+static inline bool
+chunk_fragmented(dns_qp_t *qp, dns_qpchunk_t chunk) {
+	return chunk != qp->bump &&
+	       qp->usage[chunk].free > qp->usage[chunk].used / 8;
+}
+
 static void
 maybe_reclaim_chunk(dns_qp_t *qp, dns_qpchunk_t chunk) {
 	qp_usage_t *usage = &qp->usage[chunk];
@@ -775,6 +789,20 @@ maybe_reclaim_chunk(dns_qp_t *qp, dns_qpchunk_t chunk) {
 	}
 	qp->reclaim_tail = chunk;
 	qp->reclaim_count++;
+	qp->reclaim_used += usage->used;
+	qp->reclaim_free += usage->free;
+}
+
+/*
+ * The chunk is leaving the reclaim list; its cells are about to be
+ * discounted, so stop excluding them from QP_NEEDGC().
+ */
+static inline void
+reclaim_unlisted(dns_qp_t *qp, dns_qpchunk_t chunk) {
+	INSIST(qp->reclaim_used >= qp->usage[chunk].used);
+	INSIST(qp->reclaim_free >= qp->usage[chunk].free);
+	qp->reclaim_used -= qp->usage[chunk].used;
+	qp->reclaim_free -= qp->usage[chunk].free;
 }
 
 /*
@@ -920,6 +948,7 @@ recycle(dns_qp_t *qp) {
 			} else {
 				*link = usage->reclaim_next;
 				qp->reclaim_count--;
+				reclaim_unlisted(qp, chunk);
 				chunk_free(qp, chunk);
 				nfree++;
 			}
@@ -1042,10 +1071,12 @@ reclaim_chunks(dns_qpmulti_t *multi) {
 		usage->reclaim_candidate = false;
 		usage->reclaim_next = INVALID_CHUNK;
 		rcuctx->chunk[i++] = chunk;
+		reclaim_unlisted(qp, chunk);
 		chunk_discount(qp, chunk);
 		chunk = next;
 	}
 	INSIST(i == rcuctx->count);
+	INSIST(qp->reclaim_used == 0 && qp->reclaim_free == 0);
 	qp->reclaim_head = INVALID_CHUNK;
 	qp->reclaim_tail = INVALID_CHUNK;
 	qp->reclaim_count = 0;
@@ -1231,15 +1262,16 @@ marksweep_chunks(dns_qpmulti_t *multi, qp_freechunk_t **batchp) {
  */
 
 /*
- * Move a branch node's twigs to the `bump` chunk, for copy-on-write
- * or for garbage collection. We don't update the node in place
- * because `compact_recursive()` does not ensure the node itself is
- * mutable until after it discovers evacuation was necessary.
+ * Move a twigs vector to the `bump` chunk, for copy-on-write or for
+ * garbage collection. We don't update the branch node in place because
+ * `compact_walk()` does not ensure the node itself is mutable until
+ * after it discovers evacuation was necessary.
+ *
+ * If free_twigs() could not immediately destroy the old twigs, we have
+ * to re-attach to any leaves.
  */
 static dns_qpref_t
-evacuate(dns_qp_t *qp, dns_qpnode_t *n) {
-	dns_qpweight_t size = branch_twigs_size(n);
-	dns_qpref_t old_ref = branch_twigs_ref(n);
+evacuate_twigs(dns_qp_t *qp, dns_qpref_t old_ref, dns_qpweight_t size) {
 	dns_qpref_t new_ref = alloc_twigs(qp, size);
 	dns_qpnode_t *old_twigs = ref_ptr(qp, old_ref);
 	dns_qpnode_t *new_twigs = ref_ptr(qp, new_ref);
@@ -1253,6 +1285,11 @@ evacuate(dns_qp_t *qp, dns_qpnode_t *n) {
 	(void)free_twigs(qp, old_ref, size);
 
 	return new_ref;
+}
+
+static dns_qpref_t
+evacuate(dns_qp_t *qp, dns_qpnode_t *n) {
+	return evacuate_twigs(qp, branch_twigs_ref(n), branch_twigs_size(n));
 }
 
 /*
@@ -1277,70 +1314,334 @@ make_twigs_mutable(dns_qp_t *qp, dns_qpnode_t *n) {
 	}
 }
 
+static inline dns_qpnode_t *
+anyleaf(dns_qpreader_t *qp, dns_qpnode_t *n);
+
 /*
- * Compact the trie by traversing the whole thing recursively, copying
- * bottom-up as required. The aim is to avoid evacuation as much as
- * possible, but when parts of the trie are immutable, we need to evacuate
- * the paths from the root to the parts of the trie that occupy
- * fragmented chunks.
+ * Compaction walks the trie depth-first in key order, copying bottom-up
+ * as required. A twigs vector is evacuated when its chunk is fragmented;
+ * when a child moves, its parent's vector is updated in place if it is
+ * mutable, or evacuated too if it is immutable, so that the change
+ * bubbles up towards the root. The aim is to avoid evacuation as much
+ * as possible: without the chunk_fragmented() check the walk leaves the
+ * trie unchanged, because that check is the only place that introduces
+ * ref changes.
  *
- * Without the QP_MIN_USED check, the algorithm will leave the trie
- * unchanged. If the children are all leaves, the loop changes nothing,
- * so we will return this node's original ref. If all of the children
- * that are branches did not need moving, again, the loop changes
- * nothing. So the evacuation check is the only place that the
- * algorithm introduces ref changes, that then bubble up towards the
- * root through the logic inside the loop.
+ * In a multi-threaded trie a compaction cycle is split into steps of
+ * bounded work, one per transaction, so that the writer mutex is never
+ * held for a time proportional to the size of the trie. A step resumes
+ * where the previous one stopped, using a saved key rather than saved
+ * node pointers, because the transactions in between may have moved or
+ * deleted any node. The saved key is the least leaf key under the next
+ * subtree to process. When a step resumes, the path down to that key
+ * is walked "on-path": at each branch on the path the twigs before the
+ * key's twig were processed by earlier steps and are skipped, the key's
+ * own twig is descended, and the later twigs are processed normally.
+ * Because twigs are ordered by key, a step processes exactly the vectors
+ * whose least leaf key is greater than or equal to the saved key, no
+ * matter what was inserted or deleted in between.
+ *
+ * The saved key is the least leaf of a subtree that the previous step
+ * did not enter, so the path down to it consists of two parts: the
+ * ancestors of that subtree, which earlier steps processed, and the
+ * subtree's own branch and its leftmost chain, which they did not. The
+ * key offset of the subtree's branch tells them apart, even after the
+ * trie has changed shape: branches above it have smaller offsets, and
+ * a branch that collapses into its child leaves a larger one.
+ *
+ * The work budget is charged only for unprocessed vectors, for every
+ * vector visited and every vector copied. The processed part of the
+ * chain is copied again by every step, because the previous step
+ * published it, so charging for it could exhaust the budget before
+ * any new work is done; and a `compact_all` cycle must not copy it
+ * again either, or it would copy the whole path on every step.
  */
+typedef struct compact_ctx {
+	dns_qp_t *qp;
+	/*% cells of off-path work remaining; may go negative */
+	int64_t budget;
+	/*% stop when the budget is exhausted */
+	bool bounded;
+	/*% at least one off-path vector was visited by this step */
+	bool progressed;
+	/*% the budget ran out and a cursor was saved; unwinding */
+	bool exhausted;
+	/*% number of frames on the resume path (0: start from the root) */
+	unsigned int onpath_depth;
+	/*% first twig to process in each on-path frame */
+	dns_qpweight_t start[DNS_QP_MAXKEY + 1];
+} compact_ctx_t;
+
+/*
+ * Remember the least leaf key under `child`, the next subtree to process.
+ */
+static void
+compact_save_cursor(compact_ctx_t *ctx, dns_qpnode_t *child) {
+	dns_qp_t *qp = ctx->qp;
+	dns_qpnode_t *leaf = anyleaf((dns_qpreader_t *)qp, child);
+
+	if (qp->compact_key == NULL) {
+		qp->compact_key = isc_mem_get(qp->mctx,
+					      sizeof(*qp->compact_key));
+	}
+	qp->compact_keylen = leaf_qpkey(qp, leaf, *qp->compact_key);
+	qp->compact_keyoffset = branch_key_offset(child);
+	ctx->exhausted = true;
+}
+
+/*
+ * Work out where the saved key falls in the trie as it is now, and fill
+ * in the first twig to process at each level of the path down to it.
+ * This is the same reasoning as fix_iterator(): follow the key as far
+ * as it matches, find the leaf that lies where the key would be, then
+ * let the order of the two keys decide whether the subtree in which
+ * they diverge was already processed.
+ *
+ * Frame 0 is the root frame, whose only twig is the root node; frame
+ * `level` is the twigs vector of the branch found at start[level - 1]
+ * in the frame above.
+ */
+static void
+compact_resume(compact_ctx_t *ctx) {
+	dns_qp_t *qp = ctx->qp;
+	dns_qpreader_t *qpr = (dns_qpreader_t *)qp;
+
+	ctx->onpath_depth = 0;
+	ctx->start[0] = 0;
+	if (qp->compact_key == NULL) {
+		return;
+	}
+
+	const dns_qpshift_t *key = *qp->compact_key;
+	size_t keylen = qp->compact_keylen;
+
+	/* find the leaf that lies where the key would be */
+	dns_qpnode_t *n = ref_ptr(qp, qp->root_ref);
+	while (is_branch(n)) {
+		dns_qpshift_t bit = branch_keybit(n, key, keylen);
+		if (branch_has_twig(n, bit)) {
+			n = branch_twig_ptr(qpr, n, bit);
+		} else {
+			n = anyleaf(qpr, n);
+		}
+	}
+	dns_qpkey_t found;
+	size_t foundlen = leaf_qpkey(qp, n, found);
+	size_t to = qpkey_compare(key, keylen, found, foundlen);
+
+	unsigned int level = 1;
+	n = ref_ptr(qp, qp->root_ref);
+	for (;;) {
+		if (!is_branch(n)) {
+			/* the key's own leaf: nothing below it to process */
+			ctx->onpath_depth = level;
+			return;
+		}
+		if (to != QPKEY_EQUAL && branch_key_offset(n) > to) {
+			/*
+			 * The key diverges above this subtree, so all of
+			 * it sorts on the same side of the key: before it
+			 * (done, skip it) or after it (not yet processed,
+			 * enter it from its first twig, off-path).
+			 */
+			if (qpkey_bit(key, keylen, to) >
+			    qpkey_bit(found, foundlen, to))
+			{
+				ctx->start[level - 1]++;
+			}
+			ctx->onpath_depth = level;
+			return;
+		}
+		dns_qpshift_t bit = branch_keybit(n, key, keylen);
+		if (!branch_has_twig(n, bit)) {
+			/* the key's subtree is gone; resume after its place */
+			ctx->start[level] = branch_count_bitmap_before(n, bit);
+			ctx->onpath_depth = level + 1;
+			return;
+		}
+		ctx->start[level] = branch_twig_pos(n, bit);
+		n = branch_twig_ptr(qpr, n, bit);
+		level++;
+	}
+}
+
 static dns_qpref_t
-compact_recursive(dns_qp_t *qp, dns_qpnode_t *parent) {
+compact_walk(compact_ctx_t *ctx, dns_qpnode_t *parent, unsigned int level,
+	     bool onpath) {
+	dns_qp_t *qp = ctx->qp;
 	dns_qpweight_t size = branch_twigs_size(parent);
 	dns_qpref_t twigs_ref = branch_twigs_ref(parent);
 	dns_qpchunk_t chunk = ref_chunk(twigs_ref);
+	dns_qpweight_t first = onpath ? ctx->start[level] : 0;
+	bool processed = onpath &&
+			 branch_key_offset(parent) < qp->compact_keyoffset;
 
-	if (qp->compact_all ||
-	    (chunk != qp->bump && chunk_usage(qp, chunk) < QP_MIN_USED))
+	if (!processed) {
+		ctx->budget -= size;
+		ctx->progressed = true;
+	}
+	if ((qp->compact_all && !processed) ||
+	    (chunk_fragmented(qp, chunk) &&
+	     qp->usage[chunk].generation < qp->compact_cutoff))
 	{
-		twigs_ref = evacuate(qp, parent);
+		twigs_ref = evacuate_twigs(qp, twigs_ref, size);
+		qp->compact_evacuated += size;
+		if (!processed) {
+			ctx->budget -= size;
+		}
 	}
 	bool immutable = cells_immutable(qp, twigs_ref);
-	for (dns_qpweight_t pos = 0; pos < size; pos++) {
+	for (dns_qpweight_t pos = first; pos < size; pos++) {
 		dns_qpnode_t *child = ref_ptr(qp, twigs_ref) + pos;
 		if (!is_branch(child)) {
 			continue;
 		}
+		bool child_onpath = onpath && pos == first &&
+				    level + 1 < ctx->onpath_depth;
+		if (!child_onpath && ctx->bounded && ctx->budget <= 0 &&
+		    ctx->progressed)
+		{
+			compact_save_cursor(ctx, child);
+			break;
+		}
 		dns_qpref_t old_grandtwigs = branch_twigs_ref(child);
-		dns_qpref_t new_grandtwigs = compact_recursive(qp, child);
-		if (old_grandtwigs == new_grandtwigs) {
-			continue;
+		dns_qpref_t new_grandtwigs = compact_walk(ctx, child, level + 1,
+							  child_onpath);
+		if (old_grandtwigs != new_grandtwigs) {
+			if (immutable) {
+				twigs_ref = evacuate_twigs(qp, twigs_ref, size);
+				qp->compact_evacuated += size;
+				if (!processed) {
+					ctx->budget -= size;
+				}
+				/* the twigs have moved */
+				child = ref_ptr(qp, twigs_ref) + pos;
+				immutable = false;
+			}
+			*child = make_node(branch_index(child), new_grandtwigs);
 		}
-		if (immutable) {
-			twigs_ref = evacuate(qp, parent);
-			/* the twigs have moved */
-			child = ref_ptr(qp, twigs_ref) + pos;
-			immutable = false;
+		if (ctx->exhausted) {
+			break;
 		}
-		*child = make_node(branch_index(child), new_grandtwigs);
 	}
 	return twigs_ref;
 }
 
+/*
+ * Start a compaction cycle. Only chunks that existed before the cycle
+ * started are evacuated, so that a cycle never chases its own output,
+ * and a bounded cycle allocates its output in a fresh chunk for the
+ * same reason. A synchronous compaction completes in one walk, so it
+ * keeps its bump chunk unless that holds too much garbage; every chunk
+ * of a single-threaded trie is in generation zero, so the cutoff makes
+ * them all eligible.
+ */
 static void
-compact(dns_qp_t *qp) {
-	LOG_STATS("qp compact before leaf %u live %u used %u free %u hold %u",
+compact_cycle_start(dns_qp_t *qp, bool bounded) {
+	INSIST(!qp->compact_active);
+	INSIST(qp->compact_key == NULL);
+
+	LOG_STATS("qp compact start leaf %u live %u used %u free %u hold %u",
 		  qp->leaf_count, qp->used_count - qp->free_count,
 		  qp->used_count, qp->free_count, qp->hold_count);
 
+	bool fresh = bounded && qp->transaction_mode != QP_NONE;
+	if (fresh) {
+		qp->compact_cutoff = qp->generation;
+		alloc_reset(qp);
+	} else {
+		qp->compact_cutoff = qp->generation + 1;
+		if (qp->compact_all || (qp->chunk_max > 0 &&
+					qp->usage[qp->bump].free > QP_MAX_FREE))
+		{
+			alloc_reset(qp);
+		}
+	}
+	qp->compact_active = true;
+	qp->compact_evacuated = 0;
+	qp->compact_steps = 0;
+	qp->alloc_at_step = qp->alloc_count;
+}
+
+static void
+compact_release_cursor(dns_qp_t *qp) {
+	if (qp->compact_key != NULL) {
+		isc_mem_put(qp->mctx, qp->compact_key,
+			    sizeof(*qp->compact_key));
+	}
+	qp->compact_keylen = 0;
+}
+
+/*
+ * Forget an unfinished cycle; the next cycle starts from the root again.
+ */
+static void
+compact_abort(dns_qp_t *qp) {
+	compact_release_cursor(qp);
+	qp->compact_active = false;
+}
+
+static void
+compact_finish(dns_qp_t *qp) {
+	compact_release_cursor(qp);
+	qp->compact_active = false;
+	qp->compact_all = false;
+
+	LOG_STATS("qp compact done steps %u evacuated %u leaf %u live %u "
+		  "used %u free %u hold %u",
+		  qp->compact_steps, qp->compact_evacuated, qp->leaf_count,
+		  qp->used_count - qp->free_count, qp->used_count,
+		  qp->free_count, qp->hold_count);
+}
+
+/*
+ * Called after a cycle has finished and recycle() has run. This
+ * shouldn't happen if the garbage collector is working correctly: the
+ * trie still looks fragmented although the cycle found nothing to move.
+ * Give the next cycle a chance, because the garbage may be in chunks
+ * that were too young for this one, then recover by copying everything
+ * at the cost of some time and space.
+ */
+static void
+compact_check_stuck(dns_qp_t *qp, bool was_all) {
+	if (was_all || qp->compact_evacuated > 0 || !QP_NEEDGC(qp)) {
+		qp->compact_stuck = false;
+		return;
+	}
+	if (!qp->compact_stuck) {
+		qp->compact_stuck = true;
+		return;
+	}
+	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_QP,
+		      ISC_LOG_NOTICE,
+		      "qp %p uctx \"%s\" compaction failed to recover any "
+		      "space, scheduling a full compaction",
+		      qp, TRIENAME(qp));
+	qp->compact_all = true;
+	qp->compact_stuck = false;
+}
+
+/*
+ * Compact the whole trie synchronously. A bounded cycle in progress is
+ * abandoned rather than continued: its cutoff would leave out every
+ * chunk allocated since it started, and a caller that asks for a
+ * synchronous compaction wants the whole trie considered.
+ */
+static void
+compact(dns_qp_t *qp) {
+	bool was_all = qp->compact_all;
 	isc_nanosecs_t start = isc_time_monotonic();
 
-	if (qp->usage[qp->bump].free > QP_MAX_FREE) {
-		alloc_reset(qp);
-	}
-
+	compact_abort(qp);
+	compact_cycle_start(qp, false);
 	if (qp->leaf_count > 0) {
-		qp->root_ref = compact_recursive(qp, MOVABLE_ROOT(qp));
+		compact_ctx_t ctx = { .qp = qp };
+		compact_resume(&ctx);
+		qp->root_ref = compact_walk(&ctx, MOVABLE_ROOT(qp), 0,
+					    ctx.onpath_depth > 0);
+		INSIST(!ctx.exhausted);
 	}
-	qp->compact_all = false;
+	compact_finish(qp);
 
 	isc_nanosecs_t time = isc_time_monotonic() - start;
 	atomic_fetch_add_relaxed(&compact_time, time);
@@ -1349,30 +1650,103 @@ compact(dns_qp_t *qp) {
 		  "leaf %u live %u used %u free %u hold %u",
 		  time, qp->leaf_count, qp->used_count - qp->free_count,
 		  qp->used_count, qp->free_count, qp->hold_count);
+
+	recycle(qp);
+	compact_check_stuck(qp, was_all);
+}
+
+/*
+ * One bounded increment of a compaction cycle; see compact_walk() for
+ * the resume mechanism. The budget grows with the number of cells
+ * allocated since the previous step, so that the collector keeps pace
+ * with a mutator that makes large transactions.
+ */
+static void
+compact_step(dns_qp_t *qp) {
+	if (!qp->compact_active) {
+		if (!qp->compact_all && !QP_NEEDGC(qp)) {
+			return;
+		}
+		compact_cycle_start(qp, true);
+	}
+	bool was_all = qp->compact_all;
+	bool finished = true;
+	isc_nanosecs_t start = isc_time_monotonic();
+
+	qp->compact_stepped = true;
+	qp->compact_steps++;
+
+	if (qp->leaf_count > 0) {
+		uint64_t pressure = qp->alloc_count - qp->alloc_at_step;
+		uint64_t budget = ISC_CLAMP(
+			pressure, (uint64_t)qp->compact_budget,
+			(uint64_t)qp->compact_budget * QP_COMPACT_BUDGET_MAX);
+		compact_ctx_t ctx = {
+			.qp = qp,
+			.budget = (int64_t)budget,
+			.bounded = true,
+		};
+		compact_resume(&ctx);
+		qp->root_ref = compact_walk(&ctx, MOVABLE_ROOT(qp), 0,
+					    ctx.onpath_depth > 0);
+		finished = !ctx.exhausted;
+	}
+	qp->alloc_at_step = qp->alloc_count;
+	if (finished) {
+		compact_finish(qp);
+	}
+
+	isc_nanosecs_t time = isc_time_monotonic() - start;
+	atomic_fetch_add_relaxed(&compact_time, time);
+
+	LOG_STATS("qp compact step %u" PRItime
+		  "leaf %u live %u used %u free %u hold %u",
+		  qp->compact_steps, time, qp->leaf_count,
+		  qp->used_count - qp->free_count, qp->used_count,
+		  qp->free_count, qp->hold_count);
+
+	recycle(qp);
+	if (finished) {
+		compact_check_stuck(qp, was_all);
+	}
 }
 
 void
 dns_qp_compact(dns_qp_t *qp, dns_qpgc_t mode) {
 	REQUIRE(QP_VALID(qp));
-	if (mode == DNS_QPGC_MAYBE && !QP_NEEDGC(qp)) {
-		return;
-	}
-	if (mode == DNS_QPGC_ALL) {
-		alloc_reset(qp);
+
+	if (mode == DNS_QPGC_MAYBE) {
+		/* inside a transaction, one bounded step is enough */
+		if (qp->transaction_mode != QP_NONE) {
+			if (!qp->compact_stepped) {
+				compact_step(qp);
+			}
+			return;
+		}
+		if (!QP_NEEDGC(qp)) {
+			return;
+		}
+	} else if (mode == DNS_QPGC_ALL) {
+		compact_abort(qp);
 		qp->compact_all = true;
 	}
 	compact(qp);
-	recycle(qp);
 }
 
 /*
  * Free some twigs and (if they were destroyed immediately so that the
- * result from QP_MAX_GARBAGE can change) compact the trie if necessary.
+ * result from QP_AUTOGC can change) compact the trie if necessary.
  *
  * This is called by the trie modification API entry points. The
  * free_twigs() function requires the caller to attach or detach any
  * leaves as necessary. Callers of squash_twigs() satisfy this
  * requirement by calling make_twigs_mutable().
+ *
+ * Compaction from here may move any reachable twigs vector, including
+ * ones the caller allocated just before, so callers must not hold
+ * pointers into twigs vectors across this call. A single-threaded trie
+ * is compacted synchronously; inside a transaction we take at most one
+ * bounded step, and the commit does the rest over time.
  *
  * Aside: In typical garbage collectors, compaction is triggered when
  * the allocator runs out of space. But that is because typical garbage
@@ -1381,30 +1755,15 @@ dns_qp_compact(dns_qp_t *qp, dns_qpgc_t mode) {
  * designed to use malloc() and free(), so it has more information about
  * when garbage collection might be worthwhile. Hence we can trigger
  * collection when garbage passes a threshold.
- *
- * XXXFANF: If we need to avoid latency outliers caused by compaction in
- * write transactions, we can check qp->transaction_mode here.
  */
 static inline bool
 squash_twigs(dns_qp_t *qp, dns_qpref_t twigs, dns_qpweight_t size) {
 	bool destroyed = free_twigs(qp, twigs, size);
 	if (destroyed && QP_AUTOGC(qp)) {
-		compact(qp);
-		recycle(qp);
-		/*
-		 * This shouldn't happen if the garbage collector is
-		 * working correctly. We can recover at the cost of some
-		 * time and space, but recovery should be cheaper than
-		 * letting compact+recycle fail repeatedly.
-		 */
-		if (QP_AUTOGC(qp)) {
-			isc_log_write(DNS_LOGCATEGORY_DATABASE,
-				      DNS_LOGMODULE_QP, ISC_LOG_NOTICE,
-				      "qp %p uctx \"%s\" compact/recycle "
-				      "failed to recover any space, "
-				      "scheduling a full compaction",
-				      qp, TRIENAME(qp));
-			qp->compact_all = true;
+		if (qp->transaction_mode == QP_NONE) {
+			compact(qp);
+		} else if (!qp->compact_stepped) {
+			compact_step(qp);
 		}
 	}
 	return destroyed;
@@ -1505,6 +1864,7 @@ transaction_open(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	 * Ensure QP_AUTOGC() ignores free space in immutable chunks.
 	 */
 	qp->hold_count = qp->free_count;
+	qp->compact_stepped = false;
 
 	*qptp = qp;
 	return qp;
@@ -1542,6 +1902,10 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	if (multi->reader_ref != INVALID_REF) {
 		INSIST(cells_immutable(qp, multi->reader_ref));
 		free_twigs(qp, multi->reader_ref, READER_SIZE);
+	}
+	/* one bounded step of compaction, unless already taken */
+	if (!qp->compact_stepped) {
+		compact_step(qp);
 	}
 	multi->reader_ref = alloc_twigs(qp, READER_SIZE);
 
@@ -1709,7 +2073,7 @@ dns_qp_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 
 	dns_qp_t *qp = isc_mem_get(mctx, sizeof(*qp));
 	QP_INIT(qp, methods, uctx);
-	qp_init_reclaim(qp);
+	qp_init_writer(qp);
 	isc_mem_attach(mctx, &qp->mctx);
 	alloc_reset(qp);
 	TRACE("");
@@ -1735,7 +2099,7 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 	 */
 	dns_qp_t *qp = &multi->writer;
 	QP_INIT(qp, methods, uctx);
-	qp_init_reclaim(qp);
+	qp_init_writer(qp);
 	isc_mem_attach(mctx, &qp->mctx);
 	TRACE("");
 	*qpmp = multi;
@@ -1743,6 +2107,7 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 
 static void
 destroy_guts(dns_qp_t *qp) {
+	compact_release_cursor(qp);
 	INSIST(qp->dead == NULL);
 	if (qp->chunk_max == 0) {
 		return;
