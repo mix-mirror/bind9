@@ -313,6 +313,69 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 	isc_loopmgr_shutdown();
 }
 
+/*
+ * The key stored in each node must be what dns_qpkey_fromname() makes of
+ * the node's name, so that a lookup in any letter case, with escaped
+ * bytes or in the auxiliary NSEC namespace lands on the same node.
+ */
+static void
+check_inline_key(dns_db_t *db, const char *create, const char *lookup) {
+	qpcache_t *qpdb = (qpcache_t *)db;
+	dns_fixedname_t fcreate, flookup;
+	dns_qpkey_t key, expect;
+	dns_dbnode_t *node = NULL, *found = NULL;
+	qpcnode_t *qpnode = NULL, *nsecnode = NULL;
+	size_t keylen, explen;
+
+	dns_test_namefromstring(create, &fcreate);
+	dns_test_namefromstring(lookup, &flookup);
+
+	assert_int_equal(
+		dns_db_findnode(db, dns_fixedname_name(&fcreate), true, &node),
+		ISC_R_SUCCESS);
+	qpnode = (qpcnode_t *)node;
+	keylen = qp_makekey(key, NULL, qpnode, 0);
+	explen = dns_qpkey_fromname(expect, dns_fixedname_name(&fcreate),
+				    DNS_DBNAMESPACE_NORMAL);
+	assert_int_equal(keylen, explen);
+	assert_memory_equal(key, expect, keylen + 1);
+
+	assert_int_equal(dns_db_findnode(db, dns_fixedname_name(&flookup),
+					 false, &found),
+			 ISC_R_SUCCESS);
+	assert_ptr_equal(found, node);
+	dns_db_detachnode(&found);
+
+	/* the auxiliary NSEC node keeps its own namespace in the key */
+	nsecnode = new_qpcnode(qpdb, dns_fixedname_name(&flookup),
+			       DNS_DBNAMESPACE_NSEC);
+	keylen = qp_makekey(key, NULL, nsecnode, 0);
+	explen = dns_qpkey_fromname(expect, dns_fixedname_name(&fcreate),
+				    DNS_DBNAMESPACE_NSEC);
+	assert_int_equal(keylen, explen);
+	assert_memory_equal(key, expect, keylen + 1);
+	qpcnode_detach(&nsecnode);
+
+	dns_db_detachnode(&node);
+}
+
+ISC_LOOP_TEST_IMPL(inline_key) {
+	dns_db_t *db = NULL;
+
+	assert_int_equal(dns_db_create(isc_g_mctx, CACHEDB_DEFAULT,
+				       dns_rootname, dns_dbtype_cache,
+				       dns_rdataclass_in, 0, NULL, &db),
+			 ISC_R_SUCCESS);
+
+	check_inline_key(db, "Foo.Example.", "FOO.example.");
+	check_inline_key(db, "a\\000b\\.c.Example.", "A\\000B\\.C.example.");
+	check_inline_key(db, "*.\\255-z_9.Example.", "*.\\255-Z_9.EXAMPLE.");
+	check_inline_key(db, ".", ".");
+
+	dns_db_detach(&db);
+	isc_loopmgr_shutdown();
+}
+
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
 	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
@@ -417,6 +480,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 }
 
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY_CUSTOM(inline_key, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(allrdatasets_expiredok_skips_deleted_header,
