@@ -205,8 +205,9 @@ dumpnode(dns_name_t *name, dns_dbnode_t *node) {
 		return;
 	}
 
-	result = dns_db_allrdatasets(gdb, node, gversion, 0, 0, &iter);
-	check_result(result, "dns_db_allrdatasets");
+	result = dns_db_node_snapshot_iterator(gdb, node, gversion, 0, 0,
+					       &iter);
+	check_result(result, "dns_db_node_snapshot_iterator");
 
 	isc_buffer_allocate(isc_g_mctx, &buffer, bufsize);
 
@@ -1238,8 +1239,9 @@ signname(dns_dbnode_t *node, bool apex, dns_name_t *name) {
 	dns_diff_init(isc_g_mctx, &del);
 	dns_diff_init(isc_g_mctx, &add);
 	rdsiter = NULL;
-	result = dns_db_allrdatasets(gdb, node, gversion, 0, 0, &rdsiter);
-	check_result(result, "dns_db_allrdatasets()");
+	result = dns_db_node_snapshot_iterator(gdb, node, gversion, 0, 0,
+					       &rdsiter);
+	check_result(result, "dns_db_node_snapshot_iterator()");
 	DNS_RDATASETITER_FOREACH(rdsiter) {
 		dns_rdatasetiter_current(rdsiter, &rdataset);
 
@@ -1347,8 +1349,9 @@ active_node(dns_dbnode_t *node) {
 
 	isc_u16bitmap_reinit(&types);
 
-	result = dns_db_allrdatasets(gdb, node, gversion, 0, 0, &rdsiter);
-	check_result(result, "dns_db_allrdatasets()");
+	result = dns_db_node_snapshot_iterator(gdb, node, gversion, 0, 0,
+					       &rdsiter);
+	check_result(result, "dns_db_node_snapshot_iterator()");
 	DNS_RDATASETITER_FOREACH(rdsiter) {
 		dns_rdatasetiter_current(rdsiter, &rdataset);
 		dns_rdatatype_t t = rdataset.type;
@@ -2220,9 +2223,9 @@ cleanup_zone(void) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 		result = dns_dbiterator_current(dbiter, &node, name);
 		check_dns_dbiterator_current(result);
-		result = dns_db_allrdatasets(gdb, node, gversion, 0, 0,
-					     &rdsiter);
-		check_result(result, "dns_db_allrdatasets()");
+		result = dns_db_node_snapshot_iterator(gdb, node, gversion, 0,
+						       0, &rdsiter);
+		check_result(result, "dns_db_node_snapshot_iterator()");
 		DNS_RDATASETITER_FOREACH(rdsiter) {
 			dns_rdatasetiter_current(rdsiter, &rdataset);
 			rrset_cleanup(name, &rdataset, &add, &del);

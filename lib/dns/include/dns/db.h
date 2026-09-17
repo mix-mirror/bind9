@@ -115,7 +115,7 @@ typedef struct dns_db_methods {
 				     dns_rdatatype_t covers, isc_stdtime_t now,
 				     dns_rdataset_t		*rdataset,
 				     dns_rdataset_t *sigrdataset DNS__DB_FLARG);
-	isc_result_t (*allrdatasets)(
+	isc_result_t (*node_snapshot_iterator)(
 		dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		unsigned int options, isc_stdtime_t now,
 		dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
@@ -1186,16 +1186,19 @@ dns__db_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
  *	implementation used.
  */
 
-#define dns_db_allrdatasets(db, node, version, options, now, iteratorp) \
-	dns__db_allrdatasets(db, node, version, options, now,           \
-			     iteratorp DNS__DB_FILELINE)
+#define dns_db_node_snapshot_iterator(db, node, version, options, now,  \
+				      iteratorp)                        \
+	dns__db_node_snapshot_iterator(db, node, version, options, now, \
+				       iteratorp DNS__DB_FILELINE)
 isc_result_t
-dns__db_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		     unsigned int options, isc_stdtime_t now,
-		     dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
+dns__db_node_snapshot_iterator(dns_db_t *db, dns_dbnode_t *node,
+			       dns_dbversion_t *version, unsigned int options,
+			       isc_stdtime_t		      now,
+			       dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
 /*%<
- * Make '*iteratorp' an rdataset iterator for all rdatasets at 'node' in
- * version 'version' of 'db'.
+ * Make '*iteratorp' an iterator over a snapshot of all rdatasets visible at
+ * 'node' in version 'version' of 'db'. Mutations after this function returns
+ * do not change the rdatasets visible through the iterator.
  *
  * Notes:
  *

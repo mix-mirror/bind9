@@ -105,7 +105,8 @@ dns_nsec3_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 		goto collapse_bitmap;
 	}
 	rdsiter = NULL;
-	RETERR(dns_db_allrdatasets(db, node, version, 0, 0, &rdsiter));
+	RETERR(dns_db_node_snapshot_iterator(db, node, version, 0, 0,
+					     &rdsiter));
 	found = found_ns = need_rrsig = false;
 	DNS_RDATASETITER_FOREACH(rdsiter) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
@@ -277,8 +278,8 @@ name_exists(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 		return result;
 	}
 
-	result = dns_db_allrdatasets(db, node, version, 0, (isc_stdtime_t)0,
-				     &iter);
+	result = dns_db_node_snapshot_iterator(db, node, version, 0,
+					       (isc_stdtime_t)0, &iter);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_node;
 	}

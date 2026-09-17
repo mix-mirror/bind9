@@ -622,19 +622,20 @@ dns__db_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 }
 
 isc_result_t
-dns__db_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		     unsigned int options, isc_stdtime_t now,
-		     dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
+dns__db_node_snapshot_iterator(dns_db_t *db, dns_dbnode_t *node,
+			       dns_dbversion_t *version, unsigned int options,
+			       isc_stdtime_t now,
+			       dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	/*
-	 * Make '*iteratorp' an rdataset iteratator for all rdatasets at
+	 * Make '*iteratorp' an iterator over a snapshot of all rdatasets at
 	 * 'node' in version 'version' of 'db'.
 	 */
 
 	REQUIRE(DNS_DB_VALID(db));
 	REQUIRE(iteratorp != NULL && *iteratorp == NULL);
 
-	return (db->methods->allrdatasets)(db, node, version, options, now,
-					   iteratorp DNS__DB_FLARG_PASS);
+	return (db->methods->node_snapshot_iterator)(
+		db, node, version, options, now, iteratorp DNS__DB_FLARG_PASS);
 }
 
 isc_result_t

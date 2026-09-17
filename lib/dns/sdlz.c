@@ -938,9 +938,10 @@ sdlz_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 }
 
 static isc_result_t
-allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	     unsigned int options, isc_stdtime_t now,
-	     dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
+node_snapshot_iterator(dns_db_t *db, dns_dbnode_t *node,
+		       dns_dbversion_t *version, unsigned int options,
+		       isc_stdtime_t now,
+		       dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	sdlz_rdatasetiter_t *iterator;
 
@@ -1242,7 +1243,7 @@ static dns_dbmethods_t sdlzdb_methods = {
 	.find = sdlz_find,
 	.createiterator = createiterator,
 	.findrdataset = findrdataset,
-	.allrdatasets = allrdatasets,
+	.node_snapshot_iterator = node_snapshot_iterator,
 	.addrdataset = addrdataset,
 	.subtractrdataset = subtractrdataset,
 	.deleterdataset = deleterdataset,

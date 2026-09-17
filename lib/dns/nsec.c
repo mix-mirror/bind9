@@ -79,7 +79,8 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	isc_u16bitmap_set(&bitmap, dns_rdatatype_rrsig);
 	isc_u16bitmap_set(&bitmap, dns_rdatatype_nsec);
 	rdsiter = NULL;
-	RETERR(dns_db_allrdatasets(db, node, version, 0, 0, &rdsiter));
+	RETERR(dns_db_node_snapshot_iterator(db, node, version, 0, 0,
+					     &rdsiter));
 	DNS_RDATASETITER_FOREACH(rdsiter) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 		dns_rdatasetiter_current(rdsiter, &rdataset);

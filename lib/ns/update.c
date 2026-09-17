@@ -543,7 +543,8 @@ foreach_rrset(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
 	}
 
 	iter = NULL;
-	result = dns_db_allrdatasets(db, node, ver, 0, (isc_stdtime_t)0, &iter);
+	result = dns_db_node_snapshot_iterator(db, node, ver, 0,
+					       (isc_stdtime_t)0, &iter);
 	if (result != ISC_R_SUCCESS) {
 		goto cleanup_node;
 	}

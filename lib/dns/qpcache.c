@@ -2080,9 +2080,10 @@ header_visible(qpcache_t *qpdb, dns_slabheader_t *header, unsigned int options,
 }
 
 static isc_result_t
-qpcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-		     unsigned int options, isc_stdtime_t now,
-		     dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
+qpcache_node_snapshot_iterator(dns_db_t *db, dns_dbnode_t *node,
+			       dns_dbversion_t *version, unsigned int options,
+			       isc_stdtime_t now,
+			       dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcnode_t *qpnode = (qpcnode_t *)node;
 	qpc_rditer_t *iterator = NULL;
@@ -3285,7 +3286,7 @@ static dns_dbmethods_t qpdb_cachemethods = {
 	.find = qpcache_find,
 	.createiterator = qpcache_createiterator,
 	.findrdataset = qpcache_findrdataset,
-	.allrdatasets = qpcache_allrdatasets,
+	.node_snapshot_iterator = qpcache_node_snapshot_iterator,
 	.addrdataset = qpcache_addrdataset,
 	.deleterdataset = qpcache_deleterdataset,
 	.batchdeleterdatasets = qpcache_batchdeleterdatasets,

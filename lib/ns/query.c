@@ -3105,13 +3105,14 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 			return DNS_R_SERVFAIL;
 		}
 
-		result = dns_db_allrdatasets(*dbp, node, *versionp, 0, 0,
-					     &rdsiter);
+		result = dns_db_node_snapshot_iterator(*dbp, node, *versionp, 0,
+						       0, &rdsiter);
 		if (result != ISC_R_SUCCESS) {
 			rpz_log_fail(client, DNS_RPZ_ERROR_LEVEL, p_name,
-				     rpz_type, "allrdatasets()", result);
+				     rpz_type, "node_snapshot_iterator()",
+				     result);
 			CTRACE(ISC_LOG_ERROR,
-			       "rpz_find_p: allrdatasets failed");
+			       "rpz_find_p: node_snapshot_iterator failed");
 			dns_db_detachnode(&node);
 			return DNS_R_SERVFAIL;
 		}
@@ -7350,12 +7351,13 @@ query_respond_any(query_ctx_t *qctx) {
 		return ns_query_done(qctx);
 	}
 
-	result = dns_db_allrdatasets(qctx->db, node, qctx->version, 0, 0,
-				     &rdsiter);
+	result = dns_db_node_snapshot_iterator(qctx->db, node, qctx->version, 0,
+					       0, &rdsiter);
 	if (result != ISC_R_SUCCESS) {
 		dns_db_detachnode(&node);
-		CCTRACE(ISC_LOG_ERROR, "query_respond_any: allrdatasets "
-				       "failed");
+		CCTRACE(ISC_LOG_ERROR,
+			"query_respond_any: node_snapshot_iterator "
+			"failed");
 		QUERY_ERROR(qctx, result);
 		return ns_query_done(qctx);
 	}

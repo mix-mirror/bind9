@@ -868,9 +868,11 @@ verifynode(vctx_t *vctx, const dns_name_t *name, dns_dbnode_t *node,
 	isc_u16bitmap_reinit(&types);
 	isc_u16bitmap_reinit(&sigtypes);
 
-	result = dns_db_allrdatasets(vctx->db, node, vctx->ver, 0, 0, &rdsiter);
+	result = dns_db_node_snapshot_iterator(vctx->db, node, vctx->ver, 0, 0,
+					       &rdsiter);
 	if (result != ISC_R_SUCCESS) {
-		zoneverify_log_error(vctx, "dns_db_allrdatasets(): %s",
+		zoneverify_log_error(vctx,
+				     "dns_db_node_snapshot_iterator(): %s",
 				     isc_result_totext(result));
 		return result;
 	}
@@ -942,9 +944,11 @@ is_empty(const vctx_t *vctx, dns_dbnode_t *node) {
 	dns_rdatasetiter_t *rdsiter = NULL;
 	isc_result_t result;
 
-	result = dns_db_allrdatasets(vctx->db, node, vctx->ver, 0, 0, &rdsiter);
+	result = dns_db_node_snapshot_iterator(vctx->db, node, vctx->ver, 0, 0,
+					       &rdsiter);
 	if (result != ISC_R_SUCCESS) {
-		zoneverify_log_error(vctx, "dns_db_allrdatasets(): %s",
+		zoneverify_log_error(vctx,
+				     "dns_db_node_snapshot_iterator(): %s",
 				     isc_result_totext(result));
 		return result;
 	}

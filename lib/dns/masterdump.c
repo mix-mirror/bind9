@@ -1693,8 +1693,9 @@ dumptostream(dns_dumpctx_t *dctx) {
 		result = dns_dbiterator_pause(dctx->dbiter);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-		result = dns_db_allrdatasets(dctx->db, node, dctx->version,
-					     options, dctx->now, &rdsiter);
+		result = dns_db_node_snapshot_iterator(dctx->db, node,
+						       dctx->version, options,
+						       dctx->now, &rdsiter);
 		if (result != ISC_R_SUCCESS) {
 			dns_db_detachnode(&node);
 			goto cleanup;

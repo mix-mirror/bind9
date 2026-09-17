@@ -2337,8 +2337,8 @@ dns__catz_update_cb(void *data) {
 			continue;
 		}
 
-		result = dns_db_allrdatasets(updb, node, oldcatz->updbversion,
-					     0, 0, &rdsiter);
+		result = dns_db_node_snapshot_iterator(
+			updb, node, oldcatz->updbversion, 0, 0, &rdsiter);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
 				      DNS_LOGMODULE_CATZ, ISC_LOG_ERROR,

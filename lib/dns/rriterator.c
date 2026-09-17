@@ -77,8 +77,8 @@ dns_rriterator_first(dns_rriterator_t *it) {
 			return it->result;
 		}
 
-		it->result = dns_db_allrdatasets(it->db, it->node, it->ver, 0,
-						 it->now, &it->rdatasetit);
+		it->result = dns_db_node_snapshot_iterator(
+			it->db, it->node, it->ver, 0, it->now, &it->rdatasetit);
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
 		}
@@ -127,8 +127,8 @@ dns_rriterator_nextrrset(dns_rriterator_t *it) {
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
 		}
-		it->result = dns_db_allrdatasets(it->db, it->node, it->ver, 0,
-						 it->now, &it->rdatasetit);
+		it->result = dns_db_node_snapshot_iterator(
+			it->db, it->node, it->ver, 0, it->now, &it->rdatasetit);
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
 		}

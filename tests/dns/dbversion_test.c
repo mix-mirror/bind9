@@ -190,10 +190,10 @@ ISC_RUN_TEST_IMPL(find) {
 }
 
 /*
- * Check dns_db_allrdatasets() passes with matching db and version, and
- * asserts with mis-matching db and version.
+ * Check dns_db_node_snapshot_iterator() passes with matching db and version,
+ * and asserts with mis-matching db and version.
  */
-ISC_RUN_TEST_IMPL(allrdatasets) {
+ISC_RUN_TEST_IMPL(node_snapshot_iterator) {
 	isc_result_t res;
 	dns_dbnode_t *node = NULL;
 	dns_rdatasetiter_t *iterator = NULL;
@@ -203,10 +203,11 @@ ISC_RUN_TEST_IMPL(allrdatasets) {
 	res = dns_db_findnode(db1, dns_rootname, false, &node);
 	assert_int_equal(res, ISC_R_SUCCESS);
 
-	res = dns_db_allrdatasets(db1, node, v1, 0, 0, &iterator);
+	res = dns_db_node_snapshot_iterator(db1, node, v1, 0, 0, &iterator);
 	assert_int_equal(res, ISC_R_SUCCESS);
 
-	check_assertion(dns_db_allrdatasets(db1, node, v2, 0, 0, &iterator));
+	check_assertion(
+		dns_db_node_snapshot_iterator(db1, node, v2, 0, 0, &iterator));
 
 	dns_rdatasetiter_destroy(&iterator);
 	assert_null(iterator);
@@ -579,7 +580,7 @@ ISC_RUN_TEST_IMPL(rollback_then_commit) {
 
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(find, setup_test, teardown_test)
-ISC_TEST_ENTRY_CUSTOM(allrdatasets, setup_test, teardown_test)
+ISC_TEST_ENTRY_CUSTOM(node_snapshot_iterator, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(findrdataset, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(deleterdataset, setup_test, teardown_test)
 ISC_TEST_ENTRY_CUSTOM(subtract, setup_test, teardown_test)
