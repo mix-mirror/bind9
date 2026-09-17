@@ -30,6 +30,13 @@ variables:
   # Extra "cosign sign"/"cosign attest" arguments, e.g.
   # "--new-bundle-format=false" if the registry rejects Sigstore bundles.
   COSIGN_EXTRA_ARGS: ""
+  # crane (go-containerregistry) copies the image between registries.
+  CRANE_VERSION: "0.22.1"
+  CRANE_SHA256_AMD64: "0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0"
+  # Cloudsmith repository the "docker-image:cloudsmith" job publishes to;
+  # CLOUDSMITH_REPOSITORY and CLOUDSMITH_SERVICE_SLUG are set in the
+  # project's CI/CD variables.
+  CLOUDSMITH_WORKSPACE: "isc"
 
   GIT_DEPTH: 1
   GIT_CLEAN_FLAGS: -ffdxq
@@ -1624,6 +1631,51 @@ docker-image:sign-keyless:
     - cosign tree "${IMAGE_DIGEST_REF}"
   allow_failure: true
   rules: *rule_docker_image
+
+# Job publishing the image to Cloudsmith, next to the Kea images, and
+# signing that copy by its own digest.  Authenticates with a GitLab OIDC
+# token exchanged for a short-lived Cloudsmith token, so no long-lived
+# Cloudsmith credential is stored in CI.  Always manual: it publishes to an
+# external registry.
+
+docker-image:cloudsmith:
+  <<: *docker_image_sign_job
+  id_tokens:
+    CLOUDSMITH_OIDC_TOKEN:
+      aud: "https://api.cloudsmith.io/openid/isc/"
+  before_script:
+    - *install_sigstore_tools
+    - curl -fsSL -o /tmp/crane.tar.gz "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz"
+    - echo "${CRANE_SHA256_AMD64}  /tmp/crane.tar.gz" | sha256sum -c -
+    - tar -xzf /tmp/crane.tar.gz -C /usr/local/bin crane
+    - crane version
+    - cosign login -u gitlab-ci-token -p "${CI_JOB_TOKEN}" "${CI_REGISTRY}"
+  script:
+    - if [ -z "${CLOUDSMITH_REPOSITORY}" ] || [ -z "${CLOUDSMITH_SERVICE_SLUG}" ] || [ -z "${COSIGN_PRIVATE_KEY}" ] || [ -z "${COSIGN_PUBLIC_KEY}" ] || [ -z "${COSIGN_PASSWORD}" ]; then echo "CLOUDSMITH_REPOSITORY, CLOUDSMITH_SERVICE_SLUG and the COSIGN_* CI variables are required; see CONTAINER_IMAGE_SBOM_SIGNING.md"; exit 1; fi
+    - CLOUDSMITH_TOKEN="$(curl -fsS -X POST -H "Content-Type: application/json" -d "{\"oidc_token\":\"${CLOUDSMITH_OIDC_TOKEN}\",\"service_slug\":\"${CLOUDSMITH_SERVICE_SLUG}\"}" "https://api.cloudsmith.io/openid/${CLOUDSMITH_WORKSPACE}/" | jq -r .token)"
+    - test -n "${CLOUDSMITH_TOKEN}" && test "${CLOUDSMITH_TOKEN}" != "null"
+    - cosign login -u "${CLOUDSMITH_SERVICE_SLUG}" -p "${CLOUDSMITH_TOKEN}" docker.cloudsmith.io
+    - CLOUDSMITH_IMAGE="docker.cloudsmith.io/${CLOUDSMITH_WORKSPACE}/${CLOUDSMITH_REPOSITORY}/bind9:${IMAGE_REF##*:}"
+    - crane copy "${IMAGE_DIGEST_REF}" "${CLOUDSMITH_IMAGE}"
+    # The copied manifest is byte-identical, so the digest is the same; sign
+    # the Cloudsmith copy by its own digest anyway, as the policy requires.
+    - CLOUDSMITH_DIGEST_REF="${CLOUDSMITH_IMAGE%:*}@$(crane digest "${CLOUDSMITH_IMAGE}")"
+    - echo "${CLOUDSMITH_DIGEST_REF}"
+    - cosign sign --key "${COSIGN_PRIVATE_KEY}" ${COSIGN_EXTRA_ARGS} "${CLOUDSMITH_DIGEST_REF}"
+    - cosign attest --key "${COSIGN_PRIVATE_KEY}" ${COSIGN_EXTRA_ARGS} --type cyclonedx --predicate sbom.cdx.json "${CLOUDSMITH_DIGEST_REF}"
+    - cosign attest --key "${COSIGN_PRIVATE_KEY}" ${COSIGN_EXTRA_ARGS} --type spdxjson --predicate sbom.spdx.json "${CLOUDSMITH_DIGEST_REF}"
+    - cosign verify --key "${COSIGN_PUBLIC_KEY}" "${CLOUDSMITH_DIGEST_REF}"
+    - cosign verify-attestation --key "${COSIGN_PUBLIC_KEY}" --type cyclonedx "${CLOUDSMITH_DIGEST_REF}" > /dev/null
+    - cosign verify-attestation --key "${COSIGN_PUBLIC_KEY}" --type spdxjson "${CLOUDSMITH_DIGEST_REF}" > /dev/null
+    # Show what Cloudsmith stores as referrers, including any signature it
+    # added itself if automatic signing is enabled on the repository.
+    - cosign tree "${CLOUDSMITH_DIGEST_REF}"
+  rules:
+    - if: '$CI_COMMIT_TAG != null'
+      when: never
+    - if: '$REBASE_ONLY != "1"'
+      when: manual
+      allow_failure: true
 
 # Jobs for debug GCC builds on openSUSE Tumbleweed (amd64)
 
