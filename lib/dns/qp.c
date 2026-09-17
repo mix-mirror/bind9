@@ -433,22 +433,36 @@ base_detach(dns_qpbase_t **basep) {
 /*
  * Each copied mapping acquires its own physical chunk reference. This also
  * handles geometric growth: the source may have been published, so it must
- * remain allocated at the same address until its owners release it.
+ * remain allocated at the same address until its owners release it. The
+ * immutable argument distinguishes transaction opening from in-transaction
+ * growth: only the former must freeze existing chunks.
  */
 static void
-base_clone(dns_qp_t *qp, dns_qpchunk_t newmax) {
+base_clone(dns_qp_t *qp, dns_qpchunk_t newmax, bool immutable) {
 	dns_qpbase_t *old = qp->base;
-	dns_qpbase_t *base =
-		isc_mem_allocate(qp->mctx, STRUCT_FLEX_SIZE(base, ptr, newmax));
+	dns_qpbase_t *base = isc_mem_allocate(qp->mctx, base_size(newmax));
+	REQUIRE(old == NULL || newmax >= old->chunk_max);
 	*base = (dns_qpbase_t){
 		.magic = QPBASE_MAGIC,
 		.methods = qp->methods,
 		.uctx = qp->uctx,
 		.chunk_max = newmax,
+		.free = (uint16_t *)((char *)base + base_free_offset(newmax)),
+		.ptr = (dns_qpnode_t **)((char *)base +
+					 base_ptr_offset(newmax)),
 	};
 	isc_refcount_init(&base->refcount, 1);
 	isc_mem_attach(qp->mctx, &base->mctx);
+	/* Opening a transaction freezes all old chunks. Growth preserves bits.
+	 */
+	memset(base->immutable, immutable ? 0xff : 0, base_bitmap_size(newmax));
+	if (!immutable && old != NULL) {
+		memmove(base->immutable, old->immutable,
+			base_bitmap_size(old->chunk_max));
+	}
 	for (dns_qpchunk_t i = 0; i < newmax; i++) {
+		base->free[i] = old != NULL && i < old->chunk_max ? old->free[i]
+								  : 0;
 		base->ptr[i] = old != NULL && i < old->chunk_max ? old->ptr[i]
 								 : NULL;
 		if (base->ptr[i] != NULL) {
@@ -476,7 +490,7 @@ cells_immutable(dns_qp_t *qp, dns_qpref_t ref) {
 	if (chunk == qp->bump) {
 		return cell < qp->fender;
 	} else {
-		return qp->usage[chunk].immutable;
+		return chunk_immutable(qp->base, chunk);
 	}
 }
 
@@ -502,8 +516,7 @@ next_capacity(uint32_t prev_capacity, uint32_t size) {
 static dns_qpref_t
 chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 	INSIST(qp->base->ptr[chunk] == NULL);
-	INSIST(qp->usage[chunk].used == 0);
-	INSIST(qp->usage[chunk].free == 0);
+	INSIST(qp->base->free[chunk] == 0);
 	INSIST(qp->chunk_capacity <= QP_CHUNK_SIZE);
 	INSIST(isc_refcount_current(&qp->base->refcount) == 1);
 
@@ -513,11 +526,9 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 		STRUCT_FLEX_SIZE(physical, nodes, qp->chunk_capacity));
 	isc_refcount_init(&physical->references, 1);
 	physical->used = size;
+	physical->capacity = qp->chunk_capacity;
 	qp->base->ptr[chunk] = physical->nodes;
-
-	qp->usage[chunk] = (qp_usage_t){ .exists = true,
-					 .used = size,
-					 .capacity = qp->chunk_capacity };
+	chunk_set_mutable(qp->base, chunk);
 	qp->used_count += size;
 	qp->bump = chunk;
 	qp->fender = 0;
@@ -526,20 +537,14 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 }
 
 /*
- * Both arrays belong exclusively to the writer during a transaction.
- * Growing a base transfers ownership through a private clone.
+ * Growing the base preserves the private writer's allocation metadata.
  */
 static void
 realloc_chunk_arrays(dns_qp_t *qp, dns_qpchunk_t newmax) {
-	base_clone(qp, newmax);
-
-	size_t oldusage = sizeof(qp->usage[0]) * qp->chunk_max;
-	size_t newusage = sizeof(qp->usage[0]) * newmax;
-	qp->usage = isc_mem_reallocate(qp->mctx, qp->usage, newusage);
-	memset(&qp->usage[qp->chunk_max], 0, newusage - oldusage);
+	base_clone(qp, newmax, false);
 	qp->chunk_max = newmax;
 
-	TRACE("qpbase %p usage %p max %u", qp->base, qp->usage, qp->chunk_max);
+	TRACE("qpbase %p max %u", qp->base, qp->chunk_max);
 }
 
 /*
@@ -551,7 +556,7 @@ alloc_slow(dns_qp_t *qp, dns_qpweight_t size) {
 	dns_qpchunk_t chunk;
 
 	for (chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (!qp->usage[chunk].exists) {
+		if (qp->base->ptr[chunk] == NULL) {
 			return chunk_alloc(qp, chunk, size);
 		}
 	}
@@ -574,11 +579,11 @@ alloc_reset(dns_qp_t *qp) {
 static inline dns_qpref_t
 alloc_twigs(dns_qp_t *qp, dns_qpweight_t size) {
 	dns_qpchunk_t chunk = qp->bump;
-	dns_qpcell_t cell = qp->usage[chunk].used;
+	qp_chunk_t *physical = chunk_fromnodes(qp->base->ptr[chunk]);
+	dns_qpcell_t cell = physical->used;
 
-	if (cell + size <= qp->usage[chunk].capacity) {
-		qp->usage[chunk].used += size;
-		chunk_fromnodes(qp->base->ptr[chunk])->used += size;
+	if (cell + size <= physical->capacity) {
+		physical->used += size;
 		qp->used_count += size;
 		return make_ref(chunk, cell);
 	} else {
@@ -601,9 +606,10 @@ free_twigs(dns_qp_t *qp, dns_qpref_t twigs, dns_qpweight_t size) {
 	dns_qpchunk_t chunk = ref_chunk(twigs);
 
 	qp->free_count += size;
-	qp->usage[chunk].free += size;
+	qp->base->free[chunk] += size;
 	ENSURE(qp->free_count <= qp->used_count);
-	ENSURE(qp->usage[chunk].free <= qp->usage[chunk].used);
+	ENSURE(qp->base->free[chunk] <=
+	       chunk_fromnodes(qp->base->ptr[chunk])->used);
 
 	if (cells_immutable(qp, twigs)) {
 		qp->hold_count += size;
@@ -639,7 +645,8 @@ attach_twigs(dns_qp_t *qp, dns_qpnode_t *twigs, dns_qpweight_t size) {
  */
 static inline dns_qpcell_t
 chunk_usage(dns_qp_t *qp, dns_qpchunk_t chunk) {
-	return qp->usage[chunk].used - qp->usage[chunk].free;
+	return chunk_fromnodes(qp->base->ptr[chunk])->used -
+	       qp->base->free[chunk];
 }
 
 /*
@@ -649,13 +656,15 @@ chunk_usage(dns_qp_t *qp, dns_qpchunk_t chunk) {
 static void
 chunk_free(dns_qp_t *qp, dns_qpchunk_t chunk) {
 	INSIST(isc_refcount_current(&qp->base->refcount) == 1);
-	INSIST(qp->used_count >= qp->usage[chunk].used);
-	INSIST(qp->free_count >= qp->usage[chunk].free);
-	qp->used_count -= qp->usage[chunk].used;
-	qp->free_count -= qp->usage[chunk].free;
+	qp_chunk_t *physical = chunk_fromnodes(qp->base->ptr[chunk]);
+	INSIST(qp->used_count >= physical->used);
+	INSIST(qp->free_count >= qp->base->free[chunk]);
+	qp->used_count -= physical->used;
+	qp->free_count -= qp->base->free[chunk];
 	chunk_release(qp->base, qp->base->ptr[chunk]);
 	qp->base->ptr[chunk] = NULL;
-	qp->usage[chunk] = (qp_usage_t){};
+	qp->base->free[chunk] = 0;
+	chunk_set_mutable(qp->base, chunk);
 }
 
 /*
@@ -668,8 +677,9 @@ recycle(dns_qp_t *qp) {
 	isc_nanosecs_t start = isc_time_monotonic();
 
 	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (chunk != qp->bump && chunk_usage(qp, chunk) == 0 &&
-		    qp->usage[chunk].exists && !qp->usage[chunk].immutable)
+		if (chunk != qp->bump && qp->base->ptr[chunk] != NULL &&
+		    !chunk_immutable(qp->base, chunk) &&
+		    chunk_usage(qp, chunk) == 0)
 		{
 			chunk_free(qp, chunk);
 			nfree++;
@@ -711,11 +721,13 @@ reclaim_chunks_cb(struct rcu_head *arg) {
  */
 static void
 reclaim_chunks(dns_qp_t *qp) {
-	if (qp->usage[qp->bump].used != 0 && chunk_usage(qp, qp->bump) == 0) {
+	if (chunk_fromnodes(qp->base->ptr[qp->bump])->used != 0 &&
+	    chunk_usage(qp, qp->bump) == 0)
+	{
 		alloc_reset(qp);
 	}
 	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (chunk != qp->bump && qp->usage[chunk].exists &&
+		if (chunk != qp->bump && qp->base->ptr[chunk] != NULL &&
 		    chunk_usage(qp, chunk) == 0)
 		{
 			chunk_free(qp, chunk);
@@ -832,7 +844,7 @@ compact(dns_qp_t *qp) {
 
 	isc_nanosecs_t start = isc_time_monotonic();
 
-	if (qp->usage[qp->bump].free > QP_MAX_FREE) {
+	if (qp->base->free[qp->bump] > QP_MAX_FREE) {
 		alloc_reset(qp);
 	}
 
@@ -932,9 +944,10 @@ dns_qp_memusage(dns_qp_t *qp) {
 	size_t chunk_usage_bytes = 0;
 	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
 		if (qp->base->ptr[chunk] != NULL) {
-			chunk_usage_bytes += sizeof(qp_chunk_t) +
-					     qp->usage[chunk].capacity *
-						     sizeof(dns_qpnode_t);
+			chunk_usage_bytes +=
+				sizeof(qp_chunk_t) +
+				chunk_fromnodes(qp->base->ptr[chunk])->capacity *
+					sizeof(dns_qpnode_t);
 			memusage.chunk_count += 1;
 		}
 	}
@@ -944,9 +957,7 @@ dns_qp_memusage(dns_qp_t *qp) {
 	 * retained only by old versions and snapshots.
 	 */
 	memusage.bytes = chunk_usage_bytes +
-			 (qp->base != NULL ? sizeof(dns_qpbase_t) : 0) +
-			 qp->chunk_max * sizeof(qp->base->ptr[0]) +
-			 qp->chunk_max * sizeof(qp->usage[0]);
+			 (qp->base != NULL ? base_size(qp->chunk_max) : 0);
 
 	return memusage;
 }
@@ -989,22 +1000,6 @@ transaction_open(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	INSIST(QP_VALID(qp));
 
 	/*
-	 * Mark existing chunks as immutable.
-	 *
-	 * Aside: The bump chunk is special: in a series of write
-	 * transactions the bump chunk is reused; the first part (up
-	 * to fender) is immutable, the rest mutable. But we set its
-	 * immutable flag so that when the bump chunk fills up, the
-	 * first part continues to be treated as immutable. (And the
-	 * rest of the chunk too, but that's OK.)
-	 */
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (qp->usage[chunk].exists) {
-			qp->usage[chunk].immutable = true;
-		}
-	}
-
-	/*
 	 * Ensure QP_AUTOGC() ignores free space in immutable chunks.
 	 */
 	qp->hold_count = qp->free_count;
@@ -1031,10 +1026,10 @@ dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	TRACE("");
 
 	if (qp->base != NULL) {
-		base_clone(qp, qp->chunk_max);
+		base_clone(qp, qp->chunk_max, true);
 	}
 	if (qp->transaction_mode == QP_WRITE) {
-		qp->fender = qp->usage[qp->bump].used;
+		qp->fender = chunk_fromnodes(qp->base->ptr[qp->bump])->used;
 	} else {
 		alloc_reset(qp);
 	}
@@ -1050,18 +1045,14 @@ dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp) {
  *
  * To rollback a transaction, we need to reset all the allocation
  * counters to their previous state, in particular we need to un-free
- * any nodes that were copied to make them mutable. This means we need
- * to make a copy of basically the whole `dns_qp_t writer`: everything
- * but the chunks holding the trie nodes.
+ * any nodes that were copied to make them mutable. Save the writer and
+ * retain its old base, including its free counters and immutable bitmap.
+ * Existing physical chunks do not receive new allocations in an update,
+ * so their allocation watermarks do not need restoring.
  *
- * We do most of the transaction setup before creating the rollback
- * state so that after rollback we have a correct idea of which chunks
- * are immutable, and so we have the correct transaction mode to make
- * the next transaction allocate a new bump chunk. The exception is
- * resetting the allocator, which we do after creating the rollback
- * state; if this transaction is rolled back then the next transaction
- * will start from the rollback state and also reset the allocator as
- * one of its first actions.
+ * Set the saved transaction mode to QP_UPDATE so that the next transaction
+ * after rollback starts a fresh bump chunk too. It will freeze the old
+ * chunks when cloning the saved base, not by changing the saved bitmap.
  */
 void
 dns_qpmulti_update(dns_qpmulti_t *multi, dns_qp_t **qptp) {
@@ -1075,18 +1066,15 @@ dns_qpmulti_update(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	/* can be uninitialized on the first transaction */
 	if (rollback->base != NULL) {
 		INSIST(QPBASE_VALID(rollback->base));
-		INSIST(qp->usage != NULL && qp->chunk_max > 0);
+		INSIST(qp->chunk_max > 0);
 		/* paired with either _commit() or _rollback() */
 		isc_refcount_increment(&rollback->base->refcount);
-		size_t usage_bytes = sizeof(qp->usage[0]) * qp->chunk_max;
-		rollback->usage = isc_mem_allocate(qp->mctx, usage_bytes);
-		memmove(rollback->usage, qp->usage, usage_bytes);
 	}
 	INSIST(multi->rollback == NULL);
 	multi->rollback = rollback;
 
 	if (qp->base != NULL) {
-		base_clone(qp, qp->chunk_max);
+		base_clone(qp, qp->chunk_max, true);
 	}
 	alloc_reset(qp);
 }
@@ -1104,9 +1092,6 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	if (qp->transaction_mode == QP_UPDATE) {
 		INSIST(multi->rollback != NULL);
 		base_detach(&multi->rollback->base);
-		if (multi->rollback->usage != NULL) {
-			isc_mem_free(qp->mctx, multi->rollback->usage);
-		}
 		isc_mem_free(qp->mctx, multi->rollback);
 		compact(qp);
 
@@ -1117,7 +1102,7 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 			qp->mctx, chunk,
 			STRUCT_FLEX_SIZE(chunk, nodes, chunk->used));
 		qp->base->ptr[qp->bump] = chunk->nodes;
-		qp->usage[qp->bump].capacity = chunk->used;
+		chunk->capacity = chunk->used;
 	}
 	INSIST(multi->rollback == NULL);
 
@@ -1157,9 +1142,6 @@ dns_qpmulti_rollback(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	/* The private base owns all new allocations; old ones have other
 	 * owners. */
 	base_detach(&qp->base);
-	if (qp->usage != NULL) {
-		isc_mem_free(qp->mctx, qp->usage);
-	}
 	memmove(qp, multi->rollback, sizeof(*qp));
 	isc_mem_free(qp->mctx, multi->rollback);
 	atomic_fetch_add_relaxed(&rollback_time, isc_time_monotonic() - start);
@@ -1314,9 +1296,6 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 static void
 destroy_guts(dns_qp_t *qp) {
 	base_detach(&qp->base);
-	if (qp->usage != NULL) {
-		isc_mem_free(qp->mctx, qp->usage);
-	}
 	qp->chunk_max = 0;
 	qp->magic = 0;
 }

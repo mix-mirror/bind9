@@ -596,6 +596,103 @@ ISC_RUN_TEST_IMPL(qpmulti_clone_rollback) {
 	assert_int_equal(atomic_load_relaxed(&values[0].references), 0);
 }
 
+static void
+check_base_layout(dns_qpbase_t *base) {
+	size_t count = base->chunk_max;
+	assert_true((char *)base->free >=
+		    (char *)base->immutable + base_bitmap_size(count));
+	assert_true((char *)base->ptr >= (char *)(base->free + count));
+	assert_int_equal((uintptr_t)base->free % alignof(uint16_t), 0);
+	assert_int_equal((uintptr_t)base->ptr % alignof(dns_qpnode_t *), 0);
+	assert_ptr_equal(base->ptr + count, (char *)base + base_size(count));
+}
+
+ISC_RUN_TEST_IMPL(qpmulti_base_metadata) {
+	lifetime_item_t values[32768] = { 0 };
+	dns_qpmulti_t *multi = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t read = { 0 };
+	dns_qpmulti_create(isc_g_mctx, &lifetime_methods, NULL, &multi);
+	dns_qpmulti_write(multi, &qp);
+	for (uint32_t i = 0; i < 128; i++) {
+		assert_int_equal(dns_qp_insert(qp, &values[i], i),
+				 ISC_R_SUCCESS);
+		check_base_layout(qp->base);
+		/* Growth must not freeze chunks allocated in this transaction.
+		 */
+		for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
+			if (qp->base->ptr[c] != NULL) {
+				assert_false(chunk_immutable(qp->base, c));
+			}
+		}
+	}
+	dns_qpmulti_commit(multi, &qp);
+	dns_qpmulti_query(multi, &read);
+	dns_qpbase_t *old = read.base;
+	size_t bitmap_bytes = base_bitmap_size(old->chunk_max);
+	size_t free_bytes = old->chunk_max * sizeof(old->free[0]);
+	uint8_t *bitmap = isc_mem_get(isc_g_mctx, bitmap_bytes);
+	uint16_t *counters = isc_mem_get(isc_g_mctx, free_bytes);
+	memmove(bitmap, old->immutable, bitmap_bytes);
+	memmove(counters, old->free, free_bytes);
+
+	dns_qpmulti_update(multi, &qp);
+	lifetime_delete(qp, 0, 64);
+	bool changed = false;
+	for (dns_qpchunk_t c = 0; c < old->chunk_max; c++) {
+		if (qp->base->free[c] != counters[c]) {
+			changed = true;
+		}
+	}
+	assert_true(changed);
+	/* Cross bitmap-byte boundaries and grow a mixture of old/new chunks. */
+	for (uint32_t i = 128; i < ARRAY_SIZE(values); i++) {
+		assert_int_equal(dns_qp_insert(qp, &values[i], i),
+				 ISC_R_SUCCESS);
+		check_base_layout(qp->base);
+		for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
+			if (qp->base->ptr[c] != NULL) {
+				assert_int_equal(chunk_immutable(qp->base, c),
+						 c < old->chunk_max &&
+							 old->ptr[c] != NULL);
+			}
+		}
+		if (qp->chunk_max > old->chunk_max && qp->chunk_max > 8) {
+			break;
+		}
+	}
+	assert_true(qp->chunk_max > old->chunk_max);
+	assert_true(qp->chunk_max > 8);
+	assert_memory_equal(old->immutable, bitmap, bitmap_bytes);
+	assert_memory_equal(old->free, counters, free_bytes);
+	lifetime_check(&read, values, 0, 128, true);
+	dns_qpmulti_rollback(multi, &qp);
+	assert_ptr_equal(multi->writer.base, old);
+	assert_memory_equal(old->immutable, bitmap, bitmap_bytes);
+	assert_memory_equal(old->free, counters, free_bytes);
+
+	/* A write after rollback must freeze the restored chunks anew. */
+	dns_qpmulti_write(multi, &qp);
+	for (dns_qpchunk_t c = 0; c < old->chunk_max; c++) {
+		if (old->ptr[c] != NULL) {
+			assert_true(chunk_immutable(qp->base, c));
+		}
+	}
+	lifetime_delete(qp, 0, 128);
+	dns_qpmulti_commit(multi, &qp);
+	assert_memory_equal(old->immutable, bitmap, bitmap_bytes);
+	assert_memory_equal(old->free, counters, free_bytes);
+	lifetime_check(&read, values, 0, 128, true);
+	isc_mem_put(isc_g_mctx, bitmap, bitmap_bytes);
+	isc_mem_put(isc_g_mctx, counters, free_bytes);
+	dns_qpread_destroy(multi, &read);
+	dns_qpmulti_destroy(&multi);
+	drain_versions();
+	for (uint32_t i = 0; i < ARRAY_SIZE(values); i++) {
+		assert_int_equal(atomic_load_relaxed(&values[i].references), 0);
+	}
+}
+
 ISC_RUN_TEST_IMPL(qpmulti_reclaim_without_mutex) {
 	lifetime_item_t values[32] = { 0 };
 	dns_qpmulti_t *multi = NULL;
@@ -761,6 +858,7 @@ ISC_TEST_ENTRY(qpmulti)
 ISC_TEST_ENTRY(qpmulti_memusage)
 ISC_TEST_ENTRY(qpmulti_versions)
 ISC_TEST_ENTRY(qpmulti_clone_rollback)
+ISC_TEST_ENTRY(qpmulti_base_metadata)
 ISC_TEST_ENTRY(qpmulti_reclaim_without_mutex)
 ISC_TEST_ENTRY(qpmulti_concurrent_versions)
 ISC_TEST_LIST_END

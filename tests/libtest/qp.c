@@ -128,8 +128,8 @@ static void
 dumpqp(dns_qp_t *qp, const char *type) {
 	dumpread(qp, type, " mctx ");
 	printf("%p\n", qp->mctx);
-	printf("%s %p usage %p chunk_max %u bump %u fender %u\n", type, qp,
-	       qp->usage, qp->chunk_max, qp->bump, qp->fender);
+	printf("%s %p chunk_max %u bump %u fender %u\n", type, qp,
+	       qp->chunk_max, qp->bump, qp->fender);
 	printf("%s %p leaf %u live %u used %u free %u hold %u\n", type, qp,
 	       qp->leaf_count, qp->used_count - qp->free_count, qp->used_count,
 	       qp->free_count, qp->hold_count);
@@ -180,12 +180,16 @@ qp_test_dumpchunks(dns_qp_t *qp) {
 	dns_qpcell_t free_count = 0;
 	dumpqp(qp, "qp");
 	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
+		if (qp->base->ptr[c] == NULL) {
+			continue;
+		}
+		qp_chunk_t *physical = chunk_fromnodes(qp->base->ptr[c]);
 		printf("qp %p chunk %u base %p "
 		       "used %u free %u immutable %u\n",
-		       qp, c, qp->base->ptr[c], qp->usage[c].used,
-		       qp->usage[c].free, qp->usage[c].immutable);
-		used_count += qp->usage[c].used;
-		free_count += qp->usage[c].free;
+		       qp, c, qp->base->ptr[c], physical->used,
+		       qp->base->free[c], chunk_immutable(qp->base, c));
+		used_count += physical->used;
+		free_count += qp->base->free[c];
 	}
 	printf("qp %p total used %" PRIu32 " free %" PRIu32 "\n", qp,
 	       used_count, free_count);

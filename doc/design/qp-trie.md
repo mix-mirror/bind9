@@ -614,21 +614,18 @@ The chunked memory layout is supported by a `base` array of pointers
 to the start of each chunk. A chunk number is just an index into this
 array.
 
-Alongside the `base` array is a `usage` array, indexed the same way.
-Instead of keeping track of individual nodes, the allocator just keeps
-a count of how many nodes have been allocated from a chunk, and how
-many were subsequently freed. The `used` count of the newest chunk
-also serves as the allocation point for the bump allocator, and the
-size of the chunk when it has been shrunk. This is why we increment
-the `free` count when a node is discarded, instead of decrementing the
-`used` count. The `usage` array also contains some fields used for
-chunk reclamation, about which more below.
+A base is a single allocation containing its header, an immutable bitmap,
+an array of `uint16_t` free counters, and an array of chunk pointers, with
+alignment padding before the counters and pointers. The structure-of-arrays
+layout keeps the read-only pointer array dense. There is no separate `usage`
+allocation. A NULL pointer denotes an unused chunk index.
 
-The `base` and `usage` arrays are separate because the `usage` array
-is only used by writers, and never shared with readers. The read-only
-hot path only needs the `base` array, so keeping it separate is more
-cache-friendly: less memory pressure on the read path and less
-interference from false sharing with write ops.
+Instead of tracking individual free cells, the allocator counts how many
+cells were allocated (`used`) and how many the writer subsequently discarded
+(`free`). With the current 4096-cell chunk limit, `free` needs 13 bits: it
+must represent a completely free chunk too. The physical chunk header holds
+`used` and the allocation's `capacity`; `used` is also the bump allocation
+point. Discarding cells increments `free` rather than decrementing `used`.
 
 Published base arrays are immutable. Each transaction clones the base
 and acquires one reference to each physical chunk in the copied mapping.
@@ -637,15 +634,21 @@ waiting for readers of older versions. Each old root retains its own
 base, so the same index can refer to different physical allocations in
 different versions.
 
-Physical chunks have a reference count and an allocation watermark in a
+Physical chunks have a reference count, allocation watermark, and capacity in a
 header before their nodes. Base entries still point directly at the nodes,
 so this adds no indirection to lookup. A chunk's destructor scans its
-watermark only after the last owning base releases it. Logical allocation
-and free counters remain in the writer's `usage` array for rollback.
+watermark only after the last owning base releases it. Logical free counters
+are private to each base version. An update saves the old base and restores
+it on rollback, restoring its bitmap and counters without an undo journal.
+Updates allocate into fresh chunks, so existing physical watermarks need
+no rollback bookkeeping.
 
-Both arrays grow geometrically. The writer can reallocate its private
-`usage` array; bases are grown by allocating a new array and copying the
-mapping. The old allocation remains alive until all its owners release it.
+Opening a transaction initializes its new immutable bitmap to all ones;
+allocating a chunk clears that index's bit. The bump's `fender` boundary
+overrides the bit while allocating into its mutable suffix. Bases grow
+geometrically by allocating and copying all three arrays; growth within a
+transaction preserves the bitmap instead of freezing the chunks. The old
+allocation remains alive until all its owners release it.
 
 
 lightweight write transactions
@@ -739,7 +742,7 @@ period.
 When reclaiming a chunk, we have to scan it for any remaining leaf
 nodes. When nodes are accessibly only to the writer, they are zeroed
 out when they are freed. If they are shared with readers, they must be
-left in place (though the `free` count in the usage array is still
+left in place (though the `free` count in the writer's base is still
 adjusted), and finally `detach()`ed when the chunk is reclaimed.
 
 Current-writer allocation counters are updated when a mapping is removed,

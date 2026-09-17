@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include <stdalign.h>
+
 #include <isc/bit.h>
 #include <isc/refcount.h>
 
@@ -153,7 +155,7 @@ enum {
 
 STATIC_ASSERT(2 <= QP_CHUNK_LOG_MIN && QP_CHUNK_LOG_MIN <= QP_CHUNK_LOG_MAX,
 	      "qp-trie min chunk size is unreasonable");
-STATIC_ASSERT(6 <= QP_CHUNK_LOG_MAX && QP_CHUNK_LOG_MAX <= 20,
+STATIC_ASSERT(6 <= QP_CHUNK_LOG_MAX && QP_CHUNK_LOG_MAX <= 15,
 	      "qp-trie max chunk size is unreasonable");
 
 #define QP_CHUNK_SIZE  (1U << QP_CHUNK_LOG_MAX)
@@ -163,10 +165,9 @@ STATIC_ASSERT(QP_SAFETY_MARGIN >= QP_CHUNK_BYTES,
 	      "qp-trie safety margin too small");
 
 /*
- * We need a bitfield this big to count how much of a chunk is in use:
- * it needs to count from 0 up to and including `1 << QP_CHUNK_LOG_MAX`.
+ * A free counter must include QP_CHUNK_SIZE itself, not just cell indices.
  */
-#define QP_USAGE_BITS (QP_CHUNK_LOG_MAX + 1)
+STATIC_ASSERT(QP_CHUNK_SIZE <= UINT16_MAX, "chunk free counter is too small");
 
 /*
  * A chunk needs to be compacted if it is less full than this threshold.
@@ -196,7 +197,7 @@ STATIC_ASSERT(QP_SAFETY_MARGIN >= QP_CHUNK_BYTES,
 #define QP_AUTOGC(qp) QP_GC_HEURISTIC(qp, (qp)->free_count - (qp)->hold_count)
 
 /*
- * The chunk base and usage arrays are resized geometically and start off
+ * The chunk base arrays are resized geometrically and start off
  * with two entries.
  */
 #define GROWTH_FACTOR(size) ((size) + (size) / 2 + 2)
@@ -234,67 +235,24 @@ ref_cell(dns_qpref_t ref) {
  */
 
 /*
- * A `dns_qp_t` contains two arrays holding information about each chunk.
- *
- * The `base` array holds pointers to the base of each chunk.
- * The `usage` array hold the allocator's state for each chunk.
- *
- * The `base` array is used by the hot qp-trie traversal paths. It can
- * be shared by multiple versions of a trie, which are tracked with a
- * refcount. Old versions of the trie can retain old versions of the
- * `base` array.
- *
- * In multithreaded code, the `usage` array is only used when the
- * `dns_qpmulti_t` mutex is held, and there is only one version of
- * it in active use (maybe with a snapshot for rollback support).
- *
- * The two arrays are separate because they have rather different
- * access patterns, different lifetimes, and different element sizes.
+ * A base contains three separate arrays in one allocation: an immutable
+ * bitmap, logical free counters, and chunk pointers. Readers only use the
+ * pointers. Writers modify the metadata only in a private base; keeping the
+ * old base is sufficient to preserve these counters for update rollback.
  */
-
-/*
- * For most purposes we don't need to know exactly which cells are
- * in use in a chunk, we only need to know how many of them there are.
- *
- * After we have finished allocating from a chunk, the `used` counter
- * is the size we need to know for shrinking the chunk and for
- * scanning it to detach leaf values before the chunk is free()d. The
- * `free` counter tells us when the chunk needs compacting and when it
- * has become empty.
- *
- * The `exists` flag allows the chunk scanning loops to look at the
- * usage array only.
- *
- * In multithreaded code, we mark chunks as `immutable` when a modify
- * transaction is opened. (We don't mark them immutable on commit,
- * because the old bump chunk must remain mutable between write
- * transactions, but it must become immutable when an update
- * transaction is opened.)
- */
-typedef struct qp_usage {
-	/*% the allocation point, increases monotonically */
-	dns_qpcell_t used : QP_USAGE_BITS;
-	/*% the actual size of the allocation */
-	dns_qpcell_t capacity : QP_USAGE_BITS;
-	/*% count of nodes no longer needed, also monotonic */
-	dns_qpcell_t free : QP_USAGE_BITS;
-	/*% qp->base->ptr[chunk] != NULL */
-	bool exists : 1;
-	/*% is this chunk shared? [MT] */
-	bool immutable : 1;
-} qp_usage_t;
 
 /*
  * Physical allocation identity is independent of a version's chunk index.
  * Each base owns one reference per non-NULL entry. Only the writer advances
  * `used`; the destructor reads it after the last owner has released the
  * chunk. Reader lookup still points directly at nodes[], without an extra
- * indirection. Logical free counters remain in the writer's usage[] so an
- * update can roll them back without modifying another version's state.
+ * indirection through the physical header. Capacity belongs to the physical
+ * allocation; logical free counters belong to each base version instead.
  */
 typedef struct qp_chunk {
 	isc_refcount_t references;
 	dns_qpcell_t used;
+	dns_qpcell_t capacity;
 	dns_qpnode_t nodes[];
 } qp_chunk_t;
 
@@ -317,8 +275,42 @@ struct dns_qpbase {
 	const dns_qpmethods_t *methods;
 	void *uctx;
 	dns_qpchunk_t chunk_max;
-	dns_qpnode_t *ptr[];
+	uint16_t *free;
+	dns_qpnode_t **ptr;
+	uint8_t immutable[];
 };
+
+static inline size_t
+base_bitmap_size(dns_qpchunk_t count) {
+	return ((size_t)count + 7) / 8;
+}
+
+static inline size_t
+base_free_offset(dns_qpchunk_t count) {
+	return ISC_ALIGN(sizeof(dns_qpbase_t) + base_bitmap_size(count),
+			 alignof(uint16_t));
+}
+
+static inline size_t
+base_ptr_offset(dns_qpchunk_t count) {
+	return ISC_ALIGN(base_free_offset(count) + count * sizeof(uint16_t),
+			 alignof(dns_qpnode_t *));
+}
+
+static inline size_t
+base_size(dns_qpchunk_t count) {
+	return base_ptr_offset(count) + count * sizeof(dns_qpnode_t *);
+}
+
+static inline bool
+chunk_immutable(dns_qpbase_t *base, dns_qpchunk_t chunk) {
+	return (base->immutable[chunk / 8] & (1U << (chunk % 8))) != 0;
+}
+
+static inline void
+chunk_set_mutable(dns_qpbase_t *base, dns_qpchunk_t chunk) {
+	base->immutable[chunk / 8] &= ~(1U << (chunk % 8));
+}
 
 /*
  * Now we know about `dns_qpreader_t` and `dns_qpbase_t`,
@@ -422,9 +414,7 @@ struct dns_qp {
 	DNS_QPREADER_FIELDS;
 	/*% memory context (const) */
 	isc_mem_t *mctx;
-	/*% array of per-chunk allocation counters */
-	qp_usage_t *usage;
-	/*% number of slots in `chunk` and `usage` arrays */
+	/*% number of slots in the base arrays */
 	dns_qpchunk_t chunk_max;
 	/*% which chunk is used for allocations */
 	dns_qpchunk_t bump;
@@ -432,7 +422,7 @@ struct dns_qp {
 	dns_qpcell_t fender;
 	/*% number of leaf nodes */
 	dns_qpcell_t leaf_count;
-	/*% total of all usage[] counters */
+	/*% totals of physical used and base-local free counters */
 	dns_qpcell_t used_count, free_count;
 	/*% free cells that cannot be recovered right now */
 	dns_qpcell_t hold_count;
