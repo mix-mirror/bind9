@@ -181,7 +181,7 @@ class Domain(Matcher):
     """
 
     def __init__(self, *domains: str | dns.name.Name) -> None:
-        self.domains = sorted(
+        self._domains = sorted(
             (
                 name if isinstance(name, dns.name.Name) else dns.name.from_text(name)
                 for name in domains
@@ -196,14 +196,14 @@ class Domain(Matcher):
         return self._matched_domain
 
     def match(self, qctx: QueryContext) -> bool:
-        for domain in self.domains:
+        for domain in self._domains:
             if qctx.qname.is_subdomain(domain):
                 self._matched_domain = domain
                 return True
         return False
 
     def __str__(self) -> str:
-        return f"QNAME under [{', '.join(str(name) for name in self.domains)}]"
+        return f"QNAME under [{', '.join(str(name) for name in self._domains)}]"
 
 
 class Protocol(Matcher):
