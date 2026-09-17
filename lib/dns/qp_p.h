@@ -169,31 +169,53 @@ STATIC_ASSERT(QP_SAFETY_MARGIN >= QP_CHUNK_BYTES,
 #define QP_USAGE_BITS (QP_CHUNK_LOG_MAX + 1)
 
 /*
- * A chunk needs to be compacted if it is less full than this threshold.
+ * The bump chunk is abandoned at the start of a compaction cycle when it
+ * holds more garbage than this, so that the garbage can be collected.
  * (12% overhead seems reasonable)
+ *
+ * Any other chunk is evacuated when more than an eighth of the cells it
+ * has handed out are garbage, see chunk_fragmented(). That threshold is
+ * relative to the chunk's own size, because chunks grow geometrically,
+ * so a small chunk that is full of live twigs must not count as
+ * fragmented.
  */
 #define QP_MAX_FREE (QP_CHUNK_SIZE / 8)
-#define QP_MIN_USED (QP_CHUNK_SIZE - QP_MAX_FREE)
 
 /*
- * Compact automatically when we pass this threshold: when there is a lot
- * of free space in absolute terms, and when we have freed more than half
- * of the space we allocated.
+ * Start a compaction cycle when we pass this threshold: when there is a
+ * lot of free space in absolute terms, and when we have freed more than
+ * half of the space we allocated. Chunks that are already empty and
+ * queued for recycling or reclamation do not count.
  *
- * The current compaction algorithm scans the whole trie, so it is important
- * to scale the threshold based on the size of the trie to avoid quadratic
- * behaviour. XXXFANF find an algorithm that scans less of the trie!
+ * A compaction cycle walks the whole trie, so it is important to scale
+ * the threshold based on the size of the trie to avoid quadratic
+ * behaviour. In a multi-threaded trie the walk is split into bounded
+ * steps, one per transaction, that resume from a saved key; see
+ * compact_step().
  *
  * During a modification transaction, when we copy-on-write some twigs we
  * count the old copy as "free", because they will be when the transaction
  * commits. But they cannot be recovered immediately so they are also
  * counted as on hold, and discounted when we decide whether to compact.
  */
-#define QP_GC_HEURISTIC(qp, free) \
-	((free) > QP_CHUNK_SIZE * 4 && (free) > (qp)->used_count / 2)
+#define QP_GC_HEURISTIC(used, free) \
+	((free) > QP_CHUNK_SIZE * 4 && (free) > (used) / 2)
 
-#define QP_NEEDGC(qp) QP_GC_HEURISTIC(qp, (qp)->free_count)
-#define QP_AUTOGC(qp) QP_GC_HEURISTIC(qp, (qp)->free_count - (qp)->hold_count)
+#define QP_NEEDGC(qp)                                          \
+	QP_GC_HEURISTIC((qp)->used_count - (qp)->reclaim_used, \
+			(qp)->free_count - (qp)->reclaim_free)
+#define QP_AUTOGC(qp) \
+	QP_GC_HEURISTIC((qp)->used_count, (qp)->free_count - (qp)->hold_count)
+
+/*
+ * How much work a single compaction step may do, measured in cells
+ * visited or copied outside the path it resumes along. About 80
+ * microseconds at 4096 cells. A step that follows a large transaction
+ * is scaled up in proportion to the cells allocated since the previous
+ * step, up to QP_COMPACT_BUDGET_MAX times the base budget.
+ */
+#define QP_COMPACT_BUDGET     QP_CHUNK_SIZE
+#define QP_COMPACT_BUDGET_MAX 16
 
 /*
  * The chunk base and usage arrays are resized geometically and start off
@@ -482,12 +504,14 @@ struct dns_qpsnap {
  * of lightweight write transactions can use the same `bump` chunk, so
  * its prefix before `fender` is immutable, and the rest is mutable.
  *
- * To decide when to compact and reclaim space, QP_MAX_GARBAGE() examines
- * the values of `used_count`, `free_count`, and `hold_count`. The
- * `hold_count` tracks nodes that need to be retained while readers are
- * using them; they are free but cannot be reclaimed until the transaction
- * has committed, so the `hold_count` is discounted from QP_MAX_GARBAGE()
- * during a transaction.
+ * To decide when to compact and reclaim space, QP_NEEDGC() and
+ * QP_AUTOGC() examine the values of `used_count`, `free_count`, and
+ * `hold_count`. The `hold_count` tracks nodes that need to be retained
+ * while readers are using them; they are free but cannot be reclaimed
+ * until the transaction has committed, so the `hold_count` is discounted
+ * from QP_AUTOGC() during a transaction. The `reclaim_used` and
+ * `reclaim_free` counters cover the empty chunks on the reclaim list,
+ * which no compaction can improve on, so QP_NEEDGC() ignores them.
  *
  * There are some flags that alter the behaviour of write transactions.
  *
@@ -502,8 +526,15 @@ struct dns_qpsnap {
  *    copied. (Usually compation aims to avoid moving nodes out of
  *    unfragmented chunks.) It is used when compaction is explicitly
  *    requested via `dns_qp_compact()`, and as an emergency mechanism if
- *    normal compaction failed to clear the QP_MAX_GARBAGE() condition.
- *    (This emergency is a bug even tho we have a rescue mechanism.)
+ *    a compaction cycle failed to recover any space although QP_NEEDGC()
+ *    still holds. (This emergency is a bug even tho we have a rescue
+ *    mechanism.) It stays constant for the whole of a cycle.
+ *
+ *  - The `compact_active` flag is set while a compaction cycle is in
+ *    progress in a multi-threaded trie. The cycle is split into bounded
+ *    steps, and `compact_key` remembers where the next step resumes.
+ *    The `compact_stepped` flag ensures that a transaction takes at most
+ *    one step, whether from dns_qp_compact() or from the commit.
  *
  *  - When a qp-trie is destroyed while it has pending cleanup work, its
  *    `destroy` flag is set so that it is destroyed by the reclaim worker.
@@ -546,12 +577,36 @@ struct dns_qp {
 	dns_qpchunk_t chunk_frontier;
 	/*% values deleted by the open transaction, see retire_leaf() [MT] */
 	qp_deadctx_t *dead;
+	/*% the used and free cells of the chunks on the reclaim list [MT] */
+	dns_qpcell_t reclaim_used, reclaim_free;
 	/*% current mutable transaction generation [MT] */
 	uint64_t generation;
+	/*% chunks allocated before this generation may be evacuated [MT] */
+	uint64_t compact_cutoff;
+	/*% key of the least leaf under the next subtree to compact [MT] */
+	dns_qpkey_t *compact_key;
+	uint16_t compact_keylen;
+	/*% key offset of that subtree's branch: below it nothing is done [MT]
+	 */
+	uint16_t compact_keyoffset;
+	/*% cells of work per compact_step(), see QP_COMPACT_BUDGET [MT] */
+	dns_qpcell_t compact_budget;
+	/*% cells copied by the current compaction cycle [MT] */
+	dns_qpcell_t compact_evacuated;
+	/*% steps taken by the current compaction cycle [MT] */
+	uint32_t compact_steps;
+	/*% cells allocated so far, and the count at the previous step [MT] */
+	uint64_t alloc_count, alloc_at_step;
 	/*% what kind of transaction was most recently started [MT] */
 	enum { QP_NONE, QP_WRITE } transaction_mode : 2;
 	/*% compact the entire trie [MT] */
 	bool compact_all : 1;
+	/*% a compaction cycle is in progress [MT] */
+	bool compact_active : 1;
+	/*% a compaction step already ran in this transaction [MT] */
+	bool compact_stepped : 1;
+	/*% the previous cycle recovered nothing while QP_NEEDGC() held [MT] */
+	bool compact_stuck : 1;
 	/*% optionally when compiled with fuzzing support [MT] */
 	bool write_protect : 1;
 };

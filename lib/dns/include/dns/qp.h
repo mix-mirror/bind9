@@ -64,9 +64,12 @@
  * a single-threaded trie, without affecting other read-only query or
  * snapshot users of the `dns_qpmulti_t`, and the changes become visible
  * to them all at once when the transaction commits. A transaction only
- * allocates what its inserts and deletes need; when a trie should be
- * as compact as possible between rare writes, call `dns_qp_compact()`
- * with `DNS_QPGC_ALL` before committing.
+ * allocates what its inserts and deletes need. When enough garbage has
+ * accumulated, each commit does a bounded amount of compaction, so that
+ * the cost is spread across many transactions and no single one has to
+ * copy the whole trie; when a trie should be as compact as possible
+ * between rare writes, call `dns_qp_compact()` with `DNS_QPGC_ALL`
+ * before committing.
  */
 
 /***********************************************************************
@@ -399,17 +402,21 @@ dns_qp_compact(dns_qp_t *qp, dns_qpgc_t mode);
  * Defragment the qp-trie and release unused memory.
  *
  * When modifications make a trie too fragmented, it is automatically
- * compacted. However, automatic compaction is limited when a
- * multithreaded trie has lots of immutable memory from past
- * transactions, and write transactions do not compact on commit.
+ * compacted: a single-threaded trie synchronously, a multi-threaded trie
+ * in bounded increments, one on each commit of a write transaction, so
+ * that the writer mutex is never held for a time proportional to the
+ * size of the trie.
  *
  * This function can be used with a single-threaded qp-trie and during a
  * transaction on a multi-threaded trie.
  *
- * \li	If `mode == DNS_QPGC_MAYBE`, the trie is cleaned if it is fragmented
+ * \li	If `mode == DNS_QPGC_MAYBE`, the trie is cleaned if it is
+ *	fragmented. Inside a transaction on a multi-threaded trie this
+ *	performs at most one bounded increment, which the commit would
+ *	otherwise do, so it never adds work.
  *
  * \li	If `mode == DNS_QPGC_NOW`, the trie is cleaned while avoiding
- *	unnecessary work
+ *	unnecessary work, whatever the state of incremental compaction
  *
  * \li	If `mode == DNS_QPGC_ALL`, the entire trie is compacted
  *
@@ -804,10 +811,12 @@ dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp);
  * trie that gets frequent small writes, such as a DNS cache, as well as
  * a trie that is rarely written.
  *
- * A sequence of write transactions can accumulate garbage that the
- * automatic compact/recycle cannot reclaim. To reclaim this space, you
- * can use the `dns_qp_memusage fragmented` flag to trigger a call to
- * dns_qp_compact(), or compact the whole trie with `DNS_QPGC_ALL`.
+ * A sequence of write transactions accumulates garbage from
+ * copy-on-write; when there is enough of it, commits compact the trie
+ * in bounded increments until it is clean again. Calling
+ * dns_qp_compact() with `DNS_QPGC_MAYBE` before the commit is optional
+ * and shares the commit's increment; `DNS_QPGC_ALL` compacts the whole
+ * trie at once.
  *
  * During the transaction, the modification mutex is held.
  *

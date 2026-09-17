@@ -586,6 +586,26 @@ See `compact()` in `lib/dns/qp.c` for the copying phase of the
 garbage collector. Reference counting for value objects is handled
 by the `attach()` and `detach()` qp-trie methods.
 
+A chunk is worth evacuating when more than an eighth of the cells it
+has handed out are garbage. The threshold is relative to the chunk's
+own size because chunks grow geometrically, so a small chunk that is
+full of live twigs must not be copied again and again.
+
+In a multi-threaded trie the collector must not hold the writer
+mutex for a time proportional to the size of the trie, so a
+compaction cycle is split into steps of bounded work, one per write
+transaction. A step resumes where the previous one stopped, using a
+saved key rather than saved node pointers, because the transactions
+in between may have moved or deleted any node. The saved key is the
+least leaf key under the next subtree to process, and the walk visits
+twigs in key order, so a step processes exactly the vectors whose
+least leaf key is greater than or equal to the saved key. The path
+down to the key is found the way a lookup finds a missing key: follow
+the key as far as it matches, find the leaf that lies where the key
+would be, and let the order of the two keys decide whether the
+subtree in which they diverge was already processed. See
+`compact_step()` and `compact_resume()` in `lib/dns/qp.c`.
+
 
 chunked memory layout
 ---------------------
@@ -658,6 +678,13 @@ in a pair of nodes in the current chunk, allocated by the bump
 allocator, so it does not need to be `malloc()`ed separately, and so
 the chunk reclamation machinery can also reclaim the `base` array when
 it is no longer in use.
+
+Every write transaction copies the twigs vectors on the path from the
+root to the node it modifies, because the previous version of the
+trie is still in use by readers, so a sequence of write transactions
+leaves garbage behind. When there is enough of it, each commit runs
+one bounded increment of a compaction cycle, and the cycle continues
+across commits until the whole trie has been walked.
 
 A trie that is rarely written, such as an authoritative zone, can be
 kept as compact as possible by calling `dns_qp_compact()` with
