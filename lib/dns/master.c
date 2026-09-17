@@ -315,7 +315,7 @@ loadctx_destroy(dns_loadctx_t *lctx);
 	}
 
 #define LOGITFILE(result, filename)                                            \
-	do {                                                                   \
+	{                                                                      \
 		if (result == ISC_R_INVALIDFILE ||                             \
 		    result == ISC_R_FILENOTFOUND || result == ISC_R_IOERROR || \
 		    result == ISC_R_TOOMANYOPENFILES ||                        \
@@ -328,7 +328,7 @@ loadctx_destroy(dns_loadctx_t *lctx);
 		} else {                                                       \
 			LOGIT(result);                                         \
 		}                                                              \
-	} while (0)
+	}
 
 #define LOGIT(result)                                                       \
 	(*callbacks->error)(callbacks, "%s: %s:%lu: %s", "dns_master_load", \
