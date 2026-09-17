@@ -8020,13 +8020,7 @@ del_sig(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	 */
 	*has_algp = (alg_found && !alg_missed);
 
-	dns_rdataset_cleanup(&rdataset);
-	dns_rdatasetiter_destroy(&iterator);
-	if (!ISC_LIST_EMPTY(del_diff.tuples)) {
-		result = apply_and_move_diff(db, version, &del_diff, diff);
-	}
-	dns_diff_clear(&del_diff);
-	return result;
+	CHECK(apply_and_move_diff(db, version, &del_diff, diff));
 
 cleanup:
 	dns_rdataset_cleanup(&rdataset);
