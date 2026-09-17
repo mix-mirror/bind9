@@ -9,5 +9,15 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-token_init_and_cleanup  # unused function (keyfromlabel/tests_keyfromlabel.py:43)
-DNSSEC_PY_MARK  # unused variable (dnssec_py/common.py:14)
+import pytest
+
+DNSSEC_PY_MARK = pytest.mark.extra_artifacts(
+    [
+        "ans*/*.pem",
+        "ans*/*.run",
+        "ns*/dsset-*",
+        "ns*/trusted.conf",
+        "ns*/zones/*.db",
+        "ns*/zones/*.db.signed",
+    ]
+)
