@@ -943,6 +943,7 @@ reclaim_chunks_cb(struct rcu_head *arg) {
 	for (unsigned int i = 0; i < rcuctx->count; i += QP_RECLAIM_BATCH) {
 		qp_freechunk_t batch[QP_RECLAIM_BATCH];
 		unsigned int n = 0;
+		unsigned int end = ISC_MIN(i + QP_RECLAIM_BATCH, rcuctx->count);
 
 		LOCK(&multi->mutex);
 		if (i == 0) {
@@ -954,9 +955,7 @@ reclaim_chunks_cb(struct rcu_head *arg) {
 		 */
 		if (qp->chunk_max != 0) {
 			INSIST(QP_VALID(qp));
-			for (unsigned int k = i;
-			     k < i + QP_RECLAIM_BATCH && k < rcuctx->count; k++)
-			{
+			for (unsigned int k = i; k < end; k++) {
 				dns_qpchunk_t chunk = rcuctx->chunk[k];
 				if (qp->usage[chunk].snapshot) {
 					/* clean up when snapshot is destroyed
@@ -966,6 +965,14 @@ reclaim_chunks_cb(struct rcu_head *arg) {
 					chunk_detach(qp, chunk, &batch[n++]);
 				}
 			}
+		}
+		/*
+		 * dns_qpmulti_adopt() renumbers the chunks that are still
+		 * to come, so it needs to know how far we have got.
+		 */
+		rcuctx->done = end;
+		if (end == rcuctx->count) {
+			ISC_LIST_UNLINK(multi->reclaiming, rcuctx, link);
 		}
 		UNLOCK(&multi->mutex);
 
@@ -1005,8 +1012,10 @@ reclaim_chunks(dns_qpmulti_t *multi) {
 		.magic = QPRCU_MAGIC,
 		.multi = multi,
 		.count = qp->reclaim_count,
+		.link = ISC_LINK_INITIALIZER,
 	};
 	isc_mem_attach(qp->mctx, &rcuctx->mctx);
+	ISC_LIST_APPEND(multi->reclaiming, rcuctx, link);
 
 	unsigned int i = 0;
 	for (dns_qpchunk_t chunk = qp->reclaim_head; chunk != INVALID_CHUNK;) {
@@ -1991,6 +2000,187 @@ dns_qpmulti_rollback(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	UNLOCK(&multi->mutex);
 }
 
+/*
+ * Renumber the chunks that outstanding reclamation callbacks have not
+ * detached yet, see dns_qpmulti_adopt(). The callback reads its list
+ * under the mutex, one batch at a time, so this is safe while it runs.
+ */
+static void
+remap_reclaiming(dns_qpmulti_t *multi, const dns_qpchunk_t *map,
+		 dns_qpchunk_t oldmax) {
+	ISC_LIST_FOREACH(multi->reclaiming, rcuctx, link) {
+		INSIST(QPRCU_VALID(rcuctx));
+		for (unsigned int k = rcuctx->done; k < rcuctx->count; k++) {
+			dns_qpchunk_t chunk = rcuctx->chunk[k];
+			INSIST(chunk < oldmax);
+			INSIST(map[chunk] != INVALID_CHUNK);
+			rcuctx->chunk[k] = map[chunk];
+		}
+	}
+}
+
+/*
+ * Adoption replaces the writer's allocator state with the source
+ * trie's, then appends the previous version's chunks so that readers
+ * of that version and the callbacks that will free it keep working:
+ * old readers resolve their references through the old base array,
+ * which they hold a reference to, and never through the writer.
+ */
+void
+dns_qpmulti_adopt(dns_qpmulti_t *multi, dns_qp_t **qptp) {
+	REQUIRE(QPMULTI_VALID(multi));
+	REQUIRE(qptp != NULL && QP_VALID(*qptp));
+
+	dns_qp_t *src = *qptp;
+	dns_qp_t *qp = &multi->writer;
+
+	REQUIRE(src->transaction_mode == QP_NONE);
+	REQUIRE(src->mctx == qp->mctx);
+	REQUIRE(src->methods == qp->methods);
+	REQUIRE(src->uctx == qp->uctx);
+	REQUIRE(src->write_protect == qp->write_protect);
+	*qptp = NULL;
+
+	/* a single-threaded trie has no reclaim list, only a cursor */
+	compact_abort(src);
+	INSIST(src->reclaim_count == 0);
+
+	LOCK(&multi->mutex);
+	INSIST(QP_VALID(qp));
+	INSIST(multi->rollback == NULL);
+	REQUIRE(ISC_LIST_EMPTY(multi->snapshots));
+	INSIST(qp->reclaim_count == 0);
+	TRACE("");
+
+	compact_abort(qp);
+
+	dns_qpbase_t *oldbase = qp->base;
+	qp_usage_t *oldusage = qp->usage;
+	dns_qpchunk_t oldmax = qp->chunk_max;
+	dns_qpchunk_t nold = 0;
+
+	for (dns_qpchunk_t c = 0; c < oldmax; c++) {
+		if (oldusage[c].exists) {
+			INSIST(!oldusage[c].snapshot && !oldusage[c].snapfree);
+			INSIST(!oldusage[c].reclaim_candidate);
+			nold++;
+		}
+	}
+
+	/*
+	 * Adoption is a new version of the trie: everything that exists
+	 * now becomes immutable, and the adopted chunks belong to the new
+	 * generation like a transaction's allocations would.
+	 */
+	INSIST(qp->generation < UINT64_MAX);
+	qp->generation++;
+
+	qp->root_ref = src->root_ref;
+	qp->base = src->base;
+	qp->usage = src->usage;
+	qp->chunk_max = src->chunk_max;
+	qp->bump = src->bump;
+	qp->fender = 0;
+	qp->leaf_count = src->leaf_count;
+	qp->used_count = src->used_count;
+	qp->free_count = src->free_count;
+	qp->chunk_capacity = src->chunk_capacity;
+	qp->free_slot = src->free_slot;
+	qp->chunk_frontier = src->chunk_frontier;
+	qp->alloc_count += src->alloc_count;
+	qp->transaction_mode = QP_UPDATE;
+
+	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
+		if (qp->usage[c].exists) {
+			qp->usage[c].generation = qp->generation;
+			maybe_reclaim_chunk(qp, c);
+		}
+	}
+
+	/*
+	 * Append the old chunks after the adopted ones. Their cells are
+	 * all garbage to the writer, so they go straight onto the reclaim
+	 * list, except those an outstanding callback is already about to
+	 * free: those keep their accounting and are only renumbered.
+	 */
+	if (nold > 0) {
+		dns_qpchunk_t *map = isc_mem_cget(qp->mctx, oldmax,
+						  sizeof(*map));
+		dns_qpchunk_t k = qp->chunk_frontier;
+
+		if (k + nold > qp->chunk_max) {
+			realloc_chunk_arrays(qp, k + nold);
+		}
+		for (dns_qpchunk_t c = 0; c < oldmax; c++) {
+			if (!oldusage[c].exists) {
+				map[c] = INVALID_CHUNK;
+				continue;
+			}
+			map[c] = k;
+			qp->base->ptr[k] = oldbase->ptr[c];
+			qp->usage[k] = oldusage[c];
+			qp->usage[k].reclaim_next = INVALID_CHUNK;
+			if (!oldusage[c].discounted) {
+				qp->usage[k].free = qp->usage[k].used;
+				qp->used_count += qp->usage[k].used;
+				qp->free_count += qp->usage[k].used;
+				maybe_reclaim_chunk(qp, k);
+			}
+			k++;
+		}
+		qp->chunk_frontier = k;
+		remap_reclaiming(multi, map, oldmax);
+		isc_mem_cput(qp->mctx, map, oldmax, sizeof(*map));
+	}
+
+	if (oldbase != NULL) {
+		/* the writer's reference; readers hold their own */
+		dns_qpreader_t old = { .base = oldbase };
+		if (qpbase_unref(&old)) {
+			isc_mem_free(qp->mctx, oldbase);
+		}
+		isc_mem_free(qp->mctx, oldusage);
+	}
+
+	/*
+	 * Publish in the same order as an update transaction's commit:
+	 * the bump chunk may move when it is shrunk, so nothing in it can
+	 * be referenced before that. The old reader cells are garbage in
+	 * an old chunk now, like everything else there.
+	 */
+	multi->reader_ref = alloc_twigs(qp, READER_SIZE);
+	qp->base->ptr[qp->bump] = chunk_shrink_raw(
+		qp, qp->base->ptr[qp->bump],
+		qp->usage[qp->bump].used * sizeof(dns_qpnode_t));
+	qp->usage[qp->bump].capacity = qp->usage[qp->bump].used;
+
+	dns_qpnode_t *reader = ref_ptr(qp, multi->reader_ref);
+	make_reader(reader, multi);
+	/* paired with chunk_free() */
+	isc_refcount_increment(&qp->base->refcount);
+
+	rcu_assign_pointer(multi->reader, reader); /* COMMIT */
+
+	qp->hold_count = qp->free_count;
+	qp->compact_stepped = false;
+	qp->alloc_at_step = qp->alloc_count;
+
+	recycle(qp);
+	reclaim_chunks(multi);
+	atomic_store_relaxed(&multi->gc_pending, QP_NEEDGC(qp));
+
+	LOG_STATS("qp adopt leaf %u used %u free %u chunks %u old %u",
+		  qp->leaf_count, qp->used_count, qp->free_count,
+		  qp->chunk_frontier, nold);
+	UNLOCK(&multi->mutex);
+
+	/* only the shell of the source is left to free */
+	src->base = NULL;
+	src->usage = NULL;
+	src->chunk_max = 0;
+	dns_qp_destroy(&src);
+}
+
 /***********************************************************************
  *
  *  read-only transactions
@@ -2147,6 +2337,7 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 				  .references = ISC_REFCOUNT_INITIALIZER(1) };
 	isc_mutex_init(&multi->mutex);
 	ISC_LIST_INIT(multi->snapshots);
+	ISC_LIST_INIT(multi->reclaiming);
 
 	/*
 	 * Do not waste effort allocating a bump chunk that will be thrown
@@ -2207,6 +2398,8 @@ qpmulti_free_mem(dns_qpmulti_t *multi) {
 	/* reassure thread sanitizer */
 	LOCK(&multi->mutex);
 	dns_qp_t *qp = &multi->writer;
+	/* every callback unlinks itself before dropping its reference */
+	INSIST(ISC_LIST_EMPTY(multi->reclaiming));
 	UNLOCK(&multi->mutex);
 
 	isc_mutex_destroy(&multi->mutex);

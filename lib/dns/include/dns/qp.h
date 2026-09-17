@@ -926,4 +926,27 @@ dns_qpmulti_rollback(dns_qpmulti_t *multi, dns_qp_t **qptp);
  * \li  `*qptp == NULL`
  */
 
+void
+dns_qpmulti_adopt(dns_qpmulti_t *multi, dns_qp_t **qptp);
+/*%<
+ * Publish a single-threaded qp-trie as the new version of a
+ * multi-threaded qp-trie, replacing the previous version in one step.
+ *
+ * This is for bulk loads: the contents are built with the
+ * single-threaded API, without transactions or copy-on-write, and
+ * handed over when complete. Readers of the previous version keep it
+ * until they are done; its memory is reclaimed after a grace period,
+ * and the leaves it held are detached then. The single-threaded trie
+ * is consumed.
+ *
+ * Requires:
+ * \li  `multi` is a pointer to a valid multi-threaded qp-trie
+ * \li  no transaction is open on `multi` and it has no snapshots
+ * \li  `qptp != NULL` and `*qptp` is a valid single-threaded qp-trie
+ *      created with the same memory context, methods and context
+ *
+ * Ensures:
+ * \li  `*qptp == NULL`
+ */
+
 /**********************************************************************/
