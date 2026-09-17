@@ -406,8 +406,9 @@ static dns_rdatasetitermethods_t rdatasetiter_methods = {
 
 typedef struct qpdb_rdatasetiter {
 	dns_rdatasetiter_t common;
-	dns_vectop_t *currenttop;
-	dns_vecheader_t *current;
+	size_t current;
+	size_t count;
+	dns_vecheader_t **headers;
 } qpdb_rdatasetiter_t;
 
 /*
@@ -4068,6 +4069,9 @@ qpzone_allrdatasets(dns_db_t *db, dns_dbnode_t *dbnode,
 	qpznode_t *node = (qpznode_t *)dbnode;
 	qpz_version_t *version = (qpz_version_t *)dbversion;
 	qpdb_rdatasetiter_t *iterator = NULL;
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	isc_rwlock_t *nlock = qpzone_get_lock(node);
+	size_t count = 0;
 
 	REQUIRE(VALID_QPZONE(qpdb));
 
@@ -4089,6 +4093,34 @@ qpzone_allrdatasets(dns_db_t *db, dns_dbnode_t *dbnode,
 	};
 
 	qpznode_acquire(node DNS__DB_FLARG_PASS);
+
+	NODE_RDLOCK(nlock, &nlocktype);
+
+	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
+		if (first_existing_header(top, version->serial) != NULL) {
+			count++;
+		}
+	}
+
+	if (count != 0) {
+		iterator->headers = isc_mem_cget(db->mctx, count,
+						 sizeof(*iterator->headers));
+	}
+	iterator->count = count;
+
+	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
+		dns_vecheader_t *header =
+			first_existing_header(top, version->serial);
+
+		if (header != NULL) {
+			dns_vecheader_ref(header);
+			iterator->headers[iterator->current++] = header;
+		}
+	}
+	INSIST(iterator->current == iterator->count);
+	iterator->current = iterator->count;
+
+	NODE_UNLOCK(nlock, &nlocktype);
 
 	*iteratorp = (dns_rdatasetiter_t *)iterator;
 	return ISC_R_SUCCESS;
@@ -4168,6 +4200,13 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	qpdb_rdatasetiter_t *qrditer = NULL;
 
 	qrditer = (qpdb_rdatasetiter_t *)(*iteratorp);
+	for (size_t i = 0; i < qrditer->count; i++) {
+		dns_vecheader_unref(qrditer->headers[i]);
+	}
+	if (qrditer->headers != NULL) {
+		isc_mem_cput(qrditer->common.db->mctx, qrditer->headers,
+			     qrditer->count, sizeof(*qrditer->headers));
+	}
 
 	if (qrditer->common.version != NULL) {
 		closeversion(qrditer->common.db, &qrditer->common.version,
@@ -4182,28 +4221,10 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 static isc_result_t
 rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	qpdb_rdatasetiter_t *qrditer = (qpdb_rdatasetiter_t *)iterator;
-	qpznode_t *node = (qpznode_t *)qrditer->common.node;
-	qpz_version_t *version = (qpz_version_t *)qrditer->common.version;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = qpzone_get_lock(node);
 
-	qrditer->currenttop = NULL;
-	qrditer->current = NULL;
+	qrditer->current = 0;
 
-	NODE_RDLOCK(nlock, &nlocktype);
-
-	ISC_SLIST_FOREACH(top, node->next_type, next_type) {
-		qrditer->current = first_existing_header(top, version->serial);
-
-		if (qrditer->current != NULL) {
-			qrditer->currenttop = top;
-			break;
-		}
-	}
-
-	NODE_UNLOCK(nlock, &nlocktype);
-
-	if (qrditer->currenttop == NULL) {
+	if (qrditer->current == qrditer->count) {
 		return ISC_R_NOMORE;
 	}
 
@@ -4213,39 +4234,14 @@ rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 static isc_result_t
 rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG) {
 	qpdb_rdatasetiter_t *qrditer = (qpdb_rdatasetiter_t *)iterator;
-	qpznode_t *node = (qpznode_t *)qrditer->common.node;
-	qpz_version_t *version = (qpz_version_t *)qrditer->common.version;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = qpzone_get_lock(node);
-	dns_vectop_t *from = NULL;
 
-	if (qrditer->currenttop == NULL) {
+	if (qrditer->current == qrditer->count) {
 		return ISC_R_NOMORE;
 	}
 
-	NODE_RDLOCK(nlock, &nlocktype);
+	qrditer->current++;
 
-	from = ISC_SLIST_NEXT(qrditer->currenttop, next_type);
-	qrditer->currenttop = NULL;
-	qrditer->current = NULL;
-
-	/*
-	 * Find the start of the header chain for the next type.
-	 */
-	if (from != NULL) {
-		ISC_SLIST_FOREACH_FROM(top, node->next_type, next_type, from) {
-			qrditer->current =
-				first_existing_header(top, version->serial);
-			if (qrditer->current != NULL) {
-				qrditer->currenttop = top;
-				break;
-			}
-		}
-	}
-
-	NODE_UNLOCK(nlock, &nlocktype);
-
-	if (qrditer->currenttop == NULL) {
+	if (qrditer->current == qrditer->count) {
 		return ISC_R_NOMORE;
 	}
 
@@ -4256,19 +4252,12 @@ static void
 rdatasetiter_current(dns_rdatasetiter_t *iterator,
 		     dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	qpdb_rdatasetiter_t *qrditer = (qpdb_rdatasetiter_t *)iterator;
-	qpzonedb_t *qpdb = (qpzonedb_t *)(qrditer->common.db);
-	qpznode_t *qpnode = (qpznode_t *)qrditer->common.node;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = qpzone_get_lock(qpnode);
-	dns_vecheader_t *header = qrditer->current;
+	qpzonedb_t *qpdb = (qpzonedb_t *)qrditer->common.db;
 
-	REQUIRE(header != NULL);
+	REQUIRE(qrditer->current < qrditer->count);
 
-	NODE_RDLOCK(nlock, &nlocktype);
-
-	bindrdataset(qpdb, header, rdataset DNS__DB_FLARG_PASS);
-
-	NODE_UNLOCK(nlock, &nlocktype);
+	bindrdataset(qpdb, qrditer->headers[qrditer->current],
+		     rdataset DNS__DB_FLARG_PASS);
 }
 
 /*

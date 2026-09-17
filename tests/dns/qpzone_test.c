@@ -553,6 +553,62 @@ ISC_RUN_TEST_IMPL(diffop_add_sub) {
 	assert_null(db);
 }
 
+ISC_RUN_TEST_IMPL(allrdatasets_snapshot) {
+	static const unsigned char address[] = { 192, 0, 2, 1 };
+	isc_result_t result;
+	dns_db_t *db = NULL;
+
+	result = dns__qpzone_create(isc_g_mctx, &example_org_name,
+				    dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
+				    NULL, &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_non_null(db);
+
+	WITH_NEWVERSION(db, version, false) {
+		dns_dbnode_t *node = NULL;
+		dns_rdatasetiter_t *iterator = NULL;
+		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
+
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_aaaa, dns_rdataclass_in,
+					  300, aaaa_test_data[0], 16,
+					  DNS_DIFFOP_ADD);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		result = dns_db_findnode(db, &example_org_name, false, &node);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		result = dns_db_allrdatasets(db, node, version, 0, 0,
+					     &iterator);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_aaaa, dns_rdataclass_in,
+					  300, aaaa_test_data[1], 16,
+					  DNS_DIFFOP_ADD);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		result = apply_dns_update(db, version, &example_org_name,
+					  dns_rdatatype_a, dns_rdataclass_in,
+					  300, address, sizeof(address),
+					  DNS_DIFFOP_ADD);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		result = dns_rdatasetiter_first(iterator);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		dns_rdatasetiter_current(iterator, &rdataset);
+		assert_int_equal(rdataset.type, dns_rdatatype_aaaa);
+		assert_int_equal(dns_rdataset_count(&rdataset), 1);
+		dns_rdataset_disassociate(&rdataset);
+		assert_int_equal(dns_rdatasetiter_next(iterator), ISC_R_NOMORE);
+
+		dns_rdatasetiter_destroy(&iterator);
+		dns_db_detachnode(&node);
+	}
+
+	dns_db_detach(&db);
+	assert_null(db);
+}
+
 ISC_RUN_TEST_IMPL(wildcard_foundname) {
 	static const unsigned char address[] = { 192, 0, 2, 1 };
 	isc_result_t result;
@@ -908,6 +964,7 @@ ISC_TEST_ENTRY(setownercase)
 ISC_TEST_ENTRY(resign_sooner_values)
 ISC_TEST_ENTRY(unscheduled_resign)
 ISC_TEST_ENTRY(diffop_add_sub)
+ISC_TEST_ENTRY(allrdatasets_snapshot)
 ISC_TEST_ENTRY(wildcard_foundname)
 ISC_TEST_ENTRY(wildcard_delegation_foundname)
 ISC_TEST_ENTRY(nodes_outside_zone)
