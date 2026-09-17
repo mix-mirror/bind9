@@ -15,6 +15,8 @@ Developer entry point for running the checks and tests locally.
     nox -l                             list sessions
     nox                                run the default sessions
     nox -s system_tests -- -k dnssec   pass extra arguments to pytest
+    nox -s ci_system_tests             run the system tests the way the CI
+                                       job does (see the session)
 
 The Python dependencies are declared as dependency groups in pyproject.toml
 and pinned with pip-compile in bin/tests/system/requirements.txt (system
@@ -31,6 +33,10 @@ Environment variables:
                                configure or compile (CI gets it from the
                                build job)
     TEST_PARALLEL_JOBS         number of pytest workers (default: 20)
+    NOX_BIND9_QA_DIR           bind9-qa checkout used by ci_system_tests
+                               (default: bind9-qa, next to this file)
+    NOX_BIND9_QA_REF           branch, tag or commit of bind9-qa to check
+                               out (default: main)
     CLANG_FORMAT               clang-format executable (default: clang-format)
     NOX_SYSTEM_SITE_PACKAGES=1 let the virtual environments see the packages
                                installed on the system and install only
@@ -43,9 +49,11 @@ anything.
 """
 
 import os
+import re
 import sys
 
 import nox
+import nox.command
 
 # session dependencies (`requires`) need this version
 nox.needs_version = ">=2025.2.9"
@@ -69,8 +77,16 @@ BUILD_DIR = os.environ.get("NOX_BUILD_DIR", "build-nox")
 SKIP_BUILD = os.environ.get("NOX_SKIP_BUILD") == "1"
 CLANG_FORMAT = os.environ.get("CLANG_FORMAT", "clang-format")
 
+QA_REPO = "https://gitlab.isc.org/isc-projects/bind9-qa.git"
+QA_DIR = os.environ.get("NOX_BIND9_QA_DIR", "bind9-qa")
+QA_REF = os.environ.get("NOX_BIND9_QA_REF", "main")
+
 TEST_REQUIREMENTS = "bin/tests/system/requirements.txt"
 LINT_REQUIREMENTS = "requirements-lint.txt"
+
+SYSTEM_TEST_DIR = "bin/tests/system"
+# where the CI after_script looks for the pytest output
+PYTEST_LOG = os.path.join(SYSTEM_TEST_DIR, "pytest.out.txt")
 
 # pip skips the packages that the system already provides in the pinned
 # version, so only the missing or differing ones get downloaded
@@ -119,6 +135,149 @@ def python(session):
 
 def git_ls_files(session, *patterns):
     return session.run("git", "ls-files", *patterns, external=True, silent=True).split()
+
+
+def qa_git(session, *args, **kwargs):
+    """Run git in the bind9-qa checkout."""
+    return session.run("git", "-C", QA_DIR, *args, external=True, **kwargs)
+
+
+def qa_rev_parse(session, rev):
+    """The commit `rev` names in the bind9-qa checkout, or None if none."""
+    out = qa_git(
+        session,
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        rev,
+        silent=True,
+        success_codes=[0, 1],
+    )
+    return out.strip() or None
+
+
+def checkout_bind9_qa(session):
+    """Clone bind9-qa into QA_DIR if needed and check out QA_REF."""
+    # init + fetch instead of clone so that a commit works as the ref the
+    # same way a branch does (GitLab serves any reachable commit)
+    if not os.path.isdir(os.path.join(QA_DIR, ".git")):
+        session.run("git", "init", "--quiet", QA_DIR, external=True)
+        qa_git(session, "remote", "add", "origin", QA_REPO)
+    head = qa_rev_parse(session, "HEAD")
+    if re.fullmatch("[0-9a-f]{40}", QA_REF) and head == QA_REF:
+        return
+    qa_git(session, "fetch", "--depth", "1", "origin", QA_REF)
+    if qa_rev_parse(session, "FETCH_HEAD") != head:
+        qa_git(session, "checkout", "--quiet", "--detach", "FETCH_HEAD")
+
+
+def setup_interfaces(session):
+    """Bring up the loopback addresses the system tests bind to."""
+    script = os.path.join(BUILD_DIR, "bin/tests/system/ifconfig.sh")
+    command = ["sh", "-x", script, "up"]
+    if os.geteuid() != 0:
+        command.insert(0, "sudo")
+    session.run(*command, external=True)
+
+
+def attempt(func, *args, **kwargs):
+    """Call a function that runs commands; return whether they all succeeded."""
+    try:
+        func(*args, **kwargs)
+    except nox.command.CommandFailed:
+        return False
+    return True
+
+
+# A `tee` for session.run: the output has to reach both the terminal (or
+# the CI job log) and a file, and the exit status has to survive the pipe,
+# which a shell pipeline only guarantees with bash's pipefail; not every
+# CI image has bash.  Only stdout is captured, like `| tee`.
+TEE = """
+import subprocess
+import sys
+
+with open(sys.argv[1], "wb") as log, subprocess.Popen(
+    sys.argv[2:], stdout=subprocess.PIPE
+) as proc:
+    for line in proc.stdout:
+        sys.stdout.buffer.write(line)
+        sys.stdout.buffer.flush()
+        log.write(line)
+sys.exit(proc.returncode)
+"""
+
+
+def tee(session, logfile, *command, **kwargs):
+    """session.run `command`, copying its stdout to `logfile`."""
+    session.run(python(session), "-c", TEE, logfile, *command, **kwargs)
+
+
+def pytest_command(session, *args):
+    """The pytest command line for the system tests, with the default -n."""
+    args = list(args)
+    if not any(arg.startswith(("-n", "--numprocesses")) for arg in args):
+        args = ["-n", os.environ.get("TEST_PARALLEL_JOBS", "20"), *args]
+    return [python(session), "-m", "pytest", *args]
+
+
+def run_system_tests(session, *args, log=None):
+    """Run pytest in the system test directory, copying its output to `log`.
+
+    `log` is relative to the source root, like the other paths here.
+    """
+    if log is not None:
+        log = os.path.abspath(log)
+    # run from the system test directory like the README describes so that
+    # test directories can be given as arguments (`-- rrchecker`)
+    with session.chdir(SYSTEM_TEST_DIR):
+        command = pytest_command(session, *args)
+        if log is None:
+            session.run(*command)
+        else:
+            tee(session, log, *command)
+
+
+def oom_check(session):
+    """Fail if the kernel OOM killer ran (see the script)."""
+    session.run("sh", "util/oom-check.sh", external=True)
+
+
+def postprocess_junit(session, output, *inputs):
+    """Merge JUnit files into `output` in the form GitLab displays best."""
+    session.run(
+        python(session),
+        os.path.join(QA_DIR, "ci/postprocess_junit_files.py"),
+        *inputs,
+        "--output",
+        output,
+    )
+
+
+def display_pytest_failures(log):
+    """Print the FAILURES and ERRORS sections of the pytest output again.
+
+    They are what one looks for in a long log, so they go last.
+    """
+    with open(log, encoding="utf-8", errors="replace") as f:
+        lines = f.read().splitlines()
+    for section in ("FAILURES", "ERRORS"):
+        inside = False
+        for line in lines:
+            if re.fullmatch(f"=+ {section} =+", line):
+                inside = True
+            elif re.fullmatch("=+ .* =+", line):
+                inside = False
+            elif inside:
+                # nox logs to stderr; keep the order when stdout is a pipe
+                print(line, flush=True)
+
+
+def check_grep_warnings(session, log):
+    """Fail if a test script tripped a grep warning (a broken pattern)."""
+    with open(log, encoding="utf-8", errors="replace") as f:
+        if "grep: warning:" in f.read():
+            session.error(f"grep printed a warning, see {log}")
 
 
 @nox.session(python="3.10")
@@ -184,13 +343,32 @@ def unit_tests(session):
 def system_tests(session):
     "Run the system tests (extra arguments are passed to pytest)"
     install(session, TEST_REQUIREMENTS)
-    args = list(session.posargs)
-    if not any(arg.startswith(("-n", "--numprocesses")) for arg in args):
-        args = ["-n", os.environ.get("TEST_PARALLEL_JOBS", "20"), *args]
-    # run from the system test directory like the README describes so that
-    # test directories can be given as arguments (`-- rrchecker`)
-    with session.chdir("bin/tests/system"):
-        session.run(python(session), "-m", "pytest", *args)
+    run_system_tests(session, *session.posargs)
+
+
+@pysession(python=build_python(), requires=["build"])
+def ci_system_tests(session):
+    "Run the system tests the way the CI job does (extra arguments go to pytest)"
+    install(session, TEST_REQUIREMENTS)
+    checkout_bind9_qa(session)
+    setup_interfaces(session)
+    # A failure is reported only after the OOM check and the JUnit
+    # post-processing so that junit.xml is produced, and validated, even
+    # when the tests fail.
+    junit_pytest = "junit_pytest.xml"
+    passed = attempt(
+        run_system_tests,
+        session,
+        f"--junit-xml={os.path.abspath(junit_pytest)}",
+        *session.posargs,
+        log=PYTEST_LOG,
+    )
+    no_oom = attempt(oom_check, session)
+    postprocess_junit(session, "junit.xml", junit_pytest)
+    display_pytest_failures(PYTEST_LOG)
+    if not (passed and no_oom):
+        session.error("the system tests failed")
+    check_grep_warnings(session, PYTEST_LOG)
 
 
 @pysession
