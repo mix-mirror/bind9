@@ -110,6 +110,13 @@ struct qpcnode {
 	unsigned int havensec : 1;
 	uint8_t		      : 0;
 
+	/*%
+	 * Length of the trie key stored in 'key' below; the key is what
+	 * dns_qpkey_fromname() makes of 'name' in 'nspace', kept here so
+	 * that the trie never has to derive it from the name again.
+	 */
+	uint16_t keylen;
+
 	/*
 	 * 'erefs' counts external references held by a caller: for
 	 * example, it could be incremented by dns_db_findnode(),
@@ -144,6 +151,12 @@ struct qpcnode {
 	 * tree.
 	 */
 	isc_queue_node_t deadlink;
+
+	/*%
+	 * The trie key, 'keylen' bytes plus its terminator, allocated
+	 * together with the node.
+	 */
+	uint8_t key[];
 };
 
 /*%
@@ -303,7 +316,8 @@ static size_t
 qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
 	   uint32_t ival ISC_ATTR_UNUSED) {
 	qpcnode_t *data = pval;
-	return dns_qpkey_fromname(key, &data->name, data->nspace);
+	memmove(key, data->key, data->keylen + 1);
+	return data->keylen;
 }
 
 static void
@@ -476,8 +490,8 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 		 */
 
 		size_t purgesize =
-			2 * (sizeof(qpcnode_t) +
-			     dns_name_size(&HEADERNODE(newheader)->name)) +
+			2 * (sizeof(qpcnode_t) + HEADERNODE(newheader)->keylen +
+			     1 + dns_name_size(&HEADERNODE(newheader)->name)) +
 			dns_rdataslab_size(newheader) + QP_SAFETY_MARGIN;
 
 		expire_lru_headers(qpdb, newheader, idx, purgesize, nlocktypep,
@@ -515,33 +529,23 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 			      printname, node->locknum);
 	}
 
-	switch (node->nspace) {
-	case DNS_DBNAMESPACE_NORMAL:
-		if (node->havensec) {
-			/*
-			 * Delete the corresponding node from the auxiliary NSEC
-			 * tree before deleting from the main tree.
-			 */
-			result = dns_qp_deletename(qpdb->tree, &node->name,
-						   DNS_DBNAMESPACE_NSEC, NULL,
-						   NULL);
-			if (result != ISC_R_SUCCESS) {
-				isc_log_write(DNS_LOGCATEGORY_DATABASE,
-					      DNS_LOGMODULE_CACHE,
-					      ISC_LOG_WARNING,
-					      "delete_node(): "
-					      "dns_qp_deletename: %s",
-					      isc_result_totext(result));
-			}
+	if (node->nspace == DNS_DBNAMESPACE_NORMAL && node->havensec) {
+		/*
+		 * Delete the corresponding node from the auxiliary NSEC
+		 * tree before deleting from the main tree.
+		 */
+		result = dns_qp_deletename(qpdb->tree, &node->name,
+					   DNS_DBNAMESPACE_NSEC, NULL, NULL);
+		if (result != ISC_R_SUCCESS) {
+			isc_log_write(DNS_LOGCATEGORY_DATABASE,
+				      DNS_LOGMODULE_CACHE, ISC_LOG_WARNING,
+				      "delete_node(): "
+				      "dns_qp_deletename: %s",
+				      isc_result_totext(result));
 		}
-		result = dns_qp_deletename(qpdb->tree, &node->name,
-					   node->nspace, NULL, NULL);
-		break;
-	case DNS_DBNAMESPACE_NSEC:
-		result = dns_qp_deletename(qpdb->tree, &node->name,
-					   node->nspace, NULL, NULL);
-		break;
 	}
+	result = dns_qp_deletekey(qpdb->tree, node->key, node->keylen, NULL,
+				  NULL);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
 			      ISC_LOG_WARNING,
@@ -1943,16 +1947,22 @@ reactivate_node(qpcache_t *qpdb, qpcnode_t *node,
 
 static qpcnode_t *
 new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
-	qpcnode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
+	dns_qpkey_t key;
+	size_t keylen = dns_qpkey_fromname(key, name, nspace);
+	qpcnode_t *newdata = isc_mem_get(qpdb->common.mctx,
+					 sizeof(*newdata) + keylen + 1);
 	*newdata = (qpcnode_t){
 		.headers = CDS_LIST_HEAD_INIT(newdata->headers),
 		.methods = &qpcnode_methods,
 		.qpdb = qpdb,
 		.name = DNS_NAME_INITEMPTY,
 		.nspace = nspace,
+		.keylen = keylen,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.locknum = isc_random_uniform(qpdb->buckets_count),
 	};
+	/* the key ends with a terminator beyond keylen */
+	memmove(newdata->key, key, keylen + 1);
 
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
 	dns_name_dup(name, newdata->mctx, &newdata->name);
@@ -3243,7 +3253,8 @@ qpcnode_destroy(qpcnode_t *qpnode) {
 	}
 
 	dns_name_free(&qpnode->name, qpnode->mctx);
-	isc_mem_putanddetach(&qpnode->mctx, qpnode, sizeof(qpcnode_t));
+	isc_mem_putanddetach(&qpnode->mctx, qpnode,
+			     sizeof(qpcnode_t) + qpnode->keylen + 1);
 }
 
 #ifdef DNS_DB_NODETRACE
