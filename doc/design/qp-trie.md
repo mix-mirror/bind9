@@ -696,6 +696,17 @@ by the qp-trie garbage collector. Instead, the user provides
 `attach` and `detach` methods that the qp-trie code calls to update
 the reference counts in the value objects.
 
+The trie holds one reference per value, taken when the value is
+inserted. Copying twigs vectors, whether for copy-on-write or by the
+compactor, does not touch the counts, so the many copies a leaf's
+cell goes through over its life cost nothing in the value object.
+When a leaf is deleted, its value goes onto the transaction's
+retirement batch; after the commit the batch waits for a grace
+period, and for any snapshot of an older version to be destroyed,
+before the references are released. A value that is deleted and
+inserted again before that has two references until the retirement
+drains.
+
 Value object reference counts do not indicate whether the object is
 mutable: its refcount can be 1 while it is only in use by readers
 (and must be left unchanged), or newly created by a writer (and

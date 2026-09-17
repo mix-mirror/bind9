@@ -664,17 +664,81 @@ free_twigs(dns_qp_t *qp, dns_qpref_t twigs, dns_qpweight_t size) {
 	return !immutable;
 }
 
+/***********************************************************************
+ *
+ *  leaf references
+ *
+ * The trie holds one reference on a value from the insertion that put
+ * it in the trie until that insertion can no longer be read by any
+ * version. Copies of twigs vectors, whether made by copy-on-write or
+ * by the compactor, do not touch it. A deleted value goes onto the
+ * transaction's retirement batch, and its reference is released once
+ * a grace period has passed since the commit and no snapshot of an
+ * older version remains. In a single-threaded trie there are no
+ * readers, so the reference is released at once.
+ */
+
 /*
- * When some twigs have been copied, and free_twigs() could not
- * immediately destroy the old copy, we need to update the refcount
- * on any leaves that were duplicated.
+ * How many deleted values the first batch of a transaction has room
+ * for. Small, because a batch outlives the grace period only while a
+ * snapshot holds it back, and then the common case is one deletion per
+ * transaction; larger batches grow by doubling.
+ */
+#define QP_DEAD_FIRST 4
+
+static void
+retire_leaf(dns_qp_t *qp, dns_qpnode_t *n) {
+	qp_deadctx_t *ctx = qp->dead;
+
+	if (qp->transaction_mode == QP_NONE) {
+		detach_leaf(qp, n);
+		return;
+	}
+	if (ctx == NULL) {
+		ctx = isc_mem_get(qp->mctx,
+				  STRUCT_FLEX_SIZE(ctx, leaf, QP_DEAD_FIRST));
+		*ctx = (qp_deadctx_t){
+			.magic = QPDEAD_MAGIC,
+			.link = ISC_LINK_INITIALIZER,
+			.max = QP_DEAD_FIRST,
+		};
+		isc_mem_attach(qp->mctx, &ctx->mctx);
+	} else if (ctx->count == ctx->max) {
+		uint32_t max = ctx->max * 2;
+		ctx = isc_mem_regetx(qp->mctx, ctx,
+				     STRUCT_FLEX_SIZE(ctx, leaf, ctx->max),
+				     STRUCT_FLEX_SIZE(ctx, leaf, max), 0);
+		ctx->max = max;
+	}
+	ctx->leaf[ctx->count++] = (qp_deadleaf_t){
+		.pval = leaf_pval(n),
+		.ival = leaf_ival(n),
+	};
+	qp->dead = ctx;
+}
+
+/*
+ * Release every leaf reachable from a version, when the version as a
+ * whole is going away on destruction.
  */
 static void
-attach_twigs(dns_qp_t *qp, dns_qpnode_t *twigs, dns_qpweight_t size) {
-	for (dns_qpweight_t pos = 0; pos < size; pos++) {
-		if (node_tag(&twigs[pos]) == LEAF_TAG) {
-			attach_leaf(qp, &twigs[pos]);
+detach_subtree(dns_qpreader_t *qp, dns_qpnode_t *n) {
+	if (is_branch(n)) {
+		dns_qpweight_t size = branch_twigs_size(n);
+		dns_qpnode_t *twigs = branch_twigs(qp, n);
+		for (dns_qpweight_t pos = 0; pos < size; pos++) {
+			detach_subtree(qp, &twigs[pos]);
 		}
+	} else {
+		detach_leaf(qp, n);
+	}
+}
+
+static void
+detach_all_leaves(dns_qpreader_t *qp) {
+	dns_qpnode_t *root = get_root(qp);
+	if (root != NULL) {
+		detach_subtree(qp, root);
 	}
 }
 
@@ -783,21 +847,19 @@ chunk_detach(dns_qp_t *qp, dns_qpchunk_t chunk, qp_freechunk_t *fc) {
 }
 
 /*
- * When a chunk is being freed, we need to detach any leaves that
- * remain, and free any `base` arrays that have been marked as unused.
- * Nothing is read from the trie itself, so once the chunk has been
- * detached this is safe without the writer mutex.
+ * When a chunk is being freed, we need to free any `base` arrays that
+ * have been marked as unused. The leaves in it hold no references of
+ * their own, see retire_leaf(). Nothing is read from the trie itself,
+ * so once the chunk has been detached this is safe without the writer
+ * mutex.
  */
 static void
 chunk_release(const qp_release_t *rel, const qp_freechunk_t *fc) {
 	dns_qpnode_t *base = fc->base;
 	dns_qpnode_t *n = base;
 
-	for (dns_qpcell_t count = fc->used; count > 0; count--, n++) {
-		if (node_tag(n) == LEAF_TAG && node_pointer(n) != NULL) {
-			rel->methods->detach(rel->uctx, leaf_pval(n),
-					     leaf_ival(n));
-		} else if (count > 1 && reader_valid(n)) {
+	for (dns_qpcell_t count = fc->used; count > 1; count--, n++) {
+		if (reader_valid(n)) {
 			dns_qpreader_t qpr;
 			unpack_reader(&qpr, n);
 			/* pairs with dns_qpmulti_commit() */
@@ -999,6 +1061,109 @@ reclaim_chunks(dns_qpmulti_t *multi) {
 }
 
 /*
+ * Deleted values are released in the order their transactions
+ * committed, once each one's grace period has passed and no snapshot
+ * of an older version remains. The list is in commit order, so only
+ * its head needs looking at: a snapshot that holds back one entry
+ * holds back everything after it, and a grace period that has not
+ * passed for an older entry is waited for by the newer ones too, so
+ * that a long backlog costs nothing to scan. The caller holds the
+ * mutex; the values are detached by release_dead() after it is
+ * dropped.
+ */
+static void
+collect_dead(dns_qpmulti_t *multi, qp_deadlist_t *ready) {
+	uint64_t oldest = UINT64_MAX;
+	qp_deadctx_t *ctx = NULL;
+
+	ISC_LIST_FOREACH(multi->snapshots, qps, link) {
+		oldest = ISC_MIN(oldest, qps->generation);
+	}
+	while ((ctx = ISC_LIST_HEAD(multi->dead)) != NULL && ctx->grace &&
+	       ctx->generation <= oldest)
+	{
+		ISC_LIST_UNLINK(multi->dead, ctx, link);
+		ISC_LIST_APPEND(*ready, ctx, link);
+	}
+}
+
+static void
+deadctx_free(qp_deadctx_t *ctx) {
+	dns_qpmulti_detach(&ctx->multi);
+	isc_mem_putanddetach(&ctx->mctx, ctx,
+			     STRUCT_FLEX_SIZE(ctx, leaf, ctx->max));
+}
+
+static void
+release_dead(const qp_release_t *rel, qp_deadlist_t *ready) {
+	unsigned int nfree = 0;
+
+	ISC_LIST_FOREACH(*ready, ctx, link) {
+		ISC_LIST_UNLINK(*ready, ctx, link);
+		for (uint32_t k = 0; k < ctx->count; k++) {
+			rel->methods->detach(rel->uctx, ctx->leaf[k].pval,
+					     ctx->leaf[k].ival);
+		}
+		nfree += ctx->count;
+		deadctx_free(ctx);
+	}
+	if (nfree > 0) {
+		LOG_STATS("qp retire %u leaves", nfree);
+	}
+}
+
+/*
+ * The grace period after a commit has passed: release what it deleted,
+ * and anything older that was only waiting for its grace period.
+ */
+static void
+retire_dead_cb(struct rcu_head *arg) {
+	qp_deadctx_t *ctx = caa_container_of(arg, qp_deadctx_t, rcu_head);
+	REQUIRE(QPDEAD_VALID(ctx));
+	dns_qpmulti_t *multi = ctx->multi;
+	REQUIRE(QPMULTI_VALID(multi));
+	qp_deadlist_t ready;
+	qp_release_t rel;
+
+	ISC_LIST_INIT(ready);
+	LOCK(&multi->mutex);
+	if (ctx->released) {
+		/* the trie was destroyed first and let go of the values */
+		UNLOCK(&multi->mutex);
+		deadctx_free(ctx);
+		return;
+	}
+	ctx->grace = true;
+	collect_dead(multi, &ready);
+	release_context(&multi->writer, &rel);
+	UNLOCK(&multi->mutex);
+
+	release_dead(&rel, &ready);
+}
+
+/*
+ * At the end of a transaction, hand the deleted values over to wait
+ * for a grace period.
+ */
+static void
+retire_dead(dns_qpmulti_t *multi) {
+	dns_qp_t *qp = &multi->writer;
+	qp_deadctx_t *ctx = qp->dead;
+
+	if (ctx == NULL) {
+		return;
+	}
+	qp->dead = NULL;
+	ctx->multi = multi;
+	ctx->generation = qp->generation;
+	ISC_LIST_APPEND(multi->dead, ctx, link);
+	/* paired with deadctx_free() */
+	dns_qpmulti_ref(multi);
+	call_rcu(&ctx->rcu_head, retire_dead_cb);
+	LOG_STATS("qp will retire %u leaves", ctx->count);
+}
+
+/*
  * When a snapshot is destroyed, clean up chunks that need free()ing
  * and are not used by any remaining snapshots.
  */
@@ -1082,10 +1247,13 @@ evacuate(dns_qp_t *qp, dns_qpnode_t *n) {
 	dns_qpnode_t *old_twigs = ref_ptr(qp, old_ref);
 	dns_qpnode_t *new_twigs = ref_ptr(qp, new_ref);
 
+	/*
+	 * A leaf's reference belongs to its insertion, not to a cell,
+	 * so copying the twigs does not touch it, whether or not the
+	 * old copy stays behind for readers.
+	 */
 	move_twigs(new_twigs, old_twigs, size);
-	if (!free_twigs(qp, old_ref, size)) {
-		attach_twigs(qp, new_twigs, size);
-	}
+	(void)free_twigs(qp, old_ref, size);
 
 	return new_ref;
 }
@@ -1393,6 +1561,7 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 
 	/* schedule the rest for later */
 	reclaim_chunks(multi);
+	retire_dead(multi);
 
 	*qptp = NULL;
 	UNLOCK(&multi->mutex);
@@ -1460,6 +1629,7 @@ dns_qpmulti_snapshot(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp) {
 
 	qps->whence = reader_open(multi, qps);
 	INSIST(qps->whence == multi);
+	qps->generation = qpw->generation;
 
 	/* not a separate allocation */
 	qps->base = (dns_qpbase_t *)(qps + 1);
@@ -1508,6 +1678,11 @@ dns_qpsnap_destroy(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp) {
 	qp_freechunk_t *batch = NULL;
 	unsigned int nfree = marksweep_chunks(multi, &batch);
 
+	/* and the deleted values this snapshot was holding back */
+	qp_deadlist_t ready;
+	ISC_LIST_INIT(ready);
+	collect_dead(multi, &ready);
+
 	release_context(&multi->writer, &rel);
 	isc_mem_free(multi->writer.mctx, qp);
 
@@ -1520,6 +1695,7 @@ dns_qpsnap_destroy(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp) {
 	if (batch != NULL) {
 		isc_mem_cput(rel.mctx, batch, nfree, sizeof(*batch));
 	}
+	release_dead(&rel, &ready);
 }
 
 /***********************************************************************
@@ -1554,6 +1730,7 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 				  .references = ISC_REFCOUNT_INITIALIZER(1) };
 	isc_mutex_init(&multi->mutex);
 	ISC_LIST_INIT(multi->snapshots);
+	ISC_LIST_INIT(multi->dead);
 
 	/*
 	 * The first write transaction allocates the bump chunk, see
@@ -1569,9 +1746,14 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 
 static void
 destroy_guts(dns_qp_t *qp) {
+	INSIST(qp->dead == NULL);
 	if (qp->chunk_max == 0) {
 		return;
 	}
+
+	/* the live leaves hold the only references, one each */
+	detach_all_leaves((dns_qpreader_t *)qp);
+	qp->root_ref = INVALID_REF;
 
 	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
 		if (qp->base->ptr[chunk] != NULL) {
@@ -1610,6 +1792,8 @@ qpmulti_free_mem(dns_qpmulti_t *multi) {
 	/* reassure thread sanitizer */
 	LOCK(&multi->mutex);
 	dns_qp_t *qp = &multi->writer;
+	/* every retirement unlinks itself before dropping its reference */
+	INSIST(ISC_LIST_EMPTY(multi->dead));
 	UNLOCK(&multi->mutex);
 
 	isc_mutex_destroy(&multi->mutex);
@@ -1637,6 +1821,24 @@ qpmulti_destroy_guts_cb(struct rcu_head *arg) {
 
 	dns_qp_t *qp = &multi->writer;
 	REQUIRE(QP_VALID(qp));
+
+	/*
+	 * Nothing can read any version now, so release the values that
+	 * were still waiting for a grace period; the callbacks that have
+	 * not run yet find nothing left to do.
+	 */
+	ISC_LIST_FOREACH(multi->dead, ctx, link) {
+		ISC_LIST_UNLINK(multi->dead, ctx, link);
+		for (uint32_t k = 0; k < ctx->count; k++) {
+			qp->methods->detach(qp->uctx, ctx->leaf[k].pval,
+					    ctx->leaf[k].ival);
+		}
+		if (ctx->grace) {
+			deadctx_free(ctx);
+		} else {
+			ctx->released = true;
+		}
+	}
 
 	destroy_guts(qp);
 
@@ -1793,13 +1995,9 @@ growbranch:
 	new_twigs[pos] = new_leaf;
 	move_twigs(new_twigs + pos + 1, old_twigs + pos, old_size - pos);
 
-	if (squash_twigs(qp, old_ref, old_size)) {
-		/* old twigs destroyed, only attach to new leaf */
-		attach_leaf(qp, &new_leaf);
-	} else {
-		/* old twigs duplicated, attach to all leaves */
-		attach_twigs(qp, new_twigs, new_size);
-	}
+	/* the copied leaves keep their references either way */
+	(void)squash_twigs(qp, old_ref, old_size);
+	attach_leaf(qp, &new_leaf);
 	qp->leaf_count++;
 
 	return ISC_R_SUCCESS;
@@ -1839,7 +2037,7 @@ dns_qp_deletekey(dns_qp_t *qp, const dns_qpkey_t search_key,
 
 	SET_IF_NOT_NULL(pval_r, leaf_pval(n));
 	SET_IF_NOT_NULL(ival_r, leaf_ival(n));
-	detach_leaf(qp, n);
+	retire_leaf(qp, n);
 	qp->leaf_count--;
 
 	/* trie becomes empty */

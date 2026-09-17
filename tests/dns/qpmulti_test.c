@@ -94,11 +94,15 @@ static struct {
 	dns_qpkey_t ascii;
 } item[ITEM_COUNT];
 
+/* how often the trie called the methods, for the ownership tests */
+static atomic_uint_fast64_t attaches, detaches;
+
 static void
 item_attach(void *ctx, void *pval, uint32_t ival) {
 	INSIST(ctx == NULL);
 	INSIST(pval == &item[ival]);
 	atomic_fetch_add_relaxed(&item[ival].refcount, 1);
+	atomic_fetch_add_relaxed(&attaches, 1);
 }
 
 static void
@@ -107,6 +111,12 @@ item_detach(void *ctx, void *pval, uint32_t ival) {
 	assert_ptr_equal(pval, &item[ival]);
 	assert_int_not_equal(atomic_fetch_sub_relaxed(&item[ival].refcount, 1),
 			     0);
+	atomic_fetch_add_relaxed(&detaches, 1);
+}
+
+static uint32_t
+refs(size_t i) {
+	return atomic_load_relaxed(&item[i].refcount);
 }
 
 static size_t
@@ -454,11 +464,269 @@ ISC_RUN_TEST_IMPL(qpmulti_reclaim_mutable) {
 	assert_int_equal(atomic_load_relaxed(&item[0].refcount), 0);
 }
 
+/*
+ * Once the pending retirements have drained, every value in the trie
+ * has exactly one reference and every other value has none.
+ */
+static void
+check_refcounts(bool destroyed) {
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		if (destroyed || !item[i].in_rw) {
+			assert_int_equal(refs(i), 0);
+		} else {
+			assert_int_equal(refs(i), 1);
+		}
+	}
+}
+
+static void
+delete_item(dns_qp_t *qp, size_t i) {
+	assert_int_equal(
+		dns_qp_deletekey(qp, item[i].key, item[i].len, NULL, NULL),
+		ISC_R_SUCCESS);
+	item[i].in_rw = false;
+}
+
+static void
+insert_item(dns_qp_t *qp, size_t i) {
+	assert_int_equal(dns_qp_insert(qp, &item[i], i), ISC_R_SUCCESS);
+	item[i].in_rw = true;
+}
+
+/* insert every item, `batch` per transaction */
+static void
+insert_all(dns_qpmulti_t *qpm, size_t batch) {
+	dns_qp_t *qp = NULL;
+
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		item[i].in_rw = false;
+	}
+	for (size_t i = 0; i < ITEM_COUNT; i += batch) {
+		dns_qpmulti_write(qpm, &qp);
+		for (size_t j = i; j < i + batch && j < ITEM_COUNT; j++) {
+			insert_item(qp, j);
+		}
+		dns_qpmulti_commit(qpm, &qp);
+	}
+}
+
+/*
+ * Compacting the whole trie, and the path copies of the transactions
+ * around it, call neither attach nor detach.
+ */
+ISC_RUN_TEST_IMPL(qpmulti_refs_compaction) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t qpr;
+	uint64_t at, dt;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	insert_all(qpm, 100);
+	rcu_barrier();
+	assert_int_equal(atomic_load_relaxed(&attaches) -
+				 atomic_load_relaxed(&detaches),
+			 ITEM_COUNT);
+	check_refcounts(false);
+
+	at = atomic_load_relaxed(&attaches);
+	dt = atomic_load_relaxed(&detaches);
+	dns_qpmulti_write(qpm, &qp);
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	dns_qpmulti_commit(qpm, &qp);
+	dns_qpmulti_write(qpm, &qp);
+	dns_qpmulti_commit(qpm, &qp);
+	rcu_barrier();
+	assert_int_equal(atomic_load_relaxed(&attaches), at);
+	assert_int_equal(atomic_load_relaxed(&detaches), dt);
+	check_refcounts(false);
+	dns_qpmulti_query(qpm, &qpr);
+	assert_true(checkallrw(&qpr));
+	dns_qpread_destroy(qpm, &qpr);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+	assert_int_equal(atomic_load_relaxed(&attaches),
+			 atomic_load_relaxed(&detaches));
+}
+
+/* A reader of the old version keeps deleted values referenced. */
+ISC_RUN_TEST_IMPL(qpmulti_refs_reader) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t hold;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	insert_all(qpm, 100);
+	rcu_barrier();
+
+	dns_qpmulti_query(qpm, &hold);
+	dns_qpmulti_write(qpm, &qp);
+	for (size_t i = 0; i < ITEM_COUNT / 2; i++) {
+		delete_item(qp, i);
+	}
+	dns_qpmulti_commit(qpm, &qp);
+
+	/* the deleted values are still readable and still referenced */
+	for (size_t i = 0; i < ITEM_COUNT / 2; i++) {
+		assert_true(checkkey(&hold, i, true, "held"));
+		assert_int_equal(refs(i), 1);
+	}
+	LOCK(&qpm->mutex);
+	assert_false(ISC_LIST_EMPTY(qpm->dead));
+	UNLOCK(&qpm->mutex);
+
+	dns_qpread_destroy(qpm, &hold);
+	rcu_barrier();
+	LOCK(&qpm->mutex);
+	assert_true(ISC_LIST_EMPTY(qpm->dead));
+	UNLOCK(&qpm->mutex);
+	check_refcounts(false);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/*
+ * A snapshot holds every value deleted after it was taken, even one
+ * that was inserted after it, until the snapshot is destroyed.
+ */
+ISC_RUN_TEST_IMPL(qpmulti_refs_snapshot) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpsnap_t *snap = NULL;
+	size_t later = ITEM_COUNT - 1;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	insert_all(qpm, 100);
+	dns_qpmulti_write(qpm, &qp);
+	delete_item(qp, later);
+	dns_qpmulti_commit(qpm, &qp);
+	rcu_barrier();
+	check_refcounts(false);
+
+	dns_qpmulti_snapshot(qpm, &snap);
+
+	dns_qpmulti_write(qpm, &qp);
+	insert_item(qp, later);
+	dns_qpmulti_commit(qpm, &qp);
+	dns_qpmulti_write(qpm, &qp);
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		delete_item(qp, i);
+	}
+	dns_qpmulti_commit(qpm, &qp);
+	rcu_barrier();
+
+	/* the grace periods have passed, but the snapshot is older */
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		assert_int_equal(refs(i), 1);
+		assert_true(checkkey(snap, i, i != later, "snapshot"));
+	}
+	LOCK(&qpm->mutex);
+	assert_false(ISC_LIST_EMPTY(qpm->dead));
+	UNLOCK(&qpm->mutex);
+
+	/* destroying it releases them at once */
+	dns_qpsnap_destroy(qpm, &snap);
+	LOCK(&qpm->mutex);
+	assert_true(ISC_LIST_EMPTY(qpm->dead));
+	UNLOCK(&qpm->mutex);
+	check_refcounts(false);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/*
+ * Deleting and reinserting a value gives it a second reference until
+ * the retirement drains; the reinsertion is what remains.
+ */
+ISC_RUN_TEST_IMPL(qpmulti_refs_reinsert) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t qpr, pin;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	insert_all(qpm, 100);
+	rcu_barrier();
+
+	/* a reader keeps the retirements from draining until we say so */
+	dns_qpmulti_query(qpm, &pin);
+
+	/* within one transaction */
+	dns_qpmulti_write(qpm, &qp);
+	delete_item(qp, 0);
+	insert_item(qp, 0);
+	dns_qpmulti_commit(qpm, &qp);
+	assert_int_equal(refs(0), 2);
+
+	/* across transactions */
+	dns_qpmulti_write(qpm, &qp);
+	delete_item(qp, 1);
+	dns_qpmulti_commit(qpm, &qp);
+	dns_qpmulti_write(qpm, &qp);
+	insert_item(qp, 1);
+	dns_qpmulti_commit(qpm, &qp);
+	assert_int_equal(refs(1), 2);
+
+	dns_qpread_destroy(qpm, &pin);
+	rcu_barrier();
+	check_refcounts(false);
+	dns_qpmulti_query(qpm, &qpr);
+	assert_true(checkallrw(&qpr));
+	dns_qpread_destroy(qpm, &qpr);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/*
+ * Destroying the trie while retirements are pending releases
+ * everything exactly once.
+ */
+ISC_RUN_TEST_IMPL(qpmulti_refs_destroy) {
+	dns_qpmulti_t *qpm = NULL, *whence = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t hold;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	insert_all(qpm, 100);
+
+	/* a reader keeps the grace period open while we destroy */
+	dns_qpmulti_query(qpm, &hold);
+	dns_qpmulti_write(qpm, &qp);
+	for (size_t i = 0; i < ITEM_COUNT / 2; i++) {
+		delete_item(qp, i);
+	}
+	dns_qpmulti_commit(qpm, &qp);
+	whence = qpm;
+	dns_qpmulti_destroy(&qpm);
+	assert_true(checkkey(&hold, 0, true, "held across destroy"));
+	dns_qpread_destroy(whence, &hold);
+	rcu_barrier();
+	check_refcounts(true);
+	assert_int_equal(atomic_load_relaxed(&attaches),
+			 atomic_load_relaxed(&detaches));
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(qpmulti)
 ISC_TEST_ENTRY(qpmulti_memusage)
 ISC_TEST_ENTRY(qpmulti_reclaim_bump)
 ISC_TEST_ENTRY(qpmulti_reclaim_mutable)
+ISC_TEST_ENTRY(qpmulti_refs_compaction)
+ISC_TEST_ENTRY(qpmulti_refs_reader)
+ISC_TEST_ENTRY(qpmulti_refs_snapshot)
+ISC_TEST_ENTRY(qpmulti_refs_reinsert)
+ISC_TEST_ENTRY(qpmulti_refs_destroy)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

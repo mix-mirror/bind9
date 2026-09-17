@@ -345,6 +345,41 @@ typedef struct qp_rcuctx {
 } qp_rcuctx_t;
 
 /*
+ * A value whose reference the trie still holds after the leaf was
+ * deleted, until the version that held the leaf can no longer be read.
+ */
+typedef struct qp_deadleaf {
+	void *pval;
+	uint32_t ival;
+} qp_deadleaf_t;
+
+/*
+ * The values deleted by one transaction, collected while it runs and
+ * handed to call_rcu() when it commits. Their references are released
+ * once a grace period has passed since the commit and no snapshot of
+ * an older version remains, see retire_dead_cb().
+ */
+typedef struct qp_deadctx {
+	unsigned int magic;
+	struct rcu_head rcu_head;
+	isc_mem_t *mctx;
+	dns_qpmulti_t *multi;
+	/*% on the trie's list until the values are released [MT] */
+	ISC_LINK(struct qp_deadctx) link;
+	/*% the transaction that deleted the leaves */
+	uint64_t generation;
+	/*% the grace period after the commit has passed [MT] */
+	bool grace;
+	/*% released by the trie's destructor before the grace period [MT] */
+	bool released;
+	/*% entries used and allocated */
+	uint32_t count, max;
+	qp_deadleaf_t leaf[];
+} qp_deadctx_t;
+
+typedef ISC_LIST(qp_deadctx_t) qp_deadlist_t;
+
+/*
  * Returns true when the base array can be free()d.
  */
 static inline bool
@@ -376,6 +411,7 @@ ref_ptr(dns_qpreadable_t qpr, dns_qpref_t ref) {
 #define QPREADER_MAGIC ISC_MAGIC('q', 'p', 'r', 'x')
 #define QPBASE_MAGIC   ISC_MAGIC('q', 'p', 'b', 'p')
 #define QPRCU_MAGIC    ISC_MAGIC('q', 'p', 'c', 'b')
+#define QPDEAD_MAGIC   ISC_MAGIC('q', 'p', 'd', 'l')
 
 #define QP_VALID(qp)	  ISC_MAGIC_VALID(qp, QP_MAGIC)
 #define QPITER_VALID(qp)  ISC_MAGIC_VALID(qp, QPITER_MAGIC)
@@ -383,6 +419,7 @@ ref_ptr(dns_qpreadable_t qpr, dns_qpref_t ref) {
 #define QPMULTI_VALID(qp) ISC_MAGIC_VALID(qp, QPMULTI_MAGIC)
 #define QPBASE_VALID(qp)  ISC_MAGIC_VALID(qp, QPBASE_MAGIC)
 #define QPRCU_VALID(qp)	  ISC_MAGIC_VALID(qp, QPRCU_MAGIC)
+#define QPDEAD_VALID(qp)  ISC_MAGIC_VALID(qp, QPDEAD_MAGIC)
 
 /*
  * Polymorphic initialization of the `dns_qpreader_t` prefix.
@@ -427,6 +464,8 @@ struct dns_qpsnap {
 	DNS_QPREADER_FIELDS;
 	dns_qpmulti_t *whence;
 	uint32_t chunk_max;
+	/*% deleted values retire only after all older snapshots are gone */
+	uint64_t generation;
 	ISC_LINK(struct dns_qpsnap) link;
 };
 
@@ -505,6 +544,8 @@ struct dns_qp {
 	dns_qpchunk_t free_slot;
 	/*% slots at or above this index have never held a chunk */
 	dns_qpchunk_t chunk_frontier;
+	/*% values deleted by the open transaction, see retire_leaf() [MT] */
+	qp_deadctx_t *dead;
 	/*% current mutable transaction generation [MT] */
 	uint64_t generation;
 	/*% what kind of transaction was most recently started [MT] */
@@ -548,6 +589,8 @@ struct dns_qpmulti {
 	dns_qp_t writer;
 	/*% all snapshots of this trie */
 	ISC_LIST(dns_qpsnap_t) snapshots;
+	/*% deleted values waiting to be released, oldest first */
+	qp_deadlist_t dead;
 	/*% refcount for memory reclamation */
 	isc_refcount_t references;
 };

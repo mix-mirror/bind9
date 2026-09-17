@@ -701,10 +701,10 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	deleg = NULL;
 
 	/*
-	 * stuff. internal node (and delegset) is now removed.  Node
-	 * destruction runs synchronously inside the QP-trie chunk reclamation,
-	 * so rcu_barrier() is enough: once it returns, the evicted nodes have
-	 * been detached and freed.
+	 * stuff. internal node (and delegset) is now removed.  The QP-trie
+	 * releases a deleted node after a grace period, and destruction
+	 * runs synchronously in that callback, so rcu_barrier() is enough:
+	 * once it returns, the evicted nodes have been detached and freed.
 	 */
 	rcu_barrier();
 
@@ -736,12 +736,13 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 
 	/*
 	 * Re-adding baz. hit the hiwater mark and evicted bar.; wait for the
-	 * reclamation to free it before checking memory and final state.
+	 * grace period to free it before checking memory and final state,
+	 * after which only baz. is left.
 	 */
 	rcu_barrier();
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(2 * NENTRIES),
-			    ENTRIES_MEM(2 * NENTRIES) + 100000);
+	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(NENTRIES),
+			    ENTRIES_MEM(NENTRIES) + 100000);
 
 	/*
 	 * baz. is there, but bar. is gone, as it has been
