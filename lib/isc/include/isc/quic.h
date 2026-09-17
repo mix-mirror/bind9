@@ -477,7 +477,8 @@ isc_result_t
 isc_quic_conn_server_create(
 	isc_mem_t *mctx, isc_quic_router_t *router,
 	const isc_quic_conn_callbacks_t *callbacks, void *callback_arg,
-	const isc_quic_conn_options_t *options, isc_constregion_t initial_dcid,
+	const isc_quic_conn_options_t *options,
+	isc_quic_version_t initial_version, isc_constregion_t initial_dcid,
 	isc_constregion_t initial_scid, const isc_sockaddr_t *local,
 	const isc_sockaddr_t *peer, isc_quic_conn_t **connp);
 /**<
