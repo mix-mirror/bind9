@@ -424,16 +424,6 @@ dns_qp_compact(dns_qp_t *qp, dns_qpgc_t mode);
  * \li  `qp` is a pointer to a valid qp-trie
  */
 
-void
-dns_qp_gctime(uint64_t *compact_us, uint64_t *recover_us);
-/*%<
- * Get the total times spent on garbage collection in microseconds.
- *
- * These counters are global, covering every qp-trie in the program.
- *
- * XXXFANF This is a placeholder until we can record times in histograms.
- */
-
 dns_qp_memusage_t
 dns_qp_memusage(dns_qp_t *qp);
 /*%<

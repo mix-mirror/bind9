@@ -230,8 +230,6 @@ main(int argc, char *argv[]) {
 		size_t smallbytes = wirebytes + labels +
 				    names * sizeof(isc_refcount_t);
 		dns_qp_memusage_t memusage = dns_qp_memusage(qp);
-		uint64_t compaction_us, recovery_us;
-		dns_qp_gctime(&compaction_us, &recovery_us);
 
 		printf("leaves %zu\n"
 		       " nodes %zu\n"
@@ -243,9 +241,6 @@ main(int argc, char *argv[]) {
 		       memusage.leaves, memusage.live, memusage.used,
 		       memusage.free, memusage.hold, memusage.chunk_count,
 		       memusage.bytes);
-
-		printf("%f compaction\n", (double)compaction_us / 1000000);
-		printf("%f recovery\n", (double)recovery_us / 1000000);
 
 		size_t bytes = memusage.bytes;
 		print_megabytes("file size", filesize);
