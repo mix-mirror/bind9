@@ -275,7 +275,8 @@ ref_cell(dns_qpref_t ref) {
  * `base` array.
  *
  * In multithreaded code, the `usage` array is only used when the
- * `dns_qpmulti_t` mutex is held, and there is only one version of it.
+ * `dns_qpmulti_t` mutex is held, and there is only one version of
+ * it in active use (maybe with a snapshot for rollback support).
  *
  * The two arrays are separate because they have rather different
  * access patterns, different lifetimes, and different element sizes.
@@ -584,6 +585,9 @@ struct dns_qp {
 	dns_qpchunk_t chunk_frontier;
 	/*% values deleted by the open transaction, see retire_leaf() [MT] */
 	qp_deadctx_t *dead;
+	/*% values inserted by an update transaction, for rollback [MT] */
+	qp_deadleaf_t *journal;
+	uint32_t journal_count, journal_max;
 	/*% the used and free cells of the chunks on the reclaim list [MT] */
 	dns_qpcell_t reclaim_used, reclaim_free;
 	/*% current mutable transaction generation [MT] */
@@ -605,7 +609,7 @@ struct dns_qp {
 	/*% cells allocated so far, and the count at the previous step [MT] */
 	uint64_t alloc_count, alloc_at_step;
 	/*% what kind of transaction was most recently started [MT] */
-	enum { QP_NONE, QP_WRITE } transaction_mode : 2;
+	enum { QP_NONE, QP_WRITE, QP_UPDATE } transaction_mode : 2;
 	/*% compact the entire trie [MT] */
 	bool compact_all : 1;
 	/*% a compaction cycle is in progress [MT] */
@@ -626,7 +630,8 @@ struct dns_qp {
  * description of what it points to.
  *
  * The main object under the protection of the mutex is the `writer`
- * containing all the allocator state.
+ * containing all the allocator state. There can be a backup copy when
+ * we want to be able to rollback an update transaction.
  *
  * There is a `reader_ref` which corresponds to the `reader` pointer
  * (`ref_ptr(multi->reader_ref) == multi->reader`). The `reader_ref` is
@@ -649,6 +654,8 @@ struct dns_qpmulti {
 	dns_qpref_t reader_ref;
 	/*% the main working structure */
 	dns_qp_t writer;
+	/*% saved allocator state to support rollback */
+	dns_qp_t *rollback;
 	/*% all snapshots of this trie */
 	ISC_LIST(dns_qpsnap_t) snapshots;
 	/*% deleted values waiting to be released, oldest first */

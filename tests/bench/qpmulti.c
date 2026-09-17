@@ -359,7 +359,7 @@ load_multi(struct bench_state *bctx) {
 
 	/* initial contents of the trie */
 	start = isc_time_monotonic();
-	dns_qpmulti_write(bctx->multi, &qp);
+	dns_qpmulti_update(bctx->multi, &qp);
 	for (size_t i = 0; i < bctx->max_item; i++) {
 		if (isc_random_uniform(2) == 0) {
 			item[i].present = false;

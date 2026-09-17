@@ -671,7 +671,7 @@ load, such as a resolver cache. They minimize the amount of allocation
 by re-using the same chunk for the bump allocator across multiple
 transactions until it fills up.
 
-When a write is committed, a new packed read-only trie
+When a write (or update) is committed, a new packed read-only trie
 anchor is created. This contains a pointer to the `base` array and a
 32-bit reference to the trie's root node. The packed reader is stored
 in a pair of nodes in the current chunk, allocated by the bump
@@ -689,6 +689,17 @@ across commits until the whole trie has been walked.
 A trie that is rarely written, such as an authoritative zone, can be
 kept as compact as possible by calling `dns_qp_compact()` with
 `DNS_QPGC_ALL` before committing.
+
+heavyweight update transactions
+-------------------------------
+
+By contrast, "update" transactions are intended to keep memory usage
+as low as possible between writes. On commit, the trie is compacted,
+and the bump allocator's chunk is shrunk to fit. When a transaction is
+opened, a fresh chunk must be allocated.
+
+Update transactions also support rollback, which requires making a
+copy of all the chunk metadata.
 
 
 lightweight query transactions

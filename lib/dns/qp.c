@@ -444,6 +444,15 @@ chunk_free_raw(isc_mem_t *mctx, bool write_protect, void *ptr) {
 	}
 }
 
+static void *
+chunk_shrink_raw(dns_qp_t *qp, void *ptr, size_t bytes) {
+	if (qp->write_protect) {
+		return ptr;
+	} else {
+		return isc_mem_reallocate(qp->mctx, ptr, bytes);
+	}
+}
+
 static void
 write_protect(dns_qp_t *qp, dns_qpchunk_t chunk) {
 	if (qp->write_protect) {
@@ -462,6 +471,8 @@ write_protect(dns_qp_t *qp, dns_qpchunk_t chunk) {
 
 #define chunk_get_raw(qp, size) isc_mem_allocate(qp->mctx, size)
 #define chunk_free_raw(mctx, write_protect, ptr) isc_mem_free(mctx, ptr)
+
+#define chunk_shrink_raw(qp, ptr, size) isc_mem_reallocate(qp->mctx, ptr, size)
 
 #define write_protect(qp, chunk)
 
@@ -733,6 +744,38 @@ retire_leaf(dns_qp_t *qp, dns_qpnode_t *n) {
 }
 
 /*
+ * A new leaf takes its reference; an update transaction also notes it
+ * so that a rollback can give the reference back.
+ */
+static void
+attach_new_leaf(dns_qp_t *qp, dns_qpnode_t *n) {
+	attach_leaf(qp, n);
+	if (qp->transaction_mode == QP_UPDATE) {
+		if (qp->journal_count == qp->journal_max) {
+			uint32_t newmax = ISC_MAX(qp->journal_max * 2, 16);
+			qp->journal = isc_mem_creget(qp->mctx, qp->journal,
+						     qp->journal_max, newmax,
+						     sizeof(*qp->journal));
+			qp->journal_max = newmax;
+		}
+		qp->journal[qp->journal_count++] = (qp_deadleaf_t){
+			.pval = leaf_pval(n),
+			.ival = leaf_ival(n),
+		};
+	}
+}
+
+static void
+journal_free(dns_qp_t *qp) {
+	if (qp->journal != NULL) {
+		isc_mem_cput(qp->mctx, qp->journal, qp->journal_max,
+			     sizeof(*qp->journal));
+	}
+	qp->journal_count = 0;
+	qp->journal_max = 0;
+}
+
+/*
  * Release every leaf reachable from a version, when the version as a
  * whole is going away on destruction.
  */
@@ -845,7 +888,9 @@ typedef struct qp_freechunk {
 
 /*
  * What chunk_release() needs from the trie, copied while the mutex is
- * held so that nothing is read from the writer once it is dropped.
+ * held: the fields are constant for the life of the trie, but a
+ * rollback rewrites the whole writer with memmove(), so they must not
+ * be read from it without the mutex.
  */
 typedef struct qp_release {
 	isc_mem_t *mctx;
@@ -1191,6 +1236,8 @@ retire_dead(dns_qpmulti_t *multi) {
 	dns_qp_t *qp = &multi->writer;
 	qp_deadctx_t *ctx = qp->dead;
 
+	/* the insertions stand; only a rollback needed the journal */
+	journal_free(qp);
 	if (ctx == NULL) {
 		return;
 	}
@@ -1829,6 +1876,12 @@ dns_qpmulti_memusage(dns_qpmulti_t *multi) {
 
 	dns_qp_memusage_t memusage = dns_qp_memusage(qp);
 
+	if (qp->transaction_mode == QP_UPDATE && qp->usage != NULL) {
+		memusage.bytes -= qp->usage[qp->bump].capacity;
+		memusage.bytes += qp->usage[qp->bump].used *
+				  sizeof(dns_qpnode_t);
+	}
+
 	UNLOCK(&multi->mutex);
 	return memusage;
 }
@@ -1896,10 +1949,16 @@ write_setup(dns_qp_t *qp) {
 }
 
 /*
- * The first transaction on a trie has no bump chunk yet and allocates
- * one; after that a sequence of write transactions keeps the same bump
- * chunk and just puts `fender` at the point where this generation
- * started.
+ * a write is light
+ *
+ * We need to ensure we allocate from a fresh chunk if the last transaction
+ * shrunk the bump chunk; but usually in a sequence of write transactions
+ * we just put `fender` at the point where we started this generation.
+ *
+ * (Aside: Instead of keeping the previous transaction's mode, I
+ * considered forcing allocation into the slow path by fiddling with
+ * the bump chunk's usage counters. But that is troublesome because
+ * `chunk_free()` needs to know how much of the chunk to scan.)
  */
 void
 dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp) {
@@ -1947,34 +2006,113 @@ dns_qpmulti_gcstep(dns_qpmulti_t *multi) {
 	return atomic_load_relaxed(&multi->gc_pending);
 }
 
+/*
+ * an update is heavier
+ *
+ * We always reset the allocator to the start of a fresh chunk,
+ * because the previous transaction was probably an update that shrunk
+ * the bump chunk. It simplifies rollback because `fender` is always zero.
+ *
+ * To rollback a transaction, we need to reset all the allocation
+ * counters to their previous state, in particular we need to un-free
+ * any nodes that were copied to make them mutable. This means we need
+ * to make a copy of basically the whole `dns_qp_t writer`: everything
+ * but the chunks holding the trie nodes.
+ *
+ * We do most of the transaction setup before creating the rollback
+ * state so that after rollback we have a correct idea of which chunks
+ * are immutable, and so we have the correct transaction mode to make
+ * the next transaction allocate a new bump chunk. The exception is
+ * resetting the allocator, which we do after creating the rollback
+ * state; if this transaction is rolled back then the next transaction
+ * will start from the rollback state and also reset the allocator as
+ * one of its first actions.
+ */
+void
+dns_qpmulti_update(dns_qpmulti_t *multi, dns_qp_t **qptp) {
+	dns_qp_t *qp = transaction_open(multi, qptp);
+	TRACE("");
+
+	qp->transaction_mode = QP_UPDATE;
+	INSIST(qp->dead == NULL && qp->journal == NULL);
+
+	/*
+	 * The commit will compact the whole trie, and the rollback state
+	 * must not share a saved compaction cursor with the writer.
+	 */
+	compact_abort(qp);
+
+	dns_qp_t *rollback = isc_mem_allocate(qp->mctx, sizeof(*rollback));
+	memmove(rollback, qp, sizeof(*rollback));
+	/* can be uninitialized on the first transaction */
+	if (rollback->base != NULL) {
+		INSIST(QPBASE_VALID(rollback->base));
+		INSIST(qp->usage != NULL && qp->chunk_max > 0);
+		/* paired with either _commit() or _rollback() */
+		isc_refcount_increment(&rollback->base->refcount);
+		size_t usage_bytes = sizeof(qp->usage[0]) * qp->chunk_max;
+		rollback->usage = isc_mem_allocate(qp->mctx, usage_bytes);
+		memmove(rollback->usage, qp->usage, usage_bytes);
+	}
+	INSIST(multi->rollback == NULL);
+	multi->rollback = rollback;
+
+	alloc_reset(qp);
+}
+
 void
 dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	REQUIRE(QPMULTI_VALID(multi));
 	REQUIRE(qptp != NULL && *qptp == &multi->writer);
-	REQUIRE(multi->writer.transaction_mode == QP_WRITE);
+	REQUIRE(multi->writer.transaction_mode == QP_WRITE ||
+		multi->writer.transaction_mode == QP_UPDATE);
 
 	dns_qp_t *qp = *qptp;
 	TRACE("");
+
+	if (qp->transaction_mode == QP_UPDATE) {
+		INSIST(multi->rollback != NULL);
+		/* paired with dns_qpmulti_update() */
+		if (qpbase_unref(multi->rollback)) {
+			isc_mem_free(qp->mctx, multi->rollback->base);
+		}
+		if (multi->rollback->usage != NULL) {
+			isc_mem_free(qp->mctx, multi->rollback->usage);
+		}
+		isc_mem_free(qp->mctx, multi->rollback);
+	}
+	INSIST(multi->rollback == NULL);
 
 	/* not the first commit? */
 	if (multi->reader_ref != INVALID_REF) {
 		INSIST(cells_immutable(qp, multi->reader_ref));
 		free_twigs(qp, multi->reader_ref, READER_SIZE);
 	}
-	/*
-	 * One bounded step of compaction, unless already taken.
-	 * When someone else takes steps from an idle hook, the
-	 * commit only steps in if that is not keeping up with the
-	 * allocations since the previous step.
-	 */
-	if (!qp->compact_stepped &&
-	    (!multi->background_gc ||
-	     qp->alloc_count - qp->alloc_at_step >
-		     (uint64_t)qp->compact_budget * QP_COMPACT_BACKLOG))
-	{
-		compact_step(qp);
+
+	if (qp->transaction_mode == QP_UPDATE) {
+		/* minimize memory overhead */
+		compact(qp);
+		multi->reader_ref = alloc_twigs(qp, READER_SIZE);
+		qp->base->ptr[qp->bump] = chunk_shrink_raw(
+			qp, qp->base->ptr[qp->bump],
+			qp->usage[qp->bump].used * sizeof(dns_qpnode_t));
+		qp->usage[qp->bump].capacity = qp->usage[qp->bump].used;
+	} else {
+		/*
+		 * One bounded step of compaction, unless already taken.
+		 * When someone else takes steps from an idle hook, the
+		 * commit only steps in if that is not keeping up with the
+		 * allocations since the previous step.
+		 */
+		if (!qp->compact_stepped &&
+		    (!multi->background_gc ||
+		     qp->alloc_count - qp->alloc_at_step >
+			     (uint64_t)qp->compact_budget * QP_COMPACT_BACKLOG))
+		{
+			compact_step(qp);
+		}
+		multi->reader_ref = alloc_twigs(qp, READER_SIZE);
 	}
-	multi->reader_ref = alloc_twigs(qp, READER_SIZE);
 
 	/* anchor a new version of the trie */
 	dns_qpnode_t *reader = ref_ptr(qp, multi->reader_ref);
@@ -1994,6 +2132,85 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	/* tell an idle hook whether dns_qpmulti_gcstep() has work to do */
 	atomic_store_relaxed(&multi->gc_pending,
 			     qp->compact_active || QP_NEEDGC(qp));
+
+	*qptp = NULL;
+	UNLOCK(&multi->mutex);
+}
+
+/*
+ * Throw away everything that was allocated during this transaction.
+ */
+void
+dns_qpmulti_rollback(dns_qpmulti_t *multi, dns_qp_t **qptp) {
+	unsigned int nfree = 0;
+
+	REQUIRE(QPMULTI_VALID(multi));
+	REQUIRE(multi->writer.transaction_mode == QP_UPDATE);
+	REQUIRE(qptp != NULL && *qptp == &multi->writer);
+
+	dns_qp_t *qp = *qptp;
+	TRACE("");
+
+	bool stats = stats_wanted();
+	isc_nanosecs_t start = stats_start(stats);
+
+	/*
+	 * The values inserted by this transaction give their references
+	 * back, and the deleted ones keep theirs after all.
+	 */
+	for (uint32_t k = 0; k < qp->journal_count; k++) {
+		qp->methods->detach(qp->uctx, qp->journal[k].pval,
+				    qp->journal[k].ival);
+	}
+	journal_free(qp);
+	if (qp->dead != NULL) {
+		isc_mem_putanddetach(
+			&qp->dead->mctx, qp->dead,
+			STRUCT_FLEX_SIZE(qp->dead, leaf, qp->dead->max));
+	}
+
+	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
+		if (qp->base->ptr[chunk] != NULL && !chunk_immutable(qp, chunk))
+		{
+			chunk_free(qp, chunk);
+			/*
+			 * we need to clear its base pointer in the rollback
+			 * trie, in case the arrays were resized
+			 */
+			if (chunk < multi->rollback->chunk_max) {
+				INSIST(!multi->rollback->usage[chunk].exists);
+				multi->rollback->base->ptr[chunk] = NULL;
+			}
+			nfree++;
+		}
+	}
+
+	/*
+	 * multi->rollback->base and multi->writer->base are the same,
+	 * unless there was a realloc_chunk_arrays() during the transaction
+	 */
+	if (qpbase_unref(qp)) {
+		/* paired with dns_qpmulti_update() */
+		isc_mem_free(qp->mctx, qp->base);
+	}
+	isc_mem_free(qp->mctx, qp->usage);
+
+	/*
+	 * A cursor saved during this transaction points into freed
+	 * chunks; the rest of the compaction state is restored below.
+	 */
+	compact_release_cursor(qp);
+
+	/* reset allocator state */
+	INSIST(multi->rollback != NULL);
+	memmove(qp, multi->rollback, sizeof(*qp));
+	isc_mem_free(qp->mctx, multi->rollback);
+	INSIST(multi->rollback == NULL);
+
+	if (stats) {
+		isc_nanosecs_t time = isc_time_monotonic() - start;
+		LOG_STATS("qp rollback" PRItime "free %u chunks", time, nfree);
+	}
 
 	*qptp = NULL;
 	UNLOCK(&multi->mutex);
@@ -2165,13 +2382,16 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 	ISC_LIST_INIT(multi->dead);
 
 	/*
-	 * The first write transaction allocates the bump chunk, see
-	 * write_setup(), so there is no point in allocating one here.
+	 * Do not waste effort allocating a bump chunk that will be thrown
+	 * away when a transaction is opened. dns_qpmulti_update() always
+	 * allocates; to ensure dns_qpmulti_write() does too, pretend the
+	 * previous transaction was an update
 	 */
 	dns_qp_t *qp = &multi->writer;
 	QP_INIT(qp, methods, uctx);
 	qp_init_writer(qp);
 	isc_mem_attach(mctx, &qp->mctx);
+	qp->transaction_mode = QP_UPDATE;
 	TRACE("");
 	*qpmp = multi;
 }
@@ -2179,7 +2399,7 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 static void
 destroy_guts(dns_qp_t *qp) {
 	compact_release_cursor(qp);
-	INSIST(qp->dead == NULL);
+	INSIST(qp->dead == NULL && qp->journal == NULL);
 	if (qp->chunk_max == 0) {
 		return;
 	}
@@ -2296,6 +2516,7 @@ dns_qpmulti_destroy(dns_qpmulti_t **qpmp) {
 	*qpmp = NULL;
 
 	REQUIRE(QP_VALID(qp));
+	REQUIRE(multi->rollback == NULL);
 	REQUIRE(ISC_LIST_EMPTY(multi->snapshots));
 
 	/* stop dns_qpmulti_gcstep() from opening any more transactions */
@@ -2342,7 +2563,7 @@ dns_qp_insert(dns_qp_t *qp, void *pval, uint32_t ival) {
 		new_ref = alloc_twigs(qp, 1);
 		new_twigs = ref_ptr(qp, new_ref);
 		*new_twigs = new_leaf;
-		attach_leaf(qp, new_twigs);
+		attach_new_leaf(qp, &new_leaf);
 		qp->leaf_count++;
 		qp->root_ref = new_ref;
 		return ISC_R_SUCCESS;
@@ -2407,7 +2628,7 @@ newbranch:
 	new_twigs[old_bit > new_bit] = old_node;
 	new_twigs[new_bit > old_bit] = new_leaf;
 
-	attach_leaf(qp, &new_leaf);
+	attach_new_leaf(qp, &new_leaf);
 	qp->leaf_count++;
 
 	return ISC_R_SUCCESS;
@@ -2435,7 +2656,7 @@ growbranch:
 
 	/* the copied leaves keep their references either way */
 	(void)squash_twigs(qp, old_ref, old_size);
-	attach_leaf(qp, &new_leaf);
+	attach_new_leaf(qp, &new_leaf);
 	qp->leaf_count++;
 
 	return ISC_R_SUCCESS;

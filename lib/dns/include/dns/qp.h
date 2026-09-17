@@ -59,17 +59,27 @@
  * relatively heavy long-running read-only operations such as zone
  * transfers.
  *
- * You can start one write transaction at a time using
- * `dns_qpmulti_write()`. You get a `dns_qp_t` that can be modified like
- * a single-threaded trie, without affecting other read-only query or
- * snapshot users of the `dns_qpmulti_t`, and the changes become visible
- * to them all at once when the transaction commits. A transaction only
- * allocates what its inserts and deletes need. When enough garbage has
- * accumulated, each commit does a bounded amount of compaction, so that
- * the cost is spread across many transactions and no single one has to
- * copy the whole trie; when a trie should be as compact as possible
- * between rare writes, call `dns_qp_compact()` with `DNS_QPGC_ALL`
- * before committing.
+ * You can start one read-write transaction at a time using
+ * `dns_qpmulti_write()` or `dns_qpmulti_update()`. Either way, you
+ * get a `dns_qp_t` that can be modified like a single-threaded trie,
+ * without affecting other read-only query or snapshot users of the
+ * `dns_qpmulti_t`.
+ *
+ * "Update" transactions are heavyweight. They allocate working memory to
+ * hold modifications to the trie, and compact the trie before committing.
+ * For extra space savings, a partially-used allocation chunk is shrunk to
+ * the smallest size possible. Unlike "write" transactions, an "update"
+ * transaction can be rolled back instead of committed. (Update
+ * transactions are intended for things like authoritative zones, where it
+ * is important to keep the per-trie memory overhead low because there can
+ * be a very large number of them.)
+ *
+ * "Write" transactions are more lightweight: they skip the allocation and
+ * compaction at the start and end of the transaction. (Write transactions
+ * are intended for frequent small changes, as in the DNS cache.) When
+ * enough garbage has accumulated, each commit does a bounded amount of
+ * compaction, so that the cost is spread across many transactions and
+ * no single one has to copy the whole trie.
  */
 
 /***********************************************************************
@@ -388,7 +398,7 @@ dns_qpmulti_destroy(dns_qpmulti_t **qpmp);
  * Requires:
  * \li  `qptp != NULL`
  * \li  `*qptp` is a pointer to a valid multi-threaded qp-trie
- * \li  there is no write transaction in progress
+ * \li  there are no write or update transactions in progress
  * \li  no snapshots exist
  *
  * Ensures:
@@ -405,7 +415,8 @@ dns_qp_compact(dns_qp_t *qp, dns_qpgc_t mode);
  * compacted: a single-threaded trie synchronously, a multi-threaded trie
  * in bounded increments, one on each commit of a write transaction, so
  * that the writer mutex is never held for a time proportional to the
- * size of the trie.
+ * size of the trie. Heavyweight update transactions compact the whole
+ * trie when they commit.
  *
  * This function can be used with a single-threaded qp-trie and during a
  * transaction on a multi-threaded trie.
@@ -824,21 +835,41 @@ dns_qpmulti_gcstep(dns_qpmulti_t *multi);
  */
 
 void
+dns_qpmulti_update(dns_qpmulti_t *multi, dns_qp_t **qptp);
+/*%<
+ * Start a heavyweight write transaction
+ *
+ * This style of transaction allocates a copy of the trie's metadata to
+ * support rollback, and it aims to minimize the memory usage of the
+ * trie between transactions. The trie is compacted when the transaction
+ * commits, and any partly-used chunk is shrunk to fit.
+ *
+ * During the transaction, the modification mutex is held.
+ *
+ * Requires:
+ * \li  `multi` is a pointer to a valid multi-threaded qp-trie
+ * \li  `qptp != NULL`
+ * \li  `*qptp == NULL`
+ *
+ * Returns:
+ * \li  `*qptp` is a pointer to the modifiable qp-trie inside `multi`
+ */
+
+void
 dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp);
 /*%<
- * Start a write transaction
+ * Start a lightweight write transaction
  *
- * A transaction does not need extra allocations in addition to the
- * ones required by insert and delete operations, so it suits a large
- * trie that gets frequent small writes, such as a DNS cache, as well as
- * a trie that is rarely written.
+ * This style of transaction does not need extra allocations in addition
+ * to the ones required by insert and delete operations. It is intended
+ * for a large trie that gets frequent small writes, such as a DNS
+ * cache.
  *
- * A sequence of write transactions accumulates garbage from
- * copy-on-write; when there is enough of it, commits compact the trie
- * in bounded increments until it is clean again. Calling
- * dns_qp_compact() with `DNS_QPGC_MAYBE` before the commit is optional
- * and shares the commit's increment; `DNS_QPGC_ALL` compacts the whole
- * trie at once.
+ * A sequence of lightweight write transactions accumulates garbage
+ * from copy-on-write; when there is enough of it, commits compact the
+ * trie in bounded increments until it is clean again. Calling
+ * dns_qp_compact() with `DNS_QPGC_MAYBE` before the commit is
+ * optional and shares the commit's increment.
  *
  * During the transaction, the modification mutex is held.
  *
@@ -867,6 +898,24 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp);
  * \li  `multi` is a pointer to a valid multi-threaded qp-trie
  * \li  `qptp != NULL`
  * \li  `*qptp` is a pointer to the modifiable qp-trie inside `multi`
+ *
+ * Returns:
+ * \li  `*qptp == NULL`
+ */
+
+void
+dns_qpmulti_rollback(dns_qpmulti_t *multi, dns_qp_t **qptp);
+/*%<
+ * Abandon an update transaction
+ *
+ * This function reclaims the memory allocated during the transaction
+ * and releases the modification mutex.
+ *
+ * Requires:
+ * \li  `multi` is a pointer to a valid multi-threaded qp-trie
+ * \li  `qptp != NULL`
+ * \li  `*qptp` is a pointer to the modifiable qp-trie inside `multi`
+ * \li  `*qptp` was obtained from `dns_qpmulti_update()`
  *
  * Returns:
  * \li  `*qptp == NULL`

@@ -242,9 +242,13 @@ one_transaction(dns_qpmulti_t *qpm) {
 	dns_qp_t *qpw = NULL;
 
 	bool snap = isc_random_uniform(2) == 0;
+	bool update = isc_random_uniform(2) != 0;
+	bool rollback = update && isc_random_uniform(4) == 0;
 	size_t count = isc_random_uniform(TRANSACTION_SIZE);
 
-	TRACE("transaction %s size %zu", snap ? "snapshot" : "query", count);
+	TRACE("transaction %s %s %s size %zu", snap ? "snapshot" : "query",
+	      update ? "update" : "write", rollback ? "rollback" : "commit",
+	      count);
 
 	/*
 	 * We need to take care to avoid lock order inversion:
@@ -259,7 +263,11 @@ one_transaction(dns_qpmulti_t *qpm) {
 	}
 
 	/* take mutex */
-	dns_qpmulti_write(qpm, &qpw);
+	if (update) {
+		dns_qpmulti_update(qpm, &qpw);
+	} else {
+		dns_qpmulti_write(qpm, &qpw);
+	}
 
 	if (!snap) {
 		dns_qpmulti_query(qpm, &qpr);
@@ -309,18 +317,35 @@ one_transaction(dns_qpmulti_t *qpm) {
 		dns_qpread_destroy(qpm, &qpr);
 	}
 
-	TRACE("transaction commit");
-	dns_qpmulti_commit(qpm, &qpw);
-	/* mutex is now dropped */
-	dns_qpmulti_query(qpm, &qpr);
-	for (size_t i = 0; i < ARRAY_SIZE(item); i++) {
-		if (snap) {
-			ASSERT(checkkey(qps, i, item[i].in_ro, "commit ro"));
+	if (rollback) {
+		TRACE("transaction rollback");
+		dns_qpmulti_rollback(qpm, &qpw);
+		/* mutex is now dropped */
+		dns_qpmulti_query(qpm, &qpr);
+		for (size_t i = 0; i < ARRAY_SIZE(item); i++) {
+			if (snap) {
+				ASSERT(checkkey(qps, i, item[i].in_ro,
+						"rollback ro"));
+			}
+			item[i].in_rw = item[i].in_ro;
+			ASSERT(checkkey(&qpr, i, item[i].in_rw, "rollback rw"));
 		}
-		item[i].in_ro = item[i].in_rw;
-		ASSERT(checkkey(&qpr, i, item[i].in_rw, "commit rw"));
+		dns_qpread_destroy(qpm, &qpr);
+	} else {
+		TRACE("transaction commit");
+		dns_qpmulti_commit(qpm, &qpw);
+		/* mutex is now dropped */
+		dns_qpmulti_query(qpm, &qpr);
+		for (size_t i = 0; i < ARRAY_SIZE(item); i++) {
+			if (snap) {
+				ASSERT(checkkey(qps, i, item[i].in_ro,
+						"commit ro"));
+			}
+			item[i].in_ro = item[i].in_rw;
+			ASSERT(checkkey(&qpr, i, item[i].in_rw, "commit rw"));
+		}
+		dns_qpread_destroy(qpm, &qpr);
 	}
-	dns_qpread_destroy(qpm, &qpr);
 
 	if (snap) {
 		TRACE("snapshot destroy");
@@ -328,7 +353,9 @@ one_transaction(dns_qpmulti_t *qpm) {
 		dns_qpsnap_destroy(qpm, &qps);
 	}
 
-	TRACE("completed %s size %zu", snap ? "snapshot" : "query", count);
+	TRACE("completed %s %s %s size %zu", snap ? "snapshot" : "query",
+	      update ? "update" : "write", rollback ? "rollback" : "commit",
+	      count);
 
 	if (!ok) {
 		TRACE("transaction failed");
@@ -1150,6 +1177,143 @@ ISC_RUN_TEST_IMPL(qpmulti_compact_destroy) {
 	check_refcounts(true);
 }
 
+/* Rollback must discard candidates while retaining the published version. */
+ISC_RUN_TEST_IMPL(qpmulti_reclaim_rollback) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpsnap_t *snap = NULL;
+
+	item[0].len = 1;
+	item[0].key[0] = SHIFT_BITMAP;
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	dns_qpmulti_write(qpm, &qp);
+	assert_int_equal(dns_qp_insert(qp, &item[0], 0), ISC_R_SUCCESS);
+	dns_qpmulti_commit(qpm, &qp);
+	dns_qpmulti_snapshot(qpm, &snap);
+
+	dns_qpmulti_update(qpm, &qp);
+	assert_int_equal(
+		dns_qp_deletekey(qp, item[0].key, item[0].len, NULL, NULL),
+		ISC_R_SUCCESS);
+	empty_mutable_chunks(qp, 1);
+	dns_qpmulti_rollback(qpm, &qp);
+	check_free_slots(qpm);
+
+	dns_qpmulti_write(qpm, &qp);
+	assert_true(checkkey(qp, 0, true, "after rollback"));
+	assert_int_equal(
+		dns_qp_deletekey(qp, item[0].key, item[0].len, NULL, NULL),
+		ISC_R_SUCCESS);
+	dns_qpmulti_commit(qpm, &qp);
+	rcu_barrier();
+	assert_true(checkkey(snap, 0, true, "snapshot after delete"));
+	dns_qpsnap_destroy(qpm, &snap);
+	rcu_barrier();
+	check_free_slots(qpm);
+
+	dns_qp_memusage_t mu = dns_qpmulti_memusage(qpm);
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+
+	assert_int_equal(mu.leaves, 0);
+	assert_int_equal(mu.chunk_count, 1);
+	assert_int_equal(atomic_load_relaxed(&item[0].refcount), 0);
+	assert_int_equal(atomic_load_relaxed(&item[1].refcount), 0);
+}
+
+/* An update transaction abandons the cycle; rollback leaves no cursor. */
+ISC_RUN_TEST_IMPL(qpmulti_compact_rollback) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qp_memusage_t mu;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	set_budget(qpm, 64);
+	insert_all(qpm, 100);
+	compact_to_completion(qpm, 10000);
+
+	force_cycle(qpm);
+	dns_qpmulti_write(qpm, &qp);
+	dns_qpmulti_commit(qpm, &qp);
+	assert_true(qpm->writer.compact_active);
+	assert_non_null(qpm->writer.compact_key);
+
+	dns_qpmulti_update(qpm, &qp);
+	assert_false(qpm->writer.compact_active);
+	assert_null(qpm->writer.compact_key);
+	assert_true(qpm->writer.compact_all);
+	assert_int_equal(
+		dns_qp_deletekey(qp, item[0].key, item[0].len, NULL, NULL),
+		ISC_R_SUCCESS);
+	dns_qp_compact(qp, DNS_QPGC_MAYBE);
+	assert_true(qpm->writer.compact_active);
+	assert_non_null(qpm->writer.compact_key);
+	dns_qpmulti_rollback(qpm, &qp);
+	assert_false(qpm->writer.compact_active);
+	assert_null(qpm->writer.compact_key);
+	assert_true(qpm->writer.compact_all);
+
+	dns_qpmulti_write(qpm, &qp);
+	assert_true(checkallrw(qp));
+	dns_qpmulti_commit(qpm, &qp);
+	compact_to_completion(qpm, 10000);
+
+	rcu_barrier();
+	mu = dns_qpmulti_memusage(qpm);
+	assert_int_equal(mu.leaves, ITEM_COUNT);
+	check_refcounts(false);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/*
+ * A rollback gives back the references its insertions took and keeps
+ * the ones its deletions would have retired.
+ */
+ISC_RUN_TEST_IMPL(qpmulti_refs_rollback) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t qpr;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	dns_qpmulti_write(qpm, &qp);
+	for (size_t i = 0; i < ITEM_COUNT / 2; i++) {
+		insert_item(qp, i);
+	}
+	dns_qpmulti_commit(qpm, &qp);
+	rcu_barrier();
+
+	dns_qpmulti_update(qpm, &qp);
+	for (size_t i = ITEM_COUNT / 2; i < ITEM_COUNT; i++) {
+		insert_item(qp, i);
+	}
+	for (size_t i = 0; i < ITEM_COUNT / 4; i++) {
+		delete_item(qp, i);
+	}
+	/* and a value that was deleted and inserted again */
+	delete_item(qp, ITEM_COUNT / 4);
+	insert_item(qp, ITEM_COUNT / 4);
+	assert_int_equal(refs(ITEM_COUNT / 4), 2);
+	dns_qpmulti_rollback(qpm, &qp);
+	rcu_barrier();
+
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		item[i].in_rw = i < ITEM_COUNT / 2;
+	}
+	check_refcounts(false);
+	dns_qpmulti_query(qpm, &qpr);
+	assert_true(checkallrw(&qpr));
+	dns_qpread_destroy(qpm, &qpr);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(qpmulti)
 ISC_TEST_ENTRY(qpmulti_memusage)
@@ -1167,6 +1331,9 @@ ISC_TEST_ENTRY(qpmulti_compact_mutate)
 ISC_TEST_ENTRY(qpmulti_compact_snapshot)
 ISC_TEST_ENTRY(qpmulti_compact_destroy)
 ISC_TEST_ENTRY(qpmulti_gcstep)
+ISC_TEST_ENTRY(qpmulti_compact_rollback)
+ISC_TEST_ENTRY(qpmulti_refs_rollback)
+ISC_TEST_ENTRY(qpmulti_reclaim_rollback)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
