@@ -363,7 +363,6 @@ typedef struct qp_rcuctx {
 	struct rcu_head rcu_head;
 	isc_mem_t *mctx;
 	dns_qpmulti_t *multi;
-	ISC_LINK(struct qp_rcuctx) link;
 	dns_qpchunk_t count;
 	dns_qpchunk_t chunk[];
 } qp_rcuctx_t;

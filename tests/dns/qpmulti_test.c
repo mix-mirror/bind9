@@ -23,6 +23,7 @@
 #include <cmocka.h>
 
 #include <isc/assertions.h>
+#include <isc/atomic.h>
 #include <isc/lib.h>
 #include <isc/log.h>
 #include <isc/loop.h>
@@ -80,8 +81,12 @@ setup_logging(void) {
 		ISC_LOGCATEGORY_DEFAULT, ISC_LOGMODULE_DEFAULT);
 }
 
+/*
+ * Reference counts are changed by the RCU reclamation thread as well as
+ * by the test's own transactions, so they must be atomic.
+ */
 static struct {
-	uint32_t refcount;
+	atomic_uint_fast32_t refcount;
 	bool in_ro;
 	bool in_rw;
 	uint8_t len;
@@ -93,15 +98,15 @@ static void
 item_attach(void *ctx, void *pval, uint32_t ival) {
 	INSIST(ctx == NULL);
 	INSIST(pval == &item[ival]);
-	item[ival].refcount++;
+	atomic_fetch_add_relaxed(&item[ival].refcount, 1);
 }
 
 static void
 item_detach(void *ctx, void *pval, uint32_t ival) {
 	assert_null(ctx);
 	assert_ptr_equal(pval, &item[ival]);
-	assert_int_not_equal(item[ival].refcount, 0);
-	item[ival].refcount--;
+	assert_int_not_equal(atomic_fetch_sub_relaxed(&item[ival].refcount, 1),
+			     0);
 }
 
 static size_t
@@ -466,7 +471,7 @@ ISC_RUN_TEST_IMPL(qpmulti_reclaim_mutable) {
 
 	assert_int_equal(mu.leaves, 0);
 	assert_int_equal(mu.chunk_count, 1);
-	assert_int_equal(item[0].refcount, 0);
+	assert_int_equal(atomic_load_relaxed(&item[0].refcount), 0);
 }
 
 /* Rollback must discard candidates while retaining the published version. */
@@ -507,8 +512,8 @@ ISC_RUN_TEST_IMPL(qpmulti_reclaim_rollback) {
 
 	assert_int_equal(mu.leaves, 0);
 	assert_int_equal(mu.chunk_count, 1);
-	assert_int_equal(item[0].refcount, 0);
-	assert_int_equal(item[1].refcount, 0);
+	assert_int_equal(atomic_load_relaxed(&item[0].refcount), 0);
+	assert_int_equal(atomic_load_relaxed(&item[1].refcount), 0);
 }
 
 static dns_qpcell_t
@@ -568,10 +573,11 @@ compact_to_completion(dns_qpmulti_t *qpm, unsigned int limit) {
 static void
 check_refcounts(bool destroyed) {
 	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		uint32_t refs = atomic_load_relaxed(&item[i].refcount);
 		if (destroyed) {
-			assert_int_equal(item[i].refcount, 0);
+			assert_int_equal(refs, 0);
 		} else if (item[i].in_rw) {
-			assert_true(item[i].refcount >= 1);
+			assert_true(refs >= 1);
 		}
 	}
 }
