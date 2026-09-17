@@ -246,8 +246,7 @@ ref_cell(dns_qpref_t ref) {
  * `base` array.
  *
  * In multithreaded code, the `usage` array is only used when the
- * `dns_qpmulti_t` mutex is held, and there is only one version of
- * it in active use (maybe with a snapshot for rollback support).
+ * `dns_qpmulti_t` mutex is held, and there is only one version of it.
  *
  * The two arrays are separate because they have rather different
  * access patterns, different lifetimes, and different element sizes.
@@ -509,7 +508,7 @@ struct dns_qp {
 	/*% current mutable transaction generation [MT] */
 	uint64_t generation;
 	/*% what kind of transaction was most recently started [MT] */
-	enum { QP_NONE, QP_WRITE, QP_UPDATE } transaction_mode : 2;
+	enum { QP_NONE, QP_WRITE } transaction_mode : 2;
 	/*% compact the entire trie [MT] */
 	bool compact_all : 1;
 	/*% optionally when compiled with fuzzing support [MT] */
@@ -524,8 +523,7 @@ struct dns_qp {
  * description of what it points to.
  *
  * The main object under the protection of the mutex is the `writer`
- * containing all the allocator state. There can be a backup copy when
- * we want to be able to rollback an update transaction.
+ * containing all the allocator state.
  *
  * There is a `reader_ref` which corresponds to the `reader` pointer
  * (`ref_ptr(multi->reader_ref) == multi->reader`). The `reader_ref` is
@@ -548,8 +546,6 @@ struct dns_qpmulti {
 	dns_qpref_t reader_ref;
 	/*% the main working structure */
 	dns_qp_t writer;
-	/*% saved allocator state to support rollback */
-	dns_qp_t *rollback;
 	/*% all snapshots of this trie */
 	ISC_LIST(dns_qpsnap_t) snapshots;
 	/*% refcount for memory reclamation */

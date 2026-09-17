@@ -64,7 +64,6 @@
  */
 static atomic_uint_fast64_t compact_time;
 static atomic_uint_fast64_t recycle_time;
-static atomic_uint_fast64_t rollback_time;
 
 /* for LOG_STATS() format strings */
 #define PRItime " %" PRIu64 " ns "
@@ -433,15 +432,6 @@ chunk_free_raw(isc_mem_t *mctx, bool write_protect, void *ptr) {
 	}
 }
 
-static void *
-chunk_shrink_raw(dns_qp_t *qp, void *ptr, size_t bytes) {
-	if (qp->write_protect) {
-		return ptr;
-	} else {
-		return isc_mem_reallocate(qp->mctx, ptr, bytes);
-	}
-}
-
 static void
 write_protect(dns_qp_t *qp, dns_qpchunk_t chunk) {
 	if (qp->write_protect) {
@@ -460,8 +450,6 @@ write_protect(dns_qp_t *qp, dns_qpchunk_t chunk) {
 
 #define chunk_get_raw(qp, size) isc_mem_allocate(qp->mctx, size)
 #define chunk_free_raw(mctx, write_protect, ptr) isc_mem_free(mctx, ptr)
-
-#define chunk_shrink_raw(qp, ptr, size) isc_mem_reallocate(qp->mctx, ptr, size)
 
 #define write_protect(qp, chunk)
 
@@ -753,9 +741,7 @@ typedef struct qp_freechunk {
 
 /*
  * What chunk_release() needs from the trie, copied while the mutex is
- * held: the fields are constant for the life of the trie, but a
- * rollback rewrites the whole writer with memmove(), so they must not
- * be read from it without the mutex.
+ * held so that nothing is read from the writer once it is dropped.
  */
 typedef struct qp_release {
 	isc_mem_t *mctx;
@@ -1308,22 +1294,14 @@ dns_qpmulti_memusage(dns_qpmulti_t *multi) {
 
 	dns_qp_memusage_t memusage = dns_qp_memusage(qp);
 
-	if (qp->transaction_mode == QP_UPDATE && qp->usage != NULL) {
-		memusage.bytes -= qp->usage[qp->bump].capacity;
-		memusage.bytes += qp->usage[qp->bump].used *
-				  sizeof(dns_qpnode_t);
-	}
-
 	UNLOCK(&multi->mutex);
 	return memusage;
 }
 
 void
-dns_qp_gctime(isc_nanosecs_t *compact_p, isc_nanosecs_t *recycle_p,
-	      isc_nanosecs_t *rollback_p) {
+dns_qp_gctime(isc_nanosecs_t *compact_p, isc_nanosecs_t *recycle_p) {
 	*compact_p = atomic_load_relaxed(&compact_time);
 	*recycle_p = atomic_load_relaxed(&recycle_time);
-	*rollback_p = atomic_load_relaxed(&rollback_time);
 }
 
 /***********************************************************************
@@ -1368,16 +1346,10 @@ transaction_open(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 }
 
 /*
- * a write is light
- *
- * We need to ensure we allocate from a fresh chunk if the last transaction
- * shrunk the bump chunk; but usually in a sequence of write transactions
- * we just put `fender` at the point where we started this generation.
- *
- * (Aside: Instead of keeping the previous transaction's mode, I
- * considered forcing allocation into the slow path by fiddling with
- * the bump chunk's usage counters. But that is troublesome because
- * `chunk_free()` needs to know how much of the chunk to scan.)
+ * The first transaction on a trie has no bump chunk yet and allocates
+ * one; after that a sequence of write transactions keeps the same bump
+ * chunk and just puts `fender` at the point where this generation
+ * started.
  */
 void
 dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp) {
@@ -1392,92 +1364,21 @@ dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	qp->transaction_mode = QP_WRITE;
 }
 
-/*
- * an update is heavier
- *
- * We always reset the allocator to the start of a fresh chunk,
- * because the previous transaction was probably an update that shrunk
- * the bump chunk. It simplifies rollback because `fender` is always zero.
- *
- * To rollback a transaction, we need to reset all the allocation
- * counters to their previous state, in particular we need to un-free
- * any nodes that were copied to make them mutable. This means we need
- * to make a copy of basically the whole `dns_qp_t writer`: everything
- * but the chunks holding the trie nodes.
- *
- * We do most of the transaction setup before creating the rollback
- * state so that after rollback we have a correct idea of which chunks
- * are immutable, and so we have the correct transaction mode to make
- * the next transaction allocate a new bump chunk. The exception is
- * resetting the allocator, which we do after creating the rollback
- * state; if this transaction is rolled back then the next transaction
- * will start from the rollback state and also reset the allocator as
- * one of its first actions.
- */
-void
-dns_qpmulti_update(dns_qpmulti_t *multi, dns_qp_t **qptp) {
-	dns_qp_t *qp = transaction_open(multi, qptp);
-	TRACE("");
-
-	qp->transaction_mode = QP_UPDATE;
-
-	dns_qp_t *rollback = isc_mem_allocate(qp->mctx, sizeof(*rollback));
-	memmove(rollback, qp, sizeof(*rollback));
-	/* can be uninitialized on the first transaction */
-	if (rollback->base != NULL) {
-		INSIST(QPBASE_VALID(rollback->base));
-		INSIST(qp->usage != NULL && qp->chunk_max > 0);
-		/* paired with either _commit() or _rollback() */
-		isc_refcount_increment(&rollback->base->refcount);
-		size_t usage_bytes = sizeof(qp->usage[0]) * qp->chunk_max;
-		rollback->usage = isc_mem_allocate(qp->mctx, usage_bytes);
-		memmove(rollback->usage, qp->usage, usage_bytes);
-	}
-	INSIST(multi->rollback == NULL);
-	multi->rollback = rollback;
-
-	alloc_reset(qp);
-}
-
 void
 dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	REQUIRE(QPMULTI_VALID(multi));
 	REQUIRE(qptp != NULL && *qptp == &multi->writer);
-	REQUIRE(multi->writer.transaction_mode == QP_WRITE ||
-		multi->writer.transaction_mode == QP_UPDATE);
+	REQUIRE(multi->writer.transaction_mode == QP_WRITE);
 
 	dns_qp_t *qp = *qptp;
 	TRACE("");
-
-	if (qp->transaction_mode == QP_UPDATE) {
-		INSIST(multi->rollback != NULL);
-		/* paired with dns_qpmulti_update() */
-		if (qpbase_unref(multi->rollback)) {
-			isc_mem_free(qp->mctx, multi->rollback->base);
-		}
-		if (multi->rollback->usage != NULL) {
-			isc_mem_free(qp->mctx, multi->rollback->usage);
-		}
-		isc_mem_free(qp->mctx, multi->rollback);
-	}
-	INSIST(multi->rollback == NULL);
 
 	/* not the first commit? */
 	if (multi->reader_ref != INVALID_REF) {
 		INSIST(cells_immutable(qp, multi->reader_ref));
 		free_twigs(qp, multi->reader_ref, READER_SIZE);
 	}
-
-	if (qp->transaction_mode == QP_UPDATE) {
-		/* minimize memory overhead */
-		compact(qp);
-		multi->reader_ref = alloc_twigs(qp, READER_SIZE);
-		qp->base->ptr[qp->bump] = chunk_shrink_raw(
-			qp, qp->base->ptr[qp->bump],
-			qp->usage[qp->bump].used * sizeof(dns_qpnode_t));
-	} else {
-		multi->reader_ref = alloc_twigs(qp, READER_SIZE);
-	}
+	multi->reader_ref = alloc_twigs(qp, READER_SIZE);
 
 	/* anchor a new version of the trie */
 	dns_qpnode_t *reader = ref_ptr(qp, multi->reader_ref);
@@ -1492,63 +1393,6 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 
 	/* schedule the rest for later */
 	reclaim_chunks(multi);
-
-	*qptp = NULL;
-	UNLOCK(&multi->mutex);
-}
-
-/*
- * Throw away everything that was allocated during this transaction.
- */
-void
-dns_qpmulti_rollback(dns_qpmulti_t *multi, dns_qp_t **qptp) {
-	unsigned int nfree = 0;
-
-	REQUIRE(QPMULTI_VALID(multi));
-	REQUIRE(multi->writer.transaction_mode == QP_UPDATE);
-	REQUIRE(qptp != NULL && *qptp == &multi->writer);
-
-	dns_qp_t *qp = *qptp;
-	TRACE("");
-
-	isc_nanosecs_t start = isc_time_monotonic();
-
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (qp->base->ptr[chunk] != NULL && !chunk_immutable(qp, chunk))
-		{
-			chunk_free(qp, chunk);
-			/*
-			 * we need to clear its base pointer in the rollback
-			 * trie, in case the arrays were resized
-			 */
-			if (chunk < multi->rollback->chunk_max) {
-				INSIST(!multi->rollback->usage[chunk].exists);
-				multi->rollback->base->ptr[chunk] = NULL;
-			}
-			nfree++;
-		}
-	}
-
-	/*
-	 * multi->rollback->base and multi->writer->base are the same,
-	 * unless there was a realloc_chunk_arrays() during the transaction
-	 */
-	if (qpbase_unref(qp)) {
-		/* paired with dns_qpmulti_update() */
-		isc_mem_free(qp->mctx, qp->base);
-	}
-	isc_mem_free(qp->mctx, qp->usage);
-
-	/* reset allocator state */
-	INSIST(multi->rollback != NULL);
-	memmove(qp, multi->rollback, sizeof(*qp));
-	isc_mem_free(qp->mctx, multi->rollback);
-	INSIST(multi->rollback == NULL);
-
-	isc_nanosecs_t time = isc_time_monotonic() - start;
-	atomic_fetch_add_relaxed(&rollback_time, time);
-
-	LOG_STATS("qp rollback" PRItime "free %u chunks", time, nfree);
 
 	*qptp = NULL;
 	UNLOCK(&multi->mutex);
@@ -1712,16 +1556,13 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 	ISC_LIST_INIT(multi->snapshots);
 
 	/*
-	 * Do not waste effort allocating a bump chunk that will be thrown
-	 * away when a transaction is opened. dns_qpmulti_update() always
-	 * allocates; to ensure dns_qpmulti_write() does too, pretend the
-	 * previous transaction was an update
+	 * The first write transaction allocates the bump chunk, see
+	 * write_setup(), so there is no point in allocating one here.
 	 */
 	dns_qp_t *qp = &multi->writer;
 	QP_INIT(qp, methods, uctx);
 	qp_init_reclaim(qp);
 	isc_mem_attach(mctx, &qp->mctx);
-	qp->transaction_mode = QP_UPDATE;
 	TRACE("");
 	*qpmp = multi;
 }
@@ -1820,7 +1661,6 @@ dns_qpmulti_destroy(dns_qpmulti_t **qpmp) {
 	*qpmp = NULL;
 
 	REQUIRE(QP_VALID(qp));
-	REQUIRE(multi->rollback == NULL);
 	REQUIRE(ISC_LIST_EMPTY(multi->snapshots));
 
 	rcuctx = isc_mem_get(qp->mctx, STRUCT_FLEX_SIZE(rcuctx, chunk, 0));
