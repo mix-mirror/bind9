@@ -134,6 +134,12 @@ def python(session):
 
 
 def git_ls_files(session, *patterns):
+    """The tracked files matching the patterns.
+
+    The linters run on the tracked files only, so that build directories,
+    checkouts of other repositories and other stray files in the tree do
+    not get linted.
+    """
     return session.run("git", "ls-files", *patterns, external=True, silent=True).split()
 
 
@@ -375,7 +381,7 @@ def ci_system_tests(session):
 def mypy(session):
     "Run mypy on the system test library"
     install(session, LINT_REQUIREMENTS)
-    session.run("mypy", "bin/tests/system/isctest/")
+    session.run("mypy", *git_ls_files(session, "bin/tests/system/isctest/*.py"))
 
 
 @pysession
@@ -405,22 +411,20 @@ def black_fix(session):
 def ruff(session):
     "Run ruff"
     install(session, LINT_REQUIREMENTS)
-    session.run("ruff", "check")
+    session.run("ruff", "check", *git_ls_files(session, "*.py"))
 
 
 @pysession
 def ruff_fix(session):
     "Apply the ruff fixes"
     install(session, LINT_REQUIREMENTS)
-    session.run("ruff", "check", "--fix")
+    session.run("ruff", "check", "--fix", *git_ls_files(session, "*.py"))
 
 
 @pysession
 def vulture(session):
     "Look for dead Python code with vulture"
     install(session, LINT_REQUIREMENTS)
-    # restrict vulture to the tracked files so that stray build directories
-    # do not get scanned
     session.run("vulture", *git_ls_files(session, "*.py"))
 
 
