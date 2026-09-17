@@ -150,15 +150,17 @@ findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 }
 
 static isc_result_t
-allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	     unsigned int options, isc_stdtime_t now,
-	     dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
+node_snapshot_iterator(dns_db_t *db, dns_dbnode_t *node,
+		       dns_dbversion_t *version, unsigned int options,
+		       isc_stdtime_t now,
+		       dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
-	return dns__db_allrdatasets(sampledb->db, node, version, options, now,
-				    iteratorp DNS__DB_FLARG_PASS);
+	return dns__db_node_snapshot_iterator(sampledb->db, node, version,
+					      options, now,
+					      iteratorp DNS__DB_FLARG_PASS);
 }
 
 static isc_result_t
@@ -364,7 +366,7 @@ static dns_dbmethods_t sampledb_methods = {
 	.closeversion = closeversion,
 	.createiterator = createiterator,
 	.findrdataset = findrdataset,
-	.allrdatasets = allrdatasets,
+	.node_snapshot_iterator = node_snapshot_iterator,
 	.addrdataset = addrdataset,
 	.subtractrdataset = subtractrdataset,
 	.deleterdataset = deleterdataset,

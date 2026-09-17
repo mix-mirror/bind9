@@ -1797,7 +1797,8 @@ dns_rpz_checkdb(dns_db_t *db, isc_mem_t *mctx) {
 	CHECK(dns_db_createiterator(db, DNS_DB_NONSEC3, &dbit));
 	DNS_DBITERATOR_FOREACH(dbit) {
 		CHECK(dns_dbiterator_current(dbit, &node, name));
-		CHECK(dns_db_allrdatasets(db, node, NULL, 0, 0, &rdsiter));
+		CHECK(dns_db_node_snapshot_iterator(db, node, NULL, 0, 0,
+						    &rdsiter));
 		result = dns_rdatasetiter_first(rdsiter);
 		if (result == ISC_R_SUCCESS) {
 			result = rpz_add(rpz, qp, name, true);
@@ -1899,8 +1900,8 @@ update_nodes(dns_rpz_zone_t *rpz, dns_db_t *db, dns_dbversion_t *dbversion,
 		result = dns_dbiterator_pause(updbit);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 
-		result = dns_db_allrdatasets(db, node, dbversion, 0, 0,
-					     &rdsiter);
+		result = dns_db_node_snapshot_iterator(db, node, dbversion, 0,
+						       0, &rdsiter);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
 				      DNS_LOGMODULE_RPZ, ISC_LOG_ERROR,

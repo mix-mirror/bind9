@@ -553,7 +553,7 @@ ISC_RUN_TEST_IMPL(diffop_add_sub) {
 	assert_null(db);
 }
 
-ISC_RUN_TEST_IMPL(allrdatasets_snapshot) {
+ISC_RUN_TEST_IMPL(node_snapshot_iterator) {
 	static const unsigned char address[] = { 192, 0, 2, 1 };
 	isc_result_t result;
 	dns_db_t *db = NULL;
@@ -578,8 +578,8 @@ ISC_RUN_TEST_IMPL(allrdatasets_snapshot) {
 		result = dns_db_findnode(db, &example_org_name, false, &node);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		result = dns_db_allrdatasets(db, node, version, 0, 0,
-					     &iterator);
+		result = dns_db_node_snapshot_iterator(db, node, version, 0, 0,
+						       &iterator);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		result = apply_dns_update(db, version, &example_org_name,
@@ -964,7 +964,7 @@ ISC_TEST_ENTRY(setownercase)
 ISC_TEST_ENTRY(resign_sooner_values)
 ISC_TEST_ENTRY(unscheduled_resign)
 ISC_TEST_ENTRY(diffop_add_sub)
-ISC_TEST_ENTRY(allrdatasets_snapshot)
+ISC_TEST_ENTRY(node_snapshot_iterator)
 ISC_TEST_ENTRY(wildcard_foundname)
 ISC_TEST_ENTRY(wildcard_delegation_foundname)
 ISC_TEST_ENTRY(nodes_outside_zone)

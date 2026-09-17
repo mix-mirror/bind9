@@ -668,8 +668,8 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 				}
 			}
 
-			tresult = dns_db_allrdatasets(db, node, NULL, 0, 0,
-						      &rdsiter);
+			tresult = dns_db_node_snapshot_iterator(db, node, NULL,
+								0, 0, &rdsiter);
 			if (tresult != ISC_R_SUCCESS) {
 				result = tresult;
 				goto done;

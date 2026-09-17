@@ -269,7 +269,7 @@ ISC_LOOP_TEST_IMPL(servestale_fresh_cname_over_stale_type) {
 	isc_loopmgr_shutdown();
 }
 
-ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
+ISC_LOOP_TEST_IMPL(node_snapshot_iterator_expiredok_skips_deleted_header) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	dns_dbnode_t *node = NULL;
@@ -299,8 +299,8 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 	result = dns_db_deleterdataset(db, node, NULL, dns_rdatatype_a, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns_db_allrdatasets(db, node, NULL, DNS_DB_EXPIREDOK, now,
-				     &iterator);
+	result = dns_db_node_snapshot_iterator(db, node, NULL, DNS_DB_EXPIREDOK,
+					       now, &iterator);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_rdatasetiter_first(iterator);
@@ -419,7 +419,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
-ISC_TEST_ENTRY_CUSTOM(allrdatasets_expiredok_skips_deleted_header,
+ISC_TEST_ENTRY_CUSTOM(node_snapshot_iterator_expiredok_skips_deleted_header,
 		      setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(servestale_fresh_over_stale_cname, setup_managers,
 		      teardown_managers)

@@ -4061,10 +4061,10 @@ tree_exit:
 }
 
 static isc_result_t
-qpzone_allrdatasets(dns_db_t *db, dns_dbnode_t *dbnode,
-		    dns_dbversion_t *dbversion, unsigned int options,
-		    isc_stdtime_t now ISC_ATTR_UNUSED,
-		    dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
+qpzone_node_snapshot_iterator(dns_db_t *db, dns_dbnode_t *dbnode,
+			      dns_dbversion_t *dbversion, unsigned int options,
+			      isc_stdtime_t now ISC_ATTR_UNUSED,
+			      dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
 	qpz_version_t *version = (qpz_version_t *)dbversion;
@@ -5823,7 +5823,7 @@ static dns_dbmethods_t qpdb_zonemethods = {
 	.find = qpzone_find,
 	.createiterator = qpzone_createiterator,
 	.findrdataset = qpzone_findrdataset,
-	.allrdatasets = qpzone_allrdatasets,
+	.node_snapshot_iterator = qpzone_node_snapshot_iterator,
 	.addrdataset = qpzone_addrdataset,
 	.subtractrdataset = qpzone_subtractrdataset,
 	.deleterdataset = qpzone_deleterdataset,

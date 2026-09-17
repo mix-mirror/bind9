@@ -1009,9 +1009,10 @@ findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 }
 
 static isc_result_t
-allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	     unsigned int options, isc_stdtime_t now,
-	     dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
+node_snapshot_iterator(dns_db_t *db, dns_dbnode_t *node,
+		       dns_dbversion_t *version, unsigned int options,
+		       isc_stdtime_t now,
+		       dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 	bdb_rdatasetiter_t *iterator = NULL;
 
 	REQUIRE(version == NULL || version == (dns_dbversion_t *)&dummy);
@@ -1060,7 +1061,7 @@ static dns_dbmethods_t bdb_methods = {
 	.attachversion = attachversion,
 	.closeversion = closeversion,
 	.findrdataset = findrdataset,
-	.allrdatasets = allrdatasets,
+	.node_snapshot_iterator = node_snapshot_iterator,
 	.findnode = findnode,
 	.find = builtin_find,
 	.addglue = builtin_addglue,

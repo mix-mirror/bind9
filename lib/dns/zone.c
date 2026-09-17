@@ -2218,7 +2218,8 @@ zone_check_dup(dns_zone_t *zone, dns_db_t *db) {
 			continue;
 		}
 
-		result = dns_db_allrdatasets(db, node, NULL, 0, 0, &rdsit);
+		result = dns_db_node_snapshot_iterator(db, node, NULL, 0, 0,
+						       &rdsit);
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
@@ -6241,7 +6242,8 @@ next_active(dns_db_t *db, dns_dbversion_t *version, dns_name_t *oldname,
 		/*
 		 * Is this node empty?
 		 */
-		CHECK(dns_db_allrdatasets(db, node, version, 0, 0, &rdsit));
+		CHECK(dns_db_node_snapshot_iterator(db, node, version, 0, 0,
+						    &rdsit));
 		result = dns_rdatasetiter_first(rdsit);
 		dns_db_detachnode(&node);
 		dns_rdatasetiter_destroy(&rdsit);
@@ -6349,7 +6351,8 @@ check_if_bottom_of_zone(dns_db_t *db, dns_dbnode_t *node,
 
 	REQUIRE(is_bottom_of_zone != NULL);
 
-	result = dns_db_allrdatasets(db, node, version, 0, 0, &iterator);
+	result = dns_db_node_snapshot_iterator(db, node, version, 0, 0,
+					       &iterator);
 	if (result != ISC_R_SUCCESS) {
 		if (result == ISC_R_NOTFOUND) {
 			result = ISC_R_SUCCESS;
@@ -6407,14 +6410,15 @@ seen_from_types(seen_t *seen, const isc_u16bitmap_t *types) {
 }
 
 static isc_result_t
-allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
-	     dns_rdatasetiter_t **iterp, seen_t *seen) {
+node_snapshot_iterator(dns_db_t *db, dns_dbnode_t *node,
+		       dns_dbversion_t *version, dns_rdatasetiter_t **iterp,
+		       seen_t *seen) {
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 	isc_u16bitmap_t types;
 
 	isc_u16bitmap_reinit(&types);
 
-	RETERR(dns_db_allrdatasets(db, node, version, 0, 0, iterp));
+	RETERR(dns_db_node_snapshot_iterator(db, node, version, 0, 0, iterp));
 
 	DNS_RDATASETITER_FOREACH(*iterp) {
 		dns_rdatasetiter_current(*iterp, &rdataset);
@@ -6442,7 +6446,8 @@ collect_types(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 
 	isc_u16bitmap_reinit(types);
 
-	result = dns_db_allrdatasets(db, node, version, 0, 0, &iterator);
+	result = dns_db_node_snapshot_iterator(db, node, version, 0, 0,
+					       &iterator);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -7397,7 +7402,8 @@ zone_nsec3chain(dns_zone_t *zone) {
 		/*
 		 * Check to see if this is a bottom of zone node.
 		 */
-		result = allrdatasets(db, node, version, &iterator, &seen);
+		result = node_snapshot_iterator(db, node, version, &iterator,
+						&seen);
 		if (result == ISC_R_NOTFOUND) {
 			/* Empty node? */
 			goto next_addnode;
@@ -7642,7 +7648,8 @@ zone_nsec3chain(dns_zone_t *zone) {
 		/*
 		 * Check to see if this is a bottom of zone node.
 		 */
-		result = allrdatasets(db, node, version, &iterator, &seen);
+		result = node_snapshot_iterator(db, node, version, &iterator,
+						&seen);
 		if (result == ISC_R_NOTFOUND) {
 			/* Empty node? */
 			goto next_removenode;
@@ -7739,11 +7746,12 @@ skip_removals:
 		bool rebuild_nsec = false, rebuild_nsec3 = false;
 		result = dns_db_getoriginnode(db, &node);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
-		result = dns_db_allrdatasets(db, node, version, 0, 0,
-					     &iterator);
+		result = dns_db_node_snapshot_iterator(db, node, version, 0, 0,
+						       &iterator);
 		if (result != ISC_R_SUCCESS) {
 			dnssec_log(zone, ISC_LOG_ERROR,
-				   "zone_nsec3chain:dns_db_allrdatasets -> %s",
+				   "zone_nsec3chain:dns_db_node_snapshot_"
+				   "iterator -> %s",
 				   isc_result_totext(result));
 			goto cleanup;
 		}
@@ -8033,7 +8041,8 @@ del_sig(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 	char namebuf[DNS_NAME_FORMATSIZE];
 	dns_name_format(name, namebuf, sizeof(namebuf));
 
-	result = dns_db_allrdatasets(db, node, version, 0, 0, &iterator);
+	result = dns_db_node_snapshot_iterator(db, node, version, 0, 0,
+					       &iterator);
 	if (result != ISC_R_SUCCESS) {
 		if (result == ISC_R_NOTFOUND) {
 			result = ISC_R_SUCCESS;
@@ -15180,7 +15189,8 @@ copy_non_dnssec_records(dns_db_t *db, dns_dbversion_t *version, dns_db_t *rawdb,
 
 	CHECK(dns_db_findnode(db, name, true, &node));
 
-	CHECK(dns_db_allrdatasets(rawdb, rawnode, NULL, 0, 0, &rdsit));
+	CHECK(dns_db_node_snapshot_iterator(rawdb, rawnode, NULL, 0, 0,
+					    &rdsit));
 
 	DNS_RDATASETITER_FOREACH(rdsit) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
