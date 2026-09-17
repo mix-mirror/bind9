@@ -25,9 +25,9 @@
 	} while (0)
 #else /* if VALREGEX_REPORT_REASON */
 #define FAIL(x)             \
-	do {                \
+	{                   \
 		goto error; \
-	} while (0)
+	}
 #endif /* if VALREGEX_REPORT_REASON */
 
 /*

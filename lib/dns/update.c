@@ -383,7 +383,7 @@ rrset_exists_action(void *data, rr_t *rr) {
  * Return the failure result code and do not set *exists.
  */
 #define RETURN_EXISTENCE_FLAG                  \
-	do {                                   \
+	{                                      \
 		if (result == ISC_R_EXISTS) {  \
 			*exists = true;        \
 			return ISC_R_SUCCESS;  \
@@ -392,7 +392,7 @@ rrset_exists_action(void *data, rr_t *rr) {
 			*exists = false;       \
 		}                              \
 		return result;                 \
-	} while (0)
+	}
 
 /*%
  * Set '*exists' to true iff an rrset of the given type exists,
