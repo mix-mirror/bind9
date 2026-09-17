@@ -254,19 +254,19 @@ class LabelPredicate(Matcher):
     def __init__(
         self, index: int, test: Callable[[bytes], bool], description: str
     ) -> None:
-        self.index = index
-        self.test = test
-        self.description = description
+        self._index = index
+        self._test = test
+        self._description = description
 
     def match(self, qctx: QueryContext) -> bool:
         try:
-            label = qctx.qname.labels[self.index]
+            label = qctx.qname.labels[self._index]
         except IndexError:
             return False
-        return self.test(label)
+        return self._test(label)
 
     def __str__(self) -> str:
-        return f"label {self.index} {self.description}"
+        return f"label {self._index} {self._description}"
 
 
 class LeftmostLabel(LabelPredicate):
