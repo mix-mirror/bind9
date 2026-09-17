@@ -586,7 +586,6 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 	uint8_t buf[1200];
 	size_t len, i;
 
-	isc_constregion_t packet = { buf, 0 };
 	isc_region_t out = { buf, sizeof(buf) };
 
 	constexpr size_t client_len = 16;
@@ -600,9 +599,7 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 			&client->opts, "bind9.local", &client_addr[i],
 			&server_addr, &client->state[i].conn);
 		assert_int_equal(result, ISC_R_SUCCESS);
-	}
 
-	for (i = 0; i < client_len; i++) {
 		len = 0;
 		result = isc_quic_conn_pull_packet(client->state[i].conn, out,
 						   &len, &from, &to);
@@ -614,13 +611,12 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 						 ISC_SOCKADDR_CMPADDR |
 							 ISC_SOCKADDR_CMPPORT));
 
-		packet.length = len;
-		assert_int_equal(packet.length, 1200);
+		assert_int_equal(len, 1200);
 
 		conn = NULL;
-		result = isc_quic_router_handle_packet(server->router, packet,
-						       NULL, &dcid, &scid, NULL,
-						       &conn);
+		result = isc_quic_router_handle_packet(
+			server->router, (isc_constregion_t){ buf, len }, NULL,
+			&dcid, &scid, NULL, &conn);
 		assert_int_equal(result, ISC_R_NOTFOUND);
 
 		server->state[i].conn = NULL;
@@ -629,39 +625,11 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 			&server->opts, dcid, scid, &to, &from,
 			&server->state[i].conn);
 		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_non_null(server->state[i].conn);
 
-		/*
-		 * Server shouldn't have anything to say before receiving
-		 * the handshake packet from the client.
-		 */
-
-		len = 0;
-		result = isc_quic_conn_pull_packet(server->state[i].conn, out,
-						   &len, &from, &to);
-		assert_int_equal(result, ISC_R_UNEXPECTEDEND);
-
-		result = isc_quic_conn_push_packet(server->state[i].conn,
-						   packet, &to, &from);
-		assert_int_equal(result, ISC_R_SUCCESS);
-	}
-
-	for (i = 0; i < client_len; i++) {
-		len = 0;
-		result = isc_quic_conn_pull_packet(server->state[i].conn, out,
-						   &len, &from, &to);
-		assert_int_equal(result, ISC_R_SUCCESS);
-		assert_true(isc_sockaddr_compare(&from, &server_addr,
-						 ISC_SOCKADDR_CMPADDR |
-							 ISC_SOCKADDR_CMPPORT));
-		assert_true(isc_sockaddr_compare(&to, &client_addr[i],
-						 ISC_SOCKADDR_CMPADDR |
-							 ISC_SOCKADDR_CMPPORT));
-
-		packet.length = len;
-		assert_int_not_equal(packet.length, 0);
-
-		result = isc_quic_conn_push_packet(client->state[i].conn,
-						   packet, &to, &from);
+		result = isc_quic_conn_push_packet(
+			server->state[i].conn, (isc_constregion_t){ buf, len },
+			&to, &from);
 		assert_int_equal(result, ISC_R_SUCCESS);
 	}
 
@@ -671,40 +639,63 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 		for (i = 0; i < client_len; i++) {
 			len = 0;
 			result = isc_quic_conn_pull_packet(
-				client->state[i].conn, out, &len, &from, &to);
-			if (result == ISC_R_UNEXPECTEDEND) {
+				server->state[i].conn, out, &len, &from, &to);
+			switch (result) {
+			case ISC_R_UNEXPECTEDEND:
+			case ISC_R_IGNORE:
 				continue;
+			case ISC_R_SUCCESS:
+				assert_true(isc_sockaddr_compare(
+					&from, &server_addr,
+					ISC_SOCKADDR_CMPADDR |
+						ISC_SOCKADDR_CMPPORT));
+				assert_true(isc_sockaddr_compare(
+					&to, &client_addr[i],
+					ISC_SOCKADDR_CMPADDR |
+						ISC_SOCKADDR_CMPPORT));
+				break;
+			default:
+				UNREACHABLE();
 			}
 
+			result = isc_quic_conn_push_packet(
+				client->state[i].conn,
+				(isc_constregion_t){ buf, len }, &to, &from);
 			assert_int_equal(result, ISC_R_SUCCESS);
-
-			packet.length = len;
-
-			result = isc_quic_router_handle_packet(
-				server->router, packet, NULL, &dcid, &scid,
-				NULL, &conn);
-			assert_int_equal(result, ISC_R_SUCCESS);
-
-			result = isc_quic_conn_push_packet(conn, packet, &to,
-							   &from);
-			assert_int_equal(result, ISC_R_SUCCESS);
-
-			isc_quic_conn_detach(&conn);
 		}
 
 		for (i = 0; i < client_len; i++) {
 			len = 0;
 			result = isc_quic_conn_pull_packet(
-				server->state[i].conn, out, &len, &from, &to);
-			if (result == ISC_R_UNEXPECTEDEND) {
+				client->state[i].conn, out, &len, &from, &to);
+			switch (result) {
+			case ISC_R_UNEXPECTEDEND:
+			case ISC_R_IGNORE:
 				continue;
+			case ISC_R_SUCCESS:
+				break;
+			default:
+				UNREACHABLE();
 			}
 
+			assert_true(isc_sockaddr_compare(
+				&from, &client_addr[i],
+				ISC_SOCKADDR_CMPADDR | ISC_SOCKADDR_CMPPORT));
+			assert_true(isc_sockaddr_compare(
+				&to, &server_addr,
+				ISC_SOCKADDR_CMPADDR | ISC_SOCKADDR_CMPPORT));
+
+			result = isc_quic_router_handle_packet(
+				server->router, (isc_constregion_t){ buf, len },
+				NULL, &dcid, &scid, NULL, &conn);
 			assert_int_equal(result, ISC_R_SUCCESS);
 
 			result = isc_quic_conn_push_packet(
-				client->state[i].conn, packet, &to, &from);
+				conn, (isc_constregion_t){ buf, len }, &to,
+				&from);
 			assert_int_equal(result, ISC_R_SUCCESS);
+
+			isc_quic_conn_detach(&conn);
 		}
 	}
 
@@ -729,15 +720,15 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 						   &len, &from, &to);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		packet.length = len;
-		assert_int_not_equal(packet.length, 0);
+		assert_int_not_equal(len, 0);
 
-		result = isc_quic_router_handle_packet(server->router, packet,
-						       NULL, &dcid, &scid, NULL,
-						       &conn);
+		result = isc_quic_router_handle_packet(
+			server->router, (isc_constregion_t){ buf, len }, NULL,
+			&dcid, &scid, NULL, &conn);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		result = isc_quic_conn_push_packet(conn, packet, &to, &from);
+		result = isc_quic_conn_push_packet(
+			conn, (isc_constregion_t){ buf, len }, &to, &from);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		isc_quic_conn_detach(&conn);
@@ -761,11 +752,11 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 						   &len, &from, &to);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		packet.length = len;
-		assert_int_not_equal(packet.length, 0);
+		assert_int_not_equal(len, 0);
 
-		result = isc_quic_conn_push_packet(client->state[i].conn,
-						   packet, &to, &from);
+		result = isc_quic_conn_push_packet(
+			client->state[i].conn, (isc_constregion_t){ buf, len },
+			&to, &from);
 		assert_int_equal(result, ISC_R_SUCCESS);
 	}
 
