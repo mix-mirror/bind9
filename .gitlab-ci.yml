@@ -18,6 +18,19 @@ variables:
 
   CI_REGISTRY_IMAGE: registry.gitlab.isc.org/isc-projects/images/bind9
 
+  # Container image built by the "docker-image" job.  This cannot use
+  # CI_REGISTRY_IMAGE, which is repurposed above to point at the CI images.
+  BIND9_IMAGE: "${CI_REGISTRY}/${CI_PROJECT_PATH}/bind9"
+  # SBOM and signing tools, pinned by version and checksum; see
+  # CONTAINER_IMAGE_SBOM_SIGNING.md.
+  SYFT_VERSION: "1.51.1"
+  SYFT_SHA256_AMD64: "8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3"
+  COSIGN_VERSION: "3.1.3"
+  COSIGN_SHA256_AMD64: "4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71"
+  # Extra "cosign sign"/"cosign attest" arguments, e.g.
+  # "--new-bundle-format=false" if the registry rejects Sigstore bundles.
+  COSIGN_EXTRA_ARGS: ""
+
   GIT_DEPTH: 1
   GIT_CLEAN_FLAGS: -ffdxq
 
@@ -1463,32 +1476,86 @@ unit:gcc:tarball:
     - job: gcc:tarball
       artifacts: true
 
+# Container image jobs: build the official BIND 9 image from this source
+# tree, push it to this project's registry, generate its SBOM, and sign it.
+# See CONTAINER_IMAGE_SBOM_SIGNING.md.  None of these jobs run on tag
+# pipelines and none of them block a pipeline.
+
+.install-sigstore-tools: &install_sigstore_tools
+  - apk add --no-cache ca-certificates curl jq
+  - curl -fsSL -o /tmp/cosign "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64"
+  - echo "${COSIGN_SHA256_AMD64}  /tmp/cosign" | sha256sum -c -
+  - install -m 0755 /tmp/cosign /usr/local/bin/cosign
+  - curl -fsSL -o /tmp/syft.tar.gz "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+  - echo "${SYFT_SHA256_AMD64}  /tmp/syft.tar.gz" | sha256sum -c -
+  - tar -xzf /tmp/syft.tar.gz -C /usr/local/bin syft
+  - cosign version
+  - syft version
+
+.rule_docker_image: &rule_docker_image
+  - if: '$CI_COMMIT_TAG != null'
+    when: never
+  - *rule_mr_manual
+  - if: '$CI_PIPELINE_SOURCE == "schedule" && $REBASE_ONLY != "1"'
+    allow_failure: true
+  - if: '$CI_PIPELINE_SOURCE =~ /^(api|pipeline|trigger|web)$/ && $REBASE_ONLY != "1"'
+    when: manual
+    allow_failure: true
+
 # Job checking that the Dockerfile used for the official BIND 9 container
-# images still works.
+# images still works, pushing the result and generating its SBOM.
 
 docker-image:
   stage: build
-  image: public.ecr.aws/docker/library/docker:latest
+  image: public.ecr.aws/docker/library/docker:28-cli
   services:
-    - name: public.ecr.aws/docker/library/docker:dind
+    - name: public.ecr.aws/docker/library/docker:28-dind
       alias: docker
   variables:
     # This job needs no BIND 9 source, only the tarball-create artifact.
     GIT_STRATEGY: none
     # Talk to the dind service over plain TCP rather than TLS.
     DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - *install_sigstore_tools
   script:
     - VERSION="$(basename build/meson-dist/bind-*.tar.xz .tar.xz)"
     - VERSION="${VERSION#bind-}"
+    - IMAGE="${BIND9_IMAGE}:${VERSION}-${CI_COMMIT_SHORT_SHA}"
     # Build the image from the bind9-docker branch matching this source tree,
     # replacing the release tarball it normally downloads with the one built
     # from this source tree.
     - docker build
       --build-arg "BIND9_VERSION=${VERSION}"
       --build-context "tarball=build/meson-dist"
-      --tag "bind9:${VERSION}"
+      --tag "${IMAGE}"
       "https://gitlab.isc.org/isc-projects/bind9-docker.git#mnowak/ci-build-from-source-9.21"
-    - docker run --rm "bind9:${VERSION}" -V
+    - docker run --rm "${IMAGE}" -V
+    # Push the image; the digest only exists after the push and is what the
+    # SBOM describes and the signing jobs sign.
+    - docker login -u gitlab-ci-token -p "${CI_JOB_TOKEN}" "${CI_REGISTRY}"
+    - docker push "${IMAGE}"
+    - IMAGE_DIGEST_REF="$(docker inspect --format '{{range .RepoDigests}}{{.}}{{"\n"}}{{end}}' "${IMAGE}" | grep "^${BIND9_IMAGE}@sha256:")"
+    - test -n "${IMAGE_DIGEST_REF}"
+    - printf 'IMAGE_REF=%s\nIMAGE_DIGEST_REF=%s\n' "${IMAGE}" "${IMAGE_DIGEST_REF}" > docker-image.env
+    # Generate the SBOM from the pushed image so that its subject is the
+    # registry digest.  syft reuses the credentials stored by "docker login".
+    - syft scan "registry:${IMAGE_DIGEST_REF}"
+      --source-name bind9
+      --source-version "${VERSION}"
+      -o syft-json=sbom.syft.json
+      -o cyclonedx-json@1.6=sbom.cdx.json
+      -o spdx-json@2.3=sbom.spdx.json
+  artifacts:
+    paths:
+      - docker-image.env
+      - sbom.syft.json
+      - sbom.cdx.json
+      - sbom.spdx.json
+    reports:
+      dotenv: docker-image.env
+      cyclonedx: sbom.cdx.json
+    expire_in: 1 week
   needs:
     - job: tarball-create
       artifacts: true
@@ -1497,12 +1564,7 @@ docker-image:
     - linux
     - amd64
     - runner-manager
-  rules:
-    - *rule_mr_manual
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $REBASE_ONLY != "1"'
-    - if: '$CI_PIPELINE_SOURCE =~ /^(api|pipeline|trigger|web)$/ && $REBASE_ONLY != "1"'
-      when: manual
-      allow_failure: true
+  rules: *rule_docker_image
 
 # Jobs for debug GCC builds on openSUSE Tumbleweed (amd64)
 
