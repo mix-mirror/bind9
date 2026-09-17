@@ -367,6 +367,35 @@ set_budget(dns_qpmulti_t *qpm, dns_qpcell_t budget) {
 	UNLOCK(&qpm->mutex);
 }
 
+/*
+ * Every slot below the frontier that holds no chunk must be on the free
+ * list exactly once, and nothing else may be.
+ */
+static void
+check_free_slots(dns_qpmulti_t *qpm) {
+	dns_qp_t *qp = &qpm->writer;
+	unsigned int listed = 0, empty = 0;
+
+	LOCK(&qpm->mutex);
+	assert_true(qp->chunk_frontier <= qp->chunk_max);
+	for (dns_qpchunk_t c = qp->free_slot; c != INVALID_CHUNK;
+	     c = qp->usage[c].reclaim_next)
+	{
+		assert_true(c < qp->chunk_frontier);
+		assert_false(qp->usage[c].exists);
+		assert_true(++listed <= qp->chunk_frontier);
+	}
+	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
+		if (c < qp->chunk_frontier && !qp->usage[c].exists) {
+			empty++;
+		} else if (c >= qp->chunk_frontier) {
+			assert_false(qp->usage[c].exists);
+		}
+	}
+	assert_int_equal(listed, empty);
+	UNLOCK(&qpm->mutex);
+}
+
 static void
 force_cycle(dns_qpmulti_t *qpm) {
 	LOCK(&qpm->mutex);
@@ -495,6 +524,7 @@ ISC_RUN_TEST_IMPL(qpmulti_reclaim_rollback) {
 		ISC_R_SUCCESS);
 	empty_mutable_chunks(qp, 1);
 	dns_qpmulti_rollback(qpm, &qp);
+	check_free_slots(qpm);
 
 	dns_qpmulti_write(qpm, &qp);
 	assert_true(checkkey(qp, 0, true, "after rollback"));
@@ -506,6 +536,7 @@ ISC_RUN_TEST_IMPL(qpmulti_reclaim_rollback) {
 	assert_true(checkkey(snap, 0, true, "snapshot after delete"));
 	dns_qpsnap_destroy(qpm, &snap);
 	rcu_barrier();
+	check_free_slots(qpm);
 
 	dns_qp_memusage_t mu = dns_qpmulti_memusage(qpm);
 	dns_qpmulti_destroy(&qpm);
@@ -644,6 +675,7 @@ ISC_RUN_TEST_IMPL(qpmulti_compact_incremental) {
 	/* the only garbage left is the resume path copied by each step */
 	assert_true(mu.free <= (size_t)(commits + 2) * 48 * (height + 1));
 	check_refcounts(false);
+	check_free_slots(qpm);
 
 	dns_qpmulti_destroy(&qpm);
 	rcu_barrier();
@@ -849,6 +881,7 @@ ISC_RUN_TEST_IMPL(qpmulti_compact_rollback) {
 	assert_false(qpm->writer.compact_active);
 	assert_null(qpm->writer.compact_key);
 	assert_true(qpm->writer.compact_all);
+	check_free_slots(qpm);
 
 	dns_qpmulti_write(qpm, &qp);
 	assert_true(checkallrw(qp));
@@ -856,6 +889,7 @@ ISC_RUN_TEST_IMPL(qpmulti_compact_rollback) {
 	compact_to_completion(qpm, 10000);
 
 	rcu_barrier();
+	check_free_slots(qpm);
 	mu = dns_qpmulti_memusage(qpm);
 	assert_int_equal(mu.leaves, ITEM_COUNT);
 	check_refcounts(false);

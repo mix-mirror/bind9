@@ -185,6 +185,8 @@ qp_test_dumpchunks(dns_qp_t *qp) {
 	       qp, qp->compact_active, qp->compact_all, qp->compact_stuck,
 	       qp->compact_keylen, (unsigned long long)qp->compact_cutoff,
 	       qp->compact_steps, qp->compact_evacuated, qp->compact_budget);
+	printf("qp %p free_slot %u chunk_frontier %u chunk_max %u\n", qp,
+	       qp->free_slot, qp->chunk_frontier, qp->chunk_max);
 	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
 		printf("qp %p chunk %u base %p "
 		       "used %u free %u capacity %u generation %llu "
