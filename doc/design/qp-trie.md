@@ -630,18 +630,22 @@ hot path only needs the `base` array, so keeping it separate is more
 cache-friendly: less memory pressure on the read path and less
 interference from false sharing with write ops.
 
-Both arrays can have empty slots in which new chunks can be allocated;
-when a chunk is reclaimed its slot becomes empty. Additions and
-removals from the `base` array don't affect readers: they will not see
-a reference to a new chunk until after the writer commits, and the
-chunk reclamation machinery ensures that no readers depend on a chunk
-before it is deleted.
+Published base arrays are immutable. Each transaction clones the base
+and acquires one reference to each physical chunk in the copied mapping.
+The writer can then clear dead mappings and reuse their indices without
+waiting for readers of older versions. Each old root retains its own
+base, so the same index can refer to different physical allocations in
+different versions.
 
-When the arrays fill up they are reallocated. This is easy for the
-`usage` array because it is only accessed by writers, but the `base`
-array must be cloned, and the old version must be reclaimed later
-after it is no longer used by readers. For this reason the `base`
-array has a reference count.
+Physical chunks have a reference count and an allocation watermark in a
+header before their nodes. Base entries still point directly at the nodes,
+so this adds no indirection to lookup. A chunk's destructor scans its
+watermark only after the last owning base releases it. Logical allocation
+and free counters remain in the writer's `usage` array for rollback.
+
+Both arrays grow geometrically. The writer can reallocate its private
+`usage` array; bases are grown by allocating a new array and copying the
+mapping. The old allocation remains alive until all its owners release it.
 
 
 lightweight write transactions
@@ -655,10 +659,11 @@ transactions until it fills up.
 When a write (or update) is committed, a new packed read-only trie
 anchor is created. This contains a pointer to the `base` array and a
 32-bit reference to the trie's root node. The packed reader is stored
-in a pair of nodes in the current chunk, allocated by the bump
-allocator, so it does not need to be `malloc()`ed separately, and so
-the chunk reclamation machinery can also reclaim the `base` array when
-it is no longer in use.
+in a separately allocated version object which owns a reference to the
+base. It must live outside trie chunks: a base owning a chunk containing
+a reader that owns that base would create a reference cycle. Replacing
+the published reader schedules the old version for release after an RCU
+grace period.
 
 
 heavyweight update transactions
@@ -679,21 +684,21 @@ lightweight query transactions
 A "query" transaction dereferences a pointer to the current trie
 anchor and unpacks it into a `dns_qpread_t` object on the stack. There
 is no explicit interlocking with writers. Instead, query transactions
-must only be used inside an `isc_loop` callback function; the qp-trie
-memory reclamation machinery knows that the reader has completed when
-the callback returns to the loop. See `include/isc/qsbr.h` for more
-about how this works.
+enter an RCU read-side critical section and leave it when the query
+handle is destroyed. The calling thread must be registered with liburcu.
+Readers do not adjust base or chunk reference counts. See
+`lib/isc/include/isc/urcu.h` for the supported RCU flavors.
 
 
 heavyweight read-only snapshots
 -------------------------------
 
 A "snapshot" is for things like zone transfers that need a long-lived
-consistent view of a zone. When a snapshot is created, it includes a
-copy of the necessary parts of the `base` array. A qp-trie keeps a
-list of its snapshots, and there are flags in the `usage` array to
-mark which chunks are in use by snapshots and therefore cannot be
-reclaimed.
+consistent view of a zone. A snapshot retains the published root and a
+reference to its immutable base. Creating a snapshot does not copy the
+base or enumerate chunks. Destroying it releases the base reference;
+the last owner of a base releases all its chunk references. No snapshot
+mark/sweep pass is needed.
 
 
 
@@ -703,7 +708,10 @@ lifecycle of value objects
 A leaf node contains a pointer to a value object that is not managed
 by the qp-trie garbage collector. Instead, the user provides
 `attach` and `detach` methods that the qp-trie code calls to update
-the reference counts in the value objects.
+the reference counts in the value objects. For qpmulti, these methods
+must be thread-safe: reclamation and snapshot destruction can detach
+references concurrently with a writer. They are not serialized by the
+writer mutex.
 
 Value object reference counts do not indicate whether the object is
 mutable: its refcount can be 1 while it is only in use by readers
@@ -722,17 +730,22 @@ chunk cleanup
 After a "write" or "update" transaction has committed, there can be a
 number of chunks that are no longer needed by the latest version of
 the trie, but still in use by readers accessing an older version.
-The qp-trie uses a QSBR callback to clean up chunks when they are no
-longer used at all.
+The qp-trie uses an RCU callback to release the retired version's base.
+The callback takes no writer mutex and never interprets an index through
+the current writer. Bases and physical chunks carry all necessary lifetime
+information. Snapshot references can keep a base alive beyond the grace
+period.
 
 When reclaiming a chunk, we have to scan it for any remaining leaf
 nodes. When nodes are accessibly only to the writer, they are zeroed
 out when they are freed. If they are shared with readers, they must be
 left in place (though the `free` count in the usage array is still
-adjucted), and finally `detach()`ed when the chunk is reclaimed.
+adjusted), and finally `detach()`ed when the chunk is reclaimed.
 
-This chunk scan also cleans up old `base` arrays referred to by packed
-reader nodes.
+Current-writer allocation counters are updated when a mapping is removed,
+not when its last physical owner releases it. Memory reporting covers the
+current writer's allocations; storage retained only by retired versions
+and snapshots is excluded.
 
 
 testing strategies

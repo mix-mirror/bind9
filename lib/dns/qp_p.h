@@ -270,10 +270,6 @@ ref_cell(dns_qpref_t ref) {
  * because the old bump chunk must remain mutable between write
  * transactions, but it must become immutable when an update
  * transaction is opened.)
- *
- * There are a few flags used to mark which chunks are still needed by
- * snapshots after the chunks have passed their normal reclamation
- * phase.
  */
 typedef struct qp_usage {
 	/*% the allocation point, increases monotonically */
@@ -286,68 +282,43 @@ typedef struct qp_usage {
 	bool exists : 1;
 	/*% is this chunk shared? [MT] */
 	bool immutable : 1;
-	/*% already subtracted from multi->*_count [MT] */
-	bool discounted : 1;
-	/*% is a snapshot using this chunk? [MT] */
-	bool snapshot : 1;
-	/*% tried to free it but a snapshot needs it [MT] */
-	bool snapfree : 1;
-	/*% for mark/sweep snapshot flag updates [MT] */
-	bool snapmark : 1;
 } qp_usage_t;
 
 /*
- * The chunks are owned by the current version of the `base` array.
- * When the array is resized, the old version might still be in use by
- * concurrent readers, in which case it is free()d later when its
- * refcount drops to zero.
- *
- * A `dns_qpbase_t` counts references from `dns_qp_t` objects and
- * from packed readers, but not from `dns_qpread_t` nor from
- * `dns_qpsnap_t` objects. Refcount adjustments for `dns_qpread_t`
- * would wreck multicore scalability; instead we rely on RCU.
- *
- * The `usage` array determines when a chunk is no longer needed: old
- * chunk pointers in old `base` arrays are ignored. (They can become
- * dangling pointers to free memory, but they will never be
- * dereferenced.)
- *
- * We ensure that individual chunk base pointers remain immutable
- * after assignment, and they are not cleared until the chunk is
- * free()d, after all readers have departed. Slots can be reused, and
- * we allow transactions to fill or re-fill empty slots adjacent to
- * busy slots that are in use by readers.
+ * Physical allocation identity is independent of a version's chunk index.
+ * Each base owns one reference per non-NULL entry. Only the writer advances
+ * `used`; the destructor reads it after the last owner has released the
+ * chunk. Reader lookup still points directly at nodes[], without an extra
+ * indirection. Logical free counters remain in the writer's usage[] so an
+ * update can roll them back without modifying another version's state.
+ */
+typedef struct qp_chunk {
+	isc_refcount_t references;
+	dns_qpcell_t used;
+	dns_qpnode_t nodes[];
+} qp_chunk_t;
+
+static inline qp_chunk_t *
+chunk_fromnodes(dns_qpnode_t *nodes) {
+	return (qp_chunk_t *)((char *)nodes - offsetof(qp_chunk_t, nodes));
+}
+
+/*
+ * Published mappings are immutable. The writer clones its base at the start
+ * of each transaction and may then remove/reuse indices immediately. Old
+ * bases retain their physical chunks independently of the current writer.
+ * Bases have references from writers, published versions and snapshots.
+ * Transient readers use RCU and never adjust reference counts.
  */
 struct dns_qpbase {
 	unsigned int magic;
 	isc_refcount_t refcount;
+	isc_mem_t *mctx;
+	const dns_qpmethods_t *methods;
+	void *uctx;
+	dns_qpchunk_t chunk_max;
 	dns_qpnode_t *ptr[];
 };
-
-/*
- * Chunks that may be in use by readers are reclaimed asynchronously.
- * When a transaction commits, immutable chunks that are now empty are
- * listed in a `qp_rcuctx_t` structure and passed to `call_rcu()`.
- */
-typedef struct qp_rcuctx {
-	unsigned int magic;
-	struct rcu_head rcu_head;
-	isc_mem_t *mctx;
-	dns_qpmulti_t *multi;
-	ISC_LINK(struct qp_rcuctx) link;
-	dns_qpchunk_t count;
-	dns_qpchunk_t chunk[];
-} qp_rcuctx_t;
-
-/*
- * Returns true when the base array can be free()d.
- */
-static inline bool
-qpbase_unref(dns_qpreadable_t qpr) {
-	dns_qpreader_t *qp = dns_qpreader(qpr);
-	return qp->base != NULL &&
-	       isc_refcount_decrement(&qp->base->refcount) == 1;
-}
 
 /*
  * Now we know about `dns_qpreader_t` and `dns_qpbase_t`,
@@ -370,14 +341,12 @@ ref_ptr(dns_qpreadable_t qpr, dns_qpref_t ref) {
 #define QPMULTI_MAGIC  ISC_MAGIC('q', 'p', 'm', 'v')
 #define QPREADER_MAGIC ISC_MAGIC('q', 'p', 'r', 'x')
 #define QPBASE_MAGIC   ISC_MAGIC('q', 'p', 'b', 'p')
-#define QPRCU_MAGIC    ISC_MAGIC('q', 'p', 'c', 'b')
 
 #define QP_VALID(qp)	  ISC_MAGIC_VALID(qp, QP_MAGIC)
 #define QPITER_VALID(qp)  ISC_MAGIC_VALID(qp, QPITER_MAGIC)
 #define QPCHAIN_VALID(qp) ISC_MAGIC_VALID(qp, QPCHAIN_MAGIC)
 #define QPMULTI_VALID(qp) ISC_MAGIC_VALID(qp, QPMULTI_MAGIC)
 #define QPBASE_VALID(qp)  ISC_MAGIC_VALID(qp, QPBASE_MAGIC)
-#define QPRCU_VALID(qp)	  ISC_MAGIC_VALID(qp, QPRCU_MAGIC)
 
 /*
  * Polymorphic initialization of the `dns_qpreader_t` prefix.
@@ -398,30 +367,14 @@ ref_ptr(dns_qpreadable_t qpr, dns_qpref_t ref) {
 	 })
 
 /*
- * Snapshots have some extra cleanup machinery.
- *
- * Originally, a snapshot was basically just a `dns_qpread_t`
- * allocated on the heap, with the extra behaviour that memory
- * reclamation is suppressed for a particular trie while it has any
- * snapshots. However that design gets into trouble for a zone with
- * frequent updates and many zone transfers.
- *
- * Instead, each snapshot records which chunks it needs. When a
- * snapshot is created, it makes a copy of the `base` array, except
- * for chunks that are empty and waiting to be reclaimed. When a
- * snapshot is destroyed, we can traverse the list of snapshots to
- * accurately mark which chunks are still needed.
- *
- * A snapshot's `whence` pointer helps ensure that a `dns_qpsnap_t`is
- * not muddled up with the wrong `dns_qpmulti_t`.
- *
- * A trie's `base` array might have grown after the snapshot was
- * created, so it records its own `chunk_max`.
+ * A snapshot owns a reference to the published immutable base. Its chunks
+ * survive independently of the current writer's indices and of RCU grace
+ * periods. The list is retained only to check that snapshots have been
+ * destroyed before their qpmulti; reclamation needs no mark/sweep.
  */
 struct dns_qpsnap {
 	DNS_QPREADER_FIELDS;
 	dns_qpmulti_t *whence;
-	uint32_t chunk_max;
 	ISC_LINK(struct dns_qpsnap) link;
 };
 
@@ -461,15 +414,6 @@ struct dns_qpsnap {
  *    normal compaction failed to clear the QP_MAX_GARBAGE() condition.
  *    (This emergency is a bug even tho we have a rescue mechanism.)
  *
- *  - When a qp-trie is destroyed while it has pending cleanup work, its
- *    `destroy` flag is set so that it is destroyed by the reclaim worker.
- *    (Because items cannot be removed from the middle of the cleanup list.)
- *
- *  - When built with fuzzing support, we can use mprotect() and munmap()
- *    to ensure that incorrect memory accesses cause fatal errors. The
- *    `write_protect` flag must be set straight after the `dns_qpmulti_t`
- *    is created, then left unchanged.
- *
  * Some of the dns_qp_t fields are only needed for multithreaded transactions
  * (marked [MT] below) but the same code paths are also used for single-
  * threaded writes.
@@ -498,8 +442,6 @@ struct dns_qp {
 	enum { QP_NONE, QP_WRITE, QP_UPDATE } transaction_mode : 2;
 	/*% compact the entire trie [MT] */
 	bool compact_all : 1;
-	/*% optionally when compiled with fuzzing support [MT] */
-	bool write_protect : 1;
 };
 
 /*
@@ -513,25 +455,20 @@ struct dns_qp {
  * containing all the allocator state. There can be a backup copy when
  * we want to be able to rollback an update transaction.
  *
- * There is a `reader_ref` which corresponds to the `reader` pointer
- * (`ref_ptr(multi->reader_ref) == multi->reader`). The `reader_ref` is
- * necessary when freeing the space used by the reader, because there
- * isn't a good way to recover a dns_qpref_t from a dns_qpnode_t pointer.
- *
- * There is a per-trie list of snapshots that is used for reclaiming
- * memory when a snapshot is destroyed.
- *
- * Finally, we maintain a global list of `dns_qpmulti_t` objects that
- * need asynchronous safe memory recovery.
+ * Snapshots retain immutable bases. The list tracks their existence for API
+ * validation, not reclamation. Published versions and snapshots retain the
+ * multi object until their independently owned bases have been released.
  */
 struct dns_qpmulti {
 	uint32_t magic;
+	/*% immutable context, also used by readers and reclamation callbacks */
+	isc_mem_t *mctx;
+	const dns_qpmethods_t *methods;
+	void *uctx;
 	/*% RCU-protected pointer to current packed reader */
 	dns_qpnode_t *reader;
-	/*% the mutex protects the rest of this structure */
+	/*% serializes writers and snapshot list changes */
 	isc_mutex_t mutex;
-	/*% ref_ptr(writer, reader_ref) == reader */
-	dns_qpref_t reader_ref;
 	/*% the main working structure */
 	dns_qp_t writer;
 	/*% saved allocator state to support rollback */
@@ -540,6 +477,8 @@ struct dns_qpmulti {
 	ISC_LIST(dns_qpsnap_t) snapshots;
 	/*% refcount for memory reclamation */
 	isc_refcount_t references;
+	/*% final destruction waits for transient readers */
+	struct rcu_head rcu_head;
 };
 
 /***********************************************************************
@@ -809,28 +748,11 @@ zero_twigs(dns_qpnode_t *twigs, dns_qpweight_t size) {
  */
 
 /*
- * The purpose of these packed reader nodes is to simplify safe memory
- * reclamation for a multithreaded qp-trie.
- *
- * After the `reader` pointer in a qpmulti is replaced, we need to wait
- * for a grace period before we can reclaim the memory that is no longer
- * needed by the trie. So we need some kind of structure to hold
- * pointers to the (logically) detached memory until it is safe to free.
- * This memory includes the chunks and the `base` arrays.
- *
- * Packed reader nodes save us from having to track `dns_qpread_t`
- * objects as distinct allocations: the packed reader nodes get
- * reclaimed when the chunk containing their cells is reclaimed.
- * When a real `dns_qpread_t` object is needed, it is allocated on the
- * stack (it must not live longer than a isc_loop callback) and the
- * packed reader is unpacked into it.
- *
- * Chunks are owned by the current `base` array, so unused chunks are
- * held there until they are free()d. Old `base` arrays are attached
- * to packed reader nodes with a refcount. When a chunk is reclaimed,
- * it is scanned so that `chunk_free()` can call `detach_leaf()` on
- * any remaining references to leaf objects. Similarly, it calls
- * `qpbase_unref()` to reclaim old `base` arrays.
+ * A published version stores a compact root/base pair outside trie chunks.
+ * Transient readers unpack it onto their stack under RCU, without taking
+ * references. After replacement, a grace-period callback releases the
+ * version's base reference. The last base owner releases its physical chunks.
+ * Keeping the packed reader outside chunks avoids a reference cycle.
  */
 
 /*
@@ -840,8 +762,19 @@ zero_twigs(dns_qpnode_t *twigs, dns_qpweight_t size) {
 #define READER_SIZE 2
 
 /*
+ * Stored outside chunks to avoid a base -> chunk -> reader -> base cycle.
+ * The RCU callback drops this version's base reference, never writer state.
+ */
+typedef struct qp_version {
+	struct rcu_head rcu_head;
+	dns_qpmulti_t *multi;
+	dns_qpbase_t *base;
+	dns_qpnode_t reader[READER_SIZE];
+} qp_version_t;
+
+/*
  * Create a packed reader; space for the reader should have been
- * allocated using `alloc_twigs(&multi->writer, READER_SIZE)`.
+ * allocated as part of a qp_version_t, outside trie chunks.
  */
 static inline void
 make_reader(dns_qpnode_t *reader, dns_qpmulti_t *multi) {
@@ -871,8 +804,8 @@ unpack_reader(dns_qpreader_t *qp, dns_qpnode_t *reader) {
 	INSIST(QPBASE_VALID(base));
 	*qp = (dns_qpreader_t){
 		.magic = QP_MAGIC,
-		.uctx = multi->writer.uctx,
-		.methods = multi->writer.methods,
+		.uctx = multi->uctx,
+		.methods = multi->methods,
 		.root_ref = node32(&reader[1]),
 		.base = base,
 	};

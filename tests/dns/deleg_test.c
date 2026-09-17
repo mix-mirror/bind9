@@ -701,11 +701,14 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	deleg = NULL;
 
 	/*
-	 * stuff. internal node (and delegset) is now removed.  Node
-	 * destruction runs synchronously inside the QP-trie chunk reclamation,
-	 * so rcu_barrier() is enough: once it returns, the evicted nodes have
-	 * been detached and freed.
+	 * stuff. is no longer in the trie. Its old leaf may share a chunk with
+	 * live nodes: a grace period alone cannot reclaim that chunk. Compact
+	 * before checking physical memory, independently of the bump layout.
 	 */
+	dns_qp_t *qp = NULL;
+	dns_qpmulti_write(db->qplru->nodes, &qp);
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	dns_qpmulti_commit(db->qplru->nodes, &qp);
 	rcu_barrier();
 
 	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(NENTRIES),
@@ -735,13 +738,16 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	deleg = NULL;
 
 	/*
-	 * Re-adding baz. hit the hiwater mark and evicted bar.; wait for the
-	 * reclamation to free it before checking memory and final state.
+	 * Re-adding baz. hit the hiwater mark and evicted bar. Compact and wait
+	 * for reclamation before checking physical memory and final state.
 	 */
+	dns_qpmulti_write(db->qplru->nodes, &qp);
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	dns_qpmulti_commit(db->qplru->nodes, &qp);
 	rcu_barrier();
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(2 * NENTRIES),
-			    ENTRIES_MEM(2 * NENTRIES) + 100000);
+	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(NENTRIES),
+			    ENTRIES_MEM(NENTRIES) + 100000);
 
 	/*
 	 * baz. is there, but bar. is gone, as it has been

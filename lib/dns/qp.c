@@ -21,11 +21,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#if FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-#include <sys/mman.h>
-#include <unistd.h>
-#endif
-
 #include <isc/atomic.h>
 #include <isc/bit.h>
 #include <isc/buffer.h>
@@ -82,17 +77,17 @@ static atomic_uint_fast64_t rollback_time;
  * TRACE is generally used in allocation-related functions so it doesn't
  * trace very high-frequency ops
  */
-#define TRACE(fmt, ...)                                                       \
-	do {                                                                  \
-		if (isc_log_wouldlog(ISC_LOG_DEBUG(7))) {                     \
-			isc_log_write(DNS_LOGCATEGORY_DATABASE,               \
-				      DNS_LOGMODULE_QP, ISC_LOG_DEBUG(7),     \
-				      "%s:%d:%s(qp %p uctx \"%s\"):t%" PRItid \
-				      ": " fmt,                               \
-				      __FILE__, __LINE__, __func__, qp,       \
-				      qp ? TRIENAME(qp) : "(null)",           \
-				      isc_tid(), ##__VA_ARGS__);              \
-		}                                                             \
+#define TRACE(fmt, ...)                                                        \
+	do {                                                                   \
+		if (isc_log_wouldlog(ISC_LOG_DEBUG(7))) {                      \
+			isc_log_write(DNS_LOGCATEGORY_DATABASE,                \
+				      DNS_LOGMODULE_QP, ISC_LOG_DEBUG(7),      \
+				      "%s:%d:%s(qp %p uctx \"%s\"):t%" PRItid  \
+				      ": " fmt,                                \
+				      __FILE__, __LINE__, __func__, qp,        \
+				      qp ? TRIENAME(qp) : "(null)", isc_tid(), \
+				      ##__VA_ARGS__);                          \
+		}                                                              \
 	} while (0)
 #else
 #define TRACE(...)
@@ -392,80 +387,78 @@ qpkey_compare(const dns_qpkey_t key_a, const size_t keylen_a,
 
 /***********************************************************************
  *
- *  allocator wrappers
+ *  physical chunk and base ownership
  */
-
-#if FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 
 /*
- * Optionally (for debugging) during a copy-on-write transaction, use
- * memory protection to ensure that the shared chunks are not modified.
- * Once a chunk becomes shared, it remains read-only until it is freed.
- * POSIX says we have to use mmap() to get an allocation that we can
- * definitely pass to mprotect().
+ * A chunk's final owner has exclusive access to its contents and allocation
+ * watermark. Other owners can release references concurrently, but only the
+ * writer changes the watermark or appends cells while it owns the chunk.
  */
-
-static size_t
-chunk_size_raw(void) {
-	size_t size = (size_t)sysconf(_SC_PAGE_SIZE);
-	return ISC_MAX(size, QP_CHUNK_BYTES);
-}
-
-static void *
-chunk_get_raw(dns_qp_t *qp, size_t len) {
-	if (qp->write_protect) {
-		size_t size = chunk_size_raw();
-		void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE,
-				 MAP_ANON | MAP_PRIVATE, -1, 0);
-		RUNTIME_CHECK(ptr != MAP_FAILED);
-		return ptr;
-	} else {
-		return isc_mem_allocate(qp->mctx, len);
-	}
-}
-
 static void
-chunk_free_raw(dns_qp_t *qp, void *ptr) {
-	if (qp->write_protect) {
-		RUNTIME_CHECK(munmap(ptr, chunk_size_raw()) == 0);
-	} else {
-		isc_mem_free(qp->mctx, ptr);
+chunk_release(dns_qpbase_t *base, dns_qpnode_t *nodes) {
+	qp_chunk_t *chunk = chunk_fromnodes(nodes);
+	if (isc_refcount_decrement(&chunk->references) != 1) {
+		return;
 	}
-}
-
-static void *
-chunk_shrink_raw(dns_qp_t *qp, void *ptr, size_t bytes) {
-	if (qp->write_protect) {
-		return ptr;
-	} else {
-		return isc_mem_reallocate(qp->mctx, ptr, bytes);
-	}
-}
-
-static void
-write_protect(dns_qp_t *qp, dns_qpchunk_t chunk) {
-	if (qp->write_protect) {
-		/* see transaction_open() wrt this special case */
-		if (qp->transaction_mode == QP_WRITE && chunk == qp->bump) {
-			return;
+	for (dns_qpcell_t i = 0; i < chunk->used; i++) {
+		dns_qpnode_t *n = &nodes[i];
+		if (node_tag(n) == LEAF_TAG && node_pointer(n) != NULL) {
+			base->methods->detach(base->uctx, leaf_pval(n),
+					      leaf_ival(n));
 		}
-		TRACE("chunk %u", chunk);
-		void *ptr = qp->base->ptr[chunk];
-		size_t size = chunk_size_raw();
-		RUNTIME_CHECK(mprotect(ptr, size, PROT_READ) >= 0);
 	}
+	isc_refcount_destroy(&chunk->references);
+	isc_mem_free(base->mctx, chunk);
 }
 
-#else
+static void
+base_detach(dns_qpbase_t **basep) {
+	dns_qpbase_t *base = *basep;
+	*basep = NULL;
+	if (base == NULL || isc_refcount_decrement(&base->refcount) != 1) {
+		return;
+	}
+	for (dns_qpchunk_t i = 0; i < base->chunk_max; i++) {
+		if (base->ptr[i] != NULL) {
+			chunk_release(base, base->ptr[i]);
+		}
+	}
+	isc_refcount_destroy(&base->refcount);
+	isc_mem_t *mctx = base->mctx;
+	isc_mem_free(mctx, base);
+	isc_mem_detach(&mctx);
+}
 
-#define chunk_get_raw(qp, size) isc_mem_allocate(qp->mctx, size)
-#define chunk_free_raw(qp, ptr) isc_mem_free(qp->mctx, ptr)
-
-#define chunk_shrink_raw(qp, ptr, size) isc_mem_reallocate(qp->mctx, ptr, size)
-
-#define write_protect(qp, chunk)
-
-#endif
+/*
+ * Each copied mapping acquires its own physical chunk reference. This also
+ * handles geometric growth: the source may have been published, so it must
+ * remain allocated at the same address until its owners release it.
+ */
+static void
+base_clone(dns_qp_t *qp, dns_qpchunk_t newmax) {
+	dns_qpbase_t *old = qp->base;
+	dns_qpbase_t *base =
+		isc_mem_allocate(qp->mctx, STRUCT_FLEX_SIZE(base, ptr, newmax));
+	*base = (dns_qpbase_t){
+		.magic = QPBASE_MAGIC,
+		.methods = qp->methods,
+		.uctx = qp->uctx,
+		.chunk_max = newmax,
+	};
+	isc_refcount_init(&base->refcount, 1);
+	isc_mem_attach(qp->mctx, &base->mctx);
+	for (dns_qpchunk_t i = 0; i < newmax; i++) {
+		base->ptr[i] = old != NULL && i < old->chunk_max ? old->ptr[i]
+								 : NULL;
+		if (base->ptr[i] != NULL) {
+			qp_chunk_t *chunk = chunk_fromnodes(base->ptr[i]);
+			isc_refcount_increment(&chunk->references);
+		}
+	}
+	qp->base = base;
+	base_detach(&old);
+}
 
 /***********************************************************************
  *
@@ -512,10 +505,15 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 	INSIST(qp->usage[chunk].used == 0);
 	INSIST(qp->usage[chunk].free == 0);
 	INSIST(qp->chunk_capacity <= QP_CHUNK_SIZE);
+	INSIST(isc_refcount_current(&qp->base->refcount) == 1);
 
 	qp->chunk_capacity = next_capacity(qp->chunk_capacity * 2u, size);
-	qp->base->ptr[chunk] =
-		chunk_get_raw(qp, qp->chunk_capacity * sizeof(dns_qpnode_t));
+	qp_chunk_t *physical = isc_mem_allocate(
+		qp->mctx,
+		STRUCT_FLEX_SIZE(physical, nodes, qp->chunk_capacity));
+	isc_refcount_init(&physical->references, 1);
+	physical->used = size;
+	qp->base->ptr[chunk] = physical->nodes;
 
 	qp->usage[chunk] = (qp_usage_t){ .exists = true,
 					 .used = size,
@@ -524,42 +522,21 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 	qp->bump = chunk;
 	qp->fender = 0;
 
-	if (qp->write_protect) {
-		TRACE("chunk %u base %p", chunk, qp->base->ptr[chunk]);
-	}
 	return make_ref(chunk, 0);
 }
 
 /*
- * This is used to grow the chunk arrays when they fill up. If the old
- * base array is in use by readers, we must make a clone, otherwise we
- * can reallocate in place.
- *
- * The isc_refcount_init() and qpbase_unref() in this function are a pair.
+ * Both arrays belong exclusively to the writer during a transaction.
+ * Growing a base transfers ownership through a private clone.
  */
 static void
 realloc_chunk_arrays(dns_qp_t *qp, dns_qpchunk_t newmax) {
-	size_t oldptrs = sizeof(qp->base->ptr[0]) * qp->chunk_max;
-	size_t newptrs = sizeof(qp->base->ptr[0]) * newmax;
-	size_t size = STRUCT_FLEX_SIZE(qp->base, ptr, newmax);
+	base_clone(qp, newmax);
 
-	if (qp->base == NULL || qpbase_unref(qp)) {
-		qp->base = isc_mem_reallocate(qp->mctx, qp->base, size);
-	} else {
-		dns_qpbase_t *oldbase = qp->base;
-		qp->base = isc_mem_allocate(qp->mctx, size);
-		memmove(&qp->base->ptr[0], &oldbase->ptr[0], oldptrs);
-	}
-	memset(&qp->base->ptr[qp->chunk_max], 0, newptrs - oldptrs);
-	isc_refcount_init(&qp->base->refcount, 1);
-	qp->base->magic = QPBASE_MAGIC;
-
-	/* usage array is exclusive to the writer */
 	size_t oldusage = sizeof(qp->usage[0]) * qp->chunk_max;
 	size_t newusage = sizeof(qp->usage[0]) * newmax;
 	qp->usage = isc_mem_reallocate(qp->mctx, qp->usage, newusage);
 	memset(&qp->usage[qp->chunk_max], 0, newusage - oldusage);
-
 	qp->chunk_max = newmax;
 
 	TRACE("qpbase %p usage %p max %u", qp->base, qp->usage, qp->chunk_max);
@@ -601,6 +578,7 @@ alloc_twigs(dns_qp_t *qp, dns_qpweight_t size) {
 
 	if (cell + size <= qp->usage[chunk].capacity) {
 		qp->usage[chunk].used += size;
+		chunk_fromnodes(qp->base->ptr[chunk])->used += size;
 		qp->used_count += size;
 		return make_ref(chunk, cell);
 	} else {
@@ -665,49 +643,17 @@ chunk_usage(dns_qp_t *qp, dns_qpchunk_t chunk) {
 }
 
 /*
- * We remove each empty chunk from the total counts when the chunk is
- * freed, or when it is scheduled for safe memory reclamation. We check
- * the chunk's phase to avoid discounting it twice in the latter case.
+ * Remove a mapping from the private writer base. Other versions retain their
+ * own references to the physical allocation, even if this index is reused.
  */
 static void
-chunk_discount(dns_qp_t *qp, dns_qpchunk_t chunk) {
-	if (qp->usage[chunk].discounted) {
-		return;
-	}
+chunk_free(dns_qp_t *qp, dns_qpchunk_t chunk) {
+	INSIST(isc_refcount_current(&qp->base->refcount) == 1);
 	INSIST(qp->used_count >= qp->usage[chunk].used);
 	INSIST(qp->free_count >= qp->usage[chunk].free);
 	qp->used_count -= qp->usage[chunk].used;
 	qp->free_count -= qp->usage[chunk].free;
-	qp->usage[chunk].discounted = true;
-}
-
-/*
- * When a chunk is being recycled, we need to detach any leaves that
- * remain, and free any `base` arrays that have been marked as unused.
- */
-static void
-chunk_free(dns_qp_t *qp, dns_qpchunk_t chunk) {
-	if (qp->write_protect) {
-		TRACE("chunk %u base %p", chunk, qp->base->ptr[chunk]);
-	}
-
-	dns_qpnode_t *n = qp->base->ptr[chunk];
-	for (dns_qpcell_t count = qp->usage[chunk].used; count > 0;
-	     count--, n++)
-	{
-		if (node_tag(n) == LEAF_TAG && node_pointer(n) != NULL) {
-			detach_leaf(qp, n);
-		} else if (count > 1 && reader_valid(n)) {
-			dns_qpreader_t qpr;
-			unpack_reader(&qpr, n);
-			/* pairs with dns_qpmulti_commit() */
-			if (qpbase_unref(&qpr)) {
-				isc_mem_free(qp->mctx, qpr.base);
-			}
-		}
-	}
-	chunk_discount(qp, chunk);
-	chunk_free_raw(qp, qp->base->ptr[chunk]);
+	chunk_release(qp->base, qp->base->ptr[chunk]);
 	qp->base->ptr[chunk] = NULL;
 	qp->usage[chunk] = (qp_usage_t){};
 }
@@ -742,152 +688,40 @@ recycle(dns_qp_t *qp) {
 }
 
 /*
- * asynchronous cleanup
+ * Retiring a published version needs no writer lock: all lifetime information
+ * is in the retired base and its physical chunks. The multi reference keeps
+ * the immutable callback metadata alive through the grace period.
  */
 static void
 reclaim_chunks_cb(struct rcu_head *arg) {
-	qp_rcuctx_t *rcuctx = caa_container_of(arg, qp_rcuctx_t, rcu_head);
-	REQUIRE(QPRCU_VALID(rcuctx));
-	dns_qpmulti_t *multi = rcuctx->multi;
-	REQUIRE(QPMULTI_VALID(multi));
-
-	LOCK(&multi->mutex);
-	dns_qp_t *qp = &multi->writer;
-
-	/*
-	 * If chunk_max is zero, chunks have already been freed.
-	 */
-	if (qp->chunk_max != 0) {
-		unsigned int nfree = 0;
-		isc_nanosecs_t start = isc_time_monotonic();
-
-		INSIST(QP_VALID(qp));
-
-		for (unsigned int i = 0; i < rcuctx->count; i++) {
-			dns_qpchunk_t chunk = rcuctx->chunk[i];
-			if (qp->usage[chunk].snapshot) {
-				/* clean up when snapshot is destroyed */
-				qp->usage[chunk].snapfree = true;
-			} else {
-				chunk_free(qp, chunk);
-				nfree++;
-			}
-		}
-
-		isc_nanosecs_t time = isc_time_monotonic() - start;
-		recycle_time += time;
-
-		if (nfree > 0) {
-			LOG_STATS("qp reclaim" PRItime "free %u chunks", time,
-				  nfree);
-			LOG_STATS(
-				"qp reclaim leaf %u live %u used %u free %u "
-				"hold %u",
-				qp->leaf_count, qp->used_count - qp->free_count,
-				qp->used_count, qp->free_count, qp->hold_count);
-		}
-	}
-
-	UNLOCK(&multi->mutex);
-
-	dns_qpmulti_detach(&multi);
-	isc_mem_putanddetach(&rcuctx->mctx, rcuctx,
-			     STRUCT_FLEX_SIZE(rcuctx, chunk, rcuctx->count));
-}
-
-/*
- * At the end of a transaction, schedule empty but immutable chunks
- * for reclamation later.
- */
-static void
-reclaim_chunks(dns_qpmulti_t *multi) {
-	dns_qp_t *qp = &multi->writer;
-
-	unsigned int count = 0;
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (chunk != qp->bump && chunk_usage(qp, chunk) == 0 &&
-		    qp->usage[chunk].exists && qp->usage[chunk].immutable &&
-		    !qp->usage[chunk].discounted)
-		{
-			count++;
-		}
-	}
-
-	if (count == 0) {
-		return;
-	}
-
-	qp_rcuctx_t *rcuctx =
-		isc_mem_get(qp->mctx, STRUCT_FLEX_SIZE(rcuctx, chunk, count));
-	*rcuctx = (qp_rcuctx_t){
-		.magic = QPRCU_MAGIC,
-		.multi = multi,
-		.count = count,
-	};
-	isc_mem_attach(qp->mctx, &rcuctx->mctx);
-
-	unsigned int i = 0;
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (chunk != qp->bump && chunk_usage(qp, chunk) == 0 &&
-		    qp->usage[chunk].exists && qp->usage[chunk].immutable &&
-		    !qp->usage[chunk].discounted)
-		{
-			rcuctx->chunk[i++] = chunk;
-			chunk_discount(qp, chunk);
-		}
-	}
-
-	/*
-	 * Reference the qpmulti object to keep it from being
-	 * freed until reclaim_chunks_cb() runs.
-	 */
-	dns_qpmulti_ref(multi);
-	call_rcu(&rcuctx->rcu_head, reclaim_chunks_cb);
-
-	LOG_STATS("qp will reclaim %u chunks", count);
-}
-
-/*
- * When a snapshot is destroyed, clean up chunks that need free()ing
- * and are not used by any remaining snapshots.
- */
-static void
-marksweep_chunks(dns_qpmulti_t *multi) {
-	unsigned int nfree = 0;
-
+	qp_version_t *version = caa_container_of(arg, qp_version_t, rcu_head);
+	dns_qpmulti_t *multi = version->multi;
 	isc_nanosecs_t start = isc_time_monotonic();
 
-	dns_qp_t *qpw = &multi->writer;
+	base_detach(&version->base);
+	atomic_fetch_add_relaxed(&recycle_time, isc_time_monotonic() - start);
+	isc_mem_put(multi->mctx, version, sizeof(*version));
+	dns_qpmulti_detach(&multi);
+}
 
-	ISC_LIST_FOREACH(multi->snapshots, qps, link) {
-		for (dns_qpchunk_t chunk = 0; chunk < qps->chunk_max; chunk++) {
-			if (qps->base->ptr[chunk] != NULL) {
-				INSIST(qps->base->ptr[chunk] ==
-				       qpw->base->ptr[chunk]);
-				qpw->usage[chunk].snapmark = true;
-			}
+/*
+ * Discard dead mappings before publishing the private base. A bump chunk with
+ * an immutable, entirely dead prefix must also be retired: otherwise a later
+ * snapshot would unnecessarily retain its old leaf references.
+ */
+static void
+reclaim_chunks(dns_qp_t *qp) {
+	if (qp->usage[qp->bump].used != 0 && chunk_usage(qp, qp->bump) == 0) {
+		alloc_reset(qp);
+	}
+	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
+		if (chunk != qp->bump && qp->usage[chunk].exists &&
+		    chunk_usage(qp, chunk) == 0)
+		{
+			chunk_free(qp, chunk);
 		}
 	}
-
-	for (dns_qpchunk_t chunk = 0; chunk < qpw->chunk_max; chunk++) {
-		qpw->usage[chunk].snapshot = qpw->usage[chunk].snapmark;
-		qpw->usage[chunk].snapmark = false;
-		if (qpw->usage[chunk].snapfree && !qpw->usage[chunk].snapshot) {
-			chunk_free(qpw, chunk);
-			nfree++;
-		}
-	}
-
-	isc_nanosecs_t time = isc_time_monotonic() - start;
-	recycle_time += time;
-
-	if (nfree > 0) {
-		LOG_STATS("qp marksweep" PRItime "free %u chunks", time, nfree);
-		LOG_STATS(
-			"qp marksweep leaf %u live %u used %u free %u hold %u",
-			qpw->leaf_count, qpw->used_count - qpw->free_count,
-			qpw->used_count, qpw->free_count, qpw->hold_count);
-	}
+	qp->hold_count = qp->free_count;
 }
 
 /***********************************************************************
@@ -1098,16 +932,19 @@ dns_qp_memusage(dns_qp_t *qp) {
 	size_t chunk_usage_bytes = 0;
 	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
 		if (qp->base->ptr[chunk] != NULL) {
-			chunk_usage_bytes += qp->usage[chunk].capacity;
+			chunk_usage_bytes += sizeof(qp_chunk_t) +
+					     qp->usage[chunk].capacity *
+						     sizeof(dns_qpnode_t);
 			memusage.chunk_count += 1;
 		}
 	}
 
 	/*
-	 * XXXFANF does not subtract chunks that have been shrunk,
-	 * and does not count unreclaimed dns_qpbase_t objects
+	 * Describe the current writer's allocations, excluding bases/chunks
+	 * retained only by old versions and snapshots.
 	 */
 	memusage.bytes = chunk_usage_bytes +
+			 (qp->base != NULL ? sizeof(dns_qpbase_t) : 0) +
 			 qp->chunk_max * sizeof(qp->base->ptr[0]) +
 			 qp->chunk_max * sizeof(qp->usage[0]);
 
@@ -1123,12 +960,6 @@ dns_qpmulti_memusage(dns_qpmulti_t *multi) {
 	INSIST(QP_VALID(qp));
 
 	dns_qp_memusage_t memusage = dns_qp_memusage(qp);
-
-	if (qp->transaction_mode == QP_UPDATE && qp->usage != NULL) {
-		memusage.bytes -= qp->usage[qp->bump].capacity;
-		memusage.bytes += qp->usage[qp->bump].used *
-				  sizeof(dns_qpnode_t);
-	}
 
 	UNLOCK(&multi->mutex);
 	return memusage;
@@ -1170,7 +1001,6 @@ transaction_open(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
 		if (qp->usage[chunk].exists) {
 			qp->usage[chunk].immutable = true;
-			write_protect(qp, chunk);
 		}
 	}
 
@@ -1200,6 +1030,9 @@ dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	dns_qp_t *qp = transaction_open(multi, qptp);
 	TRACE("");
 
+	if (qp->base != NULL) {
+		base_clone(qp, qp->chunk_max);
+	}
 	if (qp->transaction_mode == QP_WRITE) {
 		qp->fender = qp->usage[qp->bump].used;
 	} else {
@@ -1252,6 +1085,9 @@ dns_qpmulti_update(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	INSIST(multi->rollback == NULL);
 	multi->rollback = rollback;
 
+	if (qp->base != NULL) {
+		base_clone(qp, qp->chunk_max);
+	}
 	alloc_reset(qp);
 }
 
@@ -1267,49 +1103,39 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 
 	if (qp->transaction_mode == QP_UPDATE) {
 		INSIST(multi->rollback != NULL);
-		/* paired with dns_qpmulti_update() */
-		if (qpbase_unref(multi->rollback)) {
-			isc_mem_free(qp->mctx, multi->rollback->base);
-		}
+		base_detach(&multi->rollback->base);
 		if (multi->rollback->usage != NULL) {
 			isc_mem_free(qp->mctx, multi->rollback->usage);
 		}
 		isc_mem_free(qp->mctx, multi->rollback);
+		compact(qp);
+
+		/* Only the private, mutable bump allocation may move. */
+		qp_chunk_t *chunk = chunk_fromnodes(qp->base->ptr[qp->bump]);
+		INSIST(isc_refcount_current(&chunk->references) == 1);
+		chunk = isc_mem_reallocate(
+			qp->mctx, chunk,
+			STRUCT_FLEX_SIZE(chunk, nodes, chunk->used));
+		qp->base->ptr[qp->bump] = chunk->nodes;
+		qp->usage[qp->bump].capacity = chunk->used;
 	}
 	INSIST(multi->rollback == NULL);
 
-	/* not the first commit? */
-	if (multi->reader_ref != INVALID_REF) {
-		INSIST(cells_immutable(qp, multi->reader_ref));
-		free_twigs(qp, multi->reader_ref, READER_SIZE);
+	reclaim_chunks(qp);
+
+	qp_version_t *version = isc_mem_get(qp->mctx, sizeof(*version));
+	*version = (qp_version_t){ .base = qp->base };
+	dns_qpmulti_attach(multi, &version->multi);
+	isc_refcount_increment(&version->base->refcount);
+	make_reader(version->reader, multi);
+
+	dns_qpnode_t *old = rcu_dereference(multi->reader);
+	rcu_assign_pointer(multi->reader, version->reader); /* COMMIT */
+	if (old != NULL) {
+		qp_version_t *retired = caa_container_of(old, qp_version_t,
+							 reader[0]);
+		call_rcu(&retired->rcu_head, reclaim_chunks_cb);
 	}
-
-	if (qp->transaction_mode == QP_UPDATE) {
-		/* minimize memory overhead */
-		compact(qp);
-		multi->reader_ref = alloc_twigs(qp, READER_SIZE);
-		qp->base->ptr[qp->bump] = chunk_shrink_raw(
-			qp, qp->base->ptr[qp->bump],
-			qp->usage[qp->bump].used * sizeof(dns_qpnode_t));
-	} else {
-		multi->reader_ref = alloc_twigs(qp, READER_SIZE);
-	}
-
-	/* anchor a new version of the trie */
-	dns_qpnode_t *reader = ref_ptr(qp, multi->reader_ref);
-	make_reader(reader, multi);
-	/* paired with chunk_free() */
-	isc_refcount_increment(&qp->base->refcount);
-
-	rcu_assign_pointer(multi->reader, reader); /* COMMIT */
-
-	/* clean up what we can right now */
-	if (qp->transaction_mode == QP_UPDATE || QP_NEEDGC(qp)) {
-		recycle(qp);
-	}
-
-	/* schedule the rest for later */
-	reclaim_chunks(multi);
 
 	*qptp = NULL;
 	UNLOCK(&multi->mutex);
@@ -1320,53 +1146,23 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
  */
 void
 dns_qpmulti_rollback(dns_qpmulti_t *multi, dns_qp_t **qptp) {
-	unsigned int nfree = 0;
-
 	REQUIRE(QPMULTI_VALID(multi));
 	REQUIRE(multi->writer.transaction_mode == QP_UPDATE);
 	REQUIRE(qptp != NULL && *qptp == &multi->writer);
+	INSIST(multi->rollback != NULL);
 
 	dns_qp_t *qp = *qptp;
-	TRACE("");
-
 	isc_nanosecs_t start = isc_time_monotonic();
 
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (qp->base->ptr[chunk] != NULL && !qp->usage[chunk].immutable)
-		{
-			chunk_free(qp, chunk);
-			/*
-			 * we need to clear its base pointer in the rollback
-			 * trie, in case the arrays were resized
-			 */
-			if (chunk < multi->rollback->chunk_max) {
-				INSIST(!multi->rollback->usage[chunk].exists);
-				multi->rollback->base->ptr[chunk] = NULL;
-			}
-			nfree++;
-		}
+	/* The private base owns all new allocations; old ones have other
+	 * owners. */
+	base_detach(&qp->base);
+	if (qp->usage != NULL) {
+		isc_mem_free(qp->mctx, qp->usage);
 	}
-
-	/*
-	 * multi->rollback->base and multi->writer->base are the same,
-	 * unless there was a realloc_chunk_arrays() during the transaction
-	 */
-	if (qpbase_unref(qp)) {
-		/* paired with dns_qpmulti_update() */
-		isc_mem_free(qp->mctx, qp->base);
-	}
-	isc_mem_free(qp->mctx, qp->usage);
-
-	/* reset allocator state */
-	INSIST(multi->rollback != NULL);
 	memmove(qp, multi->rollback, sizeof(*qp));
 	isc_mem_free(qp->mctx, multi->rollback);
-	INSIST(multi->rollback == NULL);
-
-	isc_nanosecs_t time = isc_time_monotonic() - start;
-	atomic_fetch_add_relaxed(&rollback_time, time);
-
-	LOG_STATS("qp rollback" PRItime "free %u chunks", time, nfree);
+	atomic_fetch_add_relaxed(&rollback_time, isc_time_monotonic() - start);
 
 	*qptp = NULL;
 	UNLOCK(&multi->mutex);
@@ -1382,7 +1178,7 @@ reader_open(dns_qpmulti_t *multi, dns_qpreadable_t qpr) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
 	dns_qpnode_t *reader = rcu_dereference(multi->reader);
 	if (reader == NULL) {
-		QP_INIT(qp, multi->writer.methods, multi->writer.uctx);
+		QP_INIT(qp, multi->methods, multi->uctx);
 	} else {
 		multi = unpack_reader(qp, reader);
 	}
@@ -1428,29 +1224,13 @@ dns_qpmulti_snapshot(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp) {
 	LOCK(&multi->mutex);
 
 	dns_qp_t *qpw = &multi->writer;
-	size_t bytes = sizeof(dns_qpsnap_t) + sizeof(dns_qpbase_t) +
-		       sizeof(qpw->base->ptr[0]) * qpw->chunk_max;
-	dns_qpsnap_t *qps = isc_mem_allocate(qpw->mctx, bytes);
-
+	dns_qpsnap_t *qps = isc_mem_get(qpw->mctx, sizeof(*qps));
+	*qps = (dns_qpsnap_t){};
 	qps->whence = reader_open(multi, qps);
 	INSIST(qps->whence == multi);
-
-	/* not a separate allocation */
-	qps->base = (dns_qpbase_t *)(qps + 1);
-	isc_refcount_init(&qps->base->refcount, 0);
-
-	/*
-	 * only copy base pointers of chunks we need, so we can
-	 * reclaim unused memory in dns_qpsnap_destroy()
-	 */
-	qps->chunk_max = qpw->chunk_max;
-	for (dns_qpchunk_t chunk = 0; chunk < qpw->chunk_max; chunk++) {
-		if (qpw->usage[chunk].exists && chunk_usage(qpw, chunk) > 0) {
-			qpw->usage[chunk].snapshot = true;
-			qps->base->ptr[chunk] = qpw->base->ptr[chunk];
-		} else {
-			qps->base->ptr[chunk] = NULL;
-		}
+	dns_qpmulti_ref(multi);
+	if (qps->base != NULL) {
+		isc_refcount_increment(&qps->base->refcount);
 	}
 	ISC_LIST_INITANDAPPEND(multi->snapshots, qps, link);
 
@@ -1474,16 +1254,12 @@ dns_qpsnap_destroy(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp) {
 
 	ISC_LIST_UNLINK(multi->snapshots, qp, link);
 
-	/*
-	 * eagerly reclaim chunks that are now unused, so that memory does
-	 * not accumulate when a trie has a lot of updates and snapshots
-	 */
-	marksweep_chunks(multi);
-
-	isc_mem_free(multi->writer.mctx, qp);
-
-	*qpsp = NULL;
 	UNLOCK(&multi->mutex);
+
+	base_detach(&qp->base);
+	isc_mem_put(multi->mctx, qp, sizeof(*qp));
+	*qpsp = NULL;
+	dns_qpmulti_detach(&multi);
 }
 
 /***********************************************************************
@@ -1513,8 +1289,10 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 
 	dns_qpmulti_t *multi = isc_mem_get(mctx, sizeof(*multi));
 	*multi = (dns_qpmulti_t){ .magic = QPMULTI_MAGIC,
-				  .reader_ref = INVALID_REF,
+				  .methods = methods,
+				  .uctx = uctx,
 				  .references = ISC_REFCOUNT_INITIALIZER(1) };
+	isc_mem_attach(mctx, &multi->mctx);
 	isc_mutex_init(&multi->mutex);
 	ISC_LIST_INIT(multi->snapshots);
 
@@ -1526,7 +1304,8 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 	 */
 	dns_qp_t *qp = &multi->writer;
 	QP_INIT(qp, methods, uctx);
-	isc_mem_attach(mctx, &qp->mctx);
+	/* Borrow the multi's context; rollback may overwrite the writer. */
+	qp->mctx = multi->mctx;
 	qp->transaction_mode = QP_UPDATE;
 	TRACE("");
 	*qpmp = multi;
@@ -1534,21 +1313,11 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 
 static void
 destroy_guts(dns_qp_t *qp) {
-	if (qp->chunk_max == 0) {
-		return;
-	}
-
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (qp->base->ptr[chunk] != NULL) {
-			chunk_free(qp, chunk);
-		}
+	base_detach(&qp->base);
+	if (qp->usage != NULL) {
+		isc_mem_free(qp->mctx, qp->usage);
 	}
 	qp->chunk_max = 0;
-	ENSURE(qp->used_count == 0);
-	ENSURE(qp->free_count == 0);
-	ENSURE(isc_refcount_current(&qp->base->refcount) == 1);
-	isc_mem_free(qp->mctx, qp->base);
-	isc_mem_free(qp->mctx, qp->usage);
 	qp->magic = 0;
 }
 
@@ -1572,13 +1341,8 @@ static void
 qpmulti_free_mem(dns_qpmulti_t *multi) {
 	REQUIRE(QPMULTI_VALID(multi));
 
-	/* reassure thread sanitizer */
-	LOCK(&multi->mutex);
-	dns_qp_t *qp = &multi->writer;
-	UNLOCK(&multi->mutex);
-
 	isc_mutex_destroy(&multi->mutex);
-	isc_mem_putanddetach(&qp->mctx, multi, sizeof(*multi));
+	isc_mem_putanddetach(&multi->mctx, multi, sizeof(*multi));
 }
 
 #if QPMULTI_TRACE
@@ -1589,53 +1353,33 @@ ISC_REFCOUNT_STATIC_IMPL(dns_qpmulti, qpmulti_free_mem)
 
 static void
 qpmulti_destroy_guts_cb(struct rcu_head *arg) {
-	qp_rcuctx_t *rcuctx = caa_container_of(arg, qp_rcuctx_t, rcu_head);
-	REQUIRE(QPRCU_VALID(rcuctx));
-	/* only nonzero for reclaim_chunks_cb() */
-	REQUIRE(rcuctx->count == 0);
-
-	dns_qpmulti_t *multi = rcuctx->multi;
-	REQUIRE(QPMULTI_VALID(multi));
-
-	/* reassure thread sanitizer */
-	LOCK(&multi->mutex);
-
-	dns_qp_t *qp = &multi->writer;
-	REQUIRE(QP_VALID(qp));
-
-	destroy_guts(qp);
-
-	UNLOCK(&multi->mutex);
-
+	dns_qpmulti_t *multi = caa_container_of(arg, dns_qpmulti_t, rcu_head);
+	/*
+	 * The owner has stopped writes and snapshots. Transient readers have
+	 * drained, and retired versions own their bases independently.
+	 */
+	dns_qpnode_t *reader = multi->reader;
+	if (reader != NULL) {
+		qp_version_t *version = caa_container_of(reader, qp_version_t,
+							 reader[0]);
+		reclaim_chunks_cb(&version->rcu_head);
+	}
+	destroy_guts(&multi->writer);
 	dns_qpmulti_detach(&multi);
-	isc_mem_putanddetach(&rcuctx->mctx, rcuctx,
-			     STRUCT_FLEX_SIZE(rcuctx, chunk, rcuctx->count));
 }
 
 void
 dns_qpmulti_destroy(dns_qpmulti_t **qpmp) {
-	dns_qp_t *qp = NULL;
-	dns_qpmulti_t *multi = NULL;
-	qp_rcuctx_t *rcuctx = NULL;
-
 	REQUIRE(qpmp != NULL);
 	REQUIRE(QPMULTI_VALID(*qpmp));
 
-	multi = *qpmp;
-	qp = &multi->writer;
+	dns_qpmulti_t *multi = *qpmp;
 	*qpmp = NULL;
-
-	REQUIRE(QP_VALID(qp));
+	REQUIRE(QP_VALID(&multi->writer));
 	REQUIRE(multi->rollback == NULL);
 	REQUIRE(ISC_LIST_EMPTY(multi->snapshots));
 
-	rcuctx = isc_mem_get(qp->mctx, STRUCT_FLEX_SIZE(rcuctx, chunk, 0));
-	*rcuctx = (qp_rcuctx_t){
-		.magic = QPRCU_MAGIC,
-		.multi = multi,
-	};
-	isc_mem_attach(qp->mctx, &rcuctx->mctx);
-	call_rcu(&rcuctx->rcu_head, qpmulti_destroy_guts_cb);
+	call_rcu(&multi->rcu_head, qpmulti_destroy_guts_cb);
 }
 
 /***********************************************************************

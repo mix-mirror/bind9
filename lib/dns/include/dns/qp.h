@@ -272,8 +272,11 @@ typedef struct dns_qpchain {
  *
  * The `attach` and `detach` methods adjust reference counts on value
  * objects. They support copy-on-write and safe memory reclamation
- * needed for multi-version concurrency. The methods are only called
- * when the `dns_qpmulti_t` mutex is held.
+ * needed for multi-version concurrency. For a `dns_qpmulti_t`, these
+ * methods must be thread-safe: asynchronous reclamation and snapshot
+ * destruction can detach values concurrently with a writer attaching or
+ * detaching other references to the same value. Reclamation does not hold
+ * the writer mutex.
  *
  * Note: When a value object reference count is greater than one, the
  * object is in use by concurrent readers so it must not be modified. A
@@ -391,7 +394,8 @@ dns_qpmulti_destroy(dns_qpmulti_t **qpmp);
  * \li  no snapshots exist
  *
  * Ensures:
- * \li  all memory allocated by the qp-trie has been released
+ * \li  memory reclamation has been scheduled; it completes after outstanding
+ *      RCU callbacks have run
  * \li  `*qpmp` is NULL
  */
 
