@@ -1150,6 +1150,197 @@ ISC_RUN_TEST_IMPL(qpmulti_compact_destroy) {
 	check_refcounts(true);
 }
 
+/*
+ * Build a single-threaded trie holding items [lo, hi).
+ */
+static dns_qp_t *
+build_offline(size_t lo, size_t hi) {
+	dns_qp_t *qp = NULL;
+
+	dns_qp_create(isc_g_mctx, &test_methods, NULL, &qp);
+	for (size_t i = lo; i < hi; i++) {
+		assert_int_equal(dns_qp_insert(qp, &item[i], i), ISC_R_SUCCESS);
+	}
+	return qp;
+}
+
+static void
+delete_all(dns_qpmulti_t *qpm) {
+	dns_qp_t *qp = NULL;
+
+	dns_qpmulti_write(qpm, &qp);
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		assert_int_equal(dns_qp_deletekey(qp, item[i].key, item[i].len,
+						  NULL, NULL),
+				 ISC_R_SUCCESS);
+	}
+	dns_qpmulti_commit(qpm, &qp);
+}
+
+/*
+ * An adopted trie replaces the published version in one step; a reader
+ * of the old version keeps it until it is done, and only then are the
+ * old leaves detached.
+ */
+ISC_RUN_TEST_IMPL(qpmulti_adopt) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t old, new;
+	dns_qp_memusage_t mu;
+	uint64_t generation;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	insert_all(qpm, 100);
+	compact_to_completion(qpm, 10000);
+	LOCK(&qpm->mutex);
+	generation = qpm->writer.generation;
+	UNLOCK(&qpm->mutex);
+
+	dns_qpmulti_query(qpm, &old);
+
+	qp = build_offline(ITEM_COUNT / 2, ITEM_COUNT);
+	dns_qpmulti_adopt(qpm, &qp);
+	assert_null(qp);
+
+	/* the old version is intact, the new one has the second half */
+	assert_true(checkallrw(&old));
+	dns_qpmulti_query(qpm, &new);
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		assert_true(checkkey(&new, i, i >= ITEM_COUNT / 2, "adopted"));
+	}
+	dns_qpread_destroy(qpm, &new);
+	dns_qpread_destroy(qpm, &old);
+	rcu_barrier();
+
+	/* the old version's leaves were detached, exactly once each */
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		assert_int_equal(atomic_load_relaxed(&item[i].refcount),
+				 i >= ITEM_COUNT / 2 ? 1 : 0);
+		item[i].in_rw = i >= ITEM_COUNT / 2;
+	}
+	LOCK(&qpm->mutex);
+	assert_int_equal(qpm->writer.generation, generation + 1);
+	assert_true(ISC_LIST_EMPTY(qpm->reclaiming));
+	UNLOCK(&qpm->mutex);
+	check_free_slots(qpm);
+	mu = dns_qpmulti_memusage(qpm);
+	assert_int_equal(mu.leaves, ITEM_COUNT - ITEM_COUNT / 2);
+	assert_false(mu.fragmented);
+
+	/* ordinary transactions carry on from the adopted version */
+	dns_qpmulti_write(qpm, &qp);
+	for (size_t i = 0; i < ITEM_COUNT / 2; i++) {
+		assert_int_equal(dns_qp_insert(qp, &item[i], i), ISC_R_SUCCESS);
+		item[i].in_rw = true;
+	}
+	dns_qpmulti_commit(qpm, &qp);
+	dns_qpmulti_query(qpm, &new);
+	assert_true(checkallrw(&new));
+	dns_qpread_destroy(qpm, &new);
+	compact_to_completion(qpm, 10000);
+	rcu_barrier();
+	check_refcounts(false);
+	check_free_slots(qpm);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/*
+ * Chunks that a queued reclamation callback has yet to free are
+ * renumbered by adoption, so the callback frees the right memory and
+ * leaves the adopted trie alone.
+ */
+ISC_RUN_TEST_IMPL(qpmulti_adopt_reclaiming) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t hold, new;
+	dns_qp_memusage_t mu;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	insert_all(qpm, 100);
+	compact_to_completion(qpm, 10000);
+	rcu_barrier();
+
+	/* pin the grace period so the callbacks queued below cannot run */
+	dns_qpmulti_query(qpm, &hold);
+	delete_all(qpm);
+	LOCK(&qpm->mutex);
+	assert_false(ISC_LIST_EMPTY(qpm->reclaiming));
+	UNLOCK(&qpm->mutex);
+
+	qp = build_offline(0, ITEM_COUNT);
+	dns_qpmulti_adopt(qpm, &qp);
+	LOCK(&qpm->mutex);
+	assert_false(ISC_LIST_EMPTY(qpm->reclaiming));
+	UNLOCK(&qpm->mutex);
+
+	dns_qpmulti_query(qpm, &new);
+	assert_true(checkallrw(&new));
+	dns_qpread_destroy(qpm, &new);
+
+	/* let the callbacks run with their renumbered chunks */
+	dns_qpread_destroy(qpm, &hold);
+	rcu_barrier();
+	LOCK(&qpm->mutex);
+	assert_true(ISC_LIST_EMPTY(qpm->reclaiming));
+	UNLOCK(&qpm->mutex);
+	check_free_slots(qpm);
+
+	dns_qpmulti_query(qpm, &new);
+	assert_true(checkallrw(&new));
+	dns_qpread_destroy(qpm, &new);
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		assert_int_equal(atomic_load_relaxed(&item[i].refcount), 1);
+	}
+	mu = dns_qpmulti_memusage(qpm);
+	assert_int_equal(mu.leaves, ITEM_COUNT);
+	assert_false(mu.fragmented);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
+/* A trie that was never committed to can adopt as well. */
+ISC_RUN_TEST_IMPL(qpmulti_adopt_fresh) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t new;
+
+	setup_items();
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	qp = build_offline(0, ITEM_COUNT);
+	dns_qpmulti_adopt(qpm, &qp);
+
+	for (size_t i = 0; i < ITEM_COUNT; i++) {
+		item[i].in_rw = true;
+	}
+	dns_qpmulti_query(qpm, &new);
+	assert_true(checkallrw(&new));
+	dns_qpread_destroy(qpm, &new);
+
+	dns_qpmulti_write(qpm, &qp);
+	assert_int_equal(
+		dns_qp_deletekey(qp, item[0].key, item[0].len, NULL, NULL),
+		ISC_R_SUCCESS);
+	item[0].in_rw = false;
+	dns_qpmulti_commit(qpm, &qp);
+	dns_qpmulti_query(qpm, &new);
+	assert_true(checkallrw(&new));
+	dns_qpread_destroy(qpm, &new);
+	rcu_barrier();
+	check_refcounts(false);
+	check_free_slots(qpm);
+
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+	check_refcounts(true);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(qpmulti)
 ISC_TEST_ENTRY(qpmulti_memusage)
@@ -1167,6 +1358,9 @@ ISC_TEST_ENTRY(qpmulti_compact_mutate)
 ISC_TEST_ENTRY(qpmulti_compact_snapshot)
 ISC_TEST_ENTRY(qpmulti_compact_destroy)
 ISC_TEST_ENTRY(qpmulti_gcstep)
+ISC_TEST_ENTRY(qpmulti_adopt)
+ISC_TEST_ENTRY(qpmulti_adopt_reclaiming)
+ISC_TEST_ENTRY(qpmulti_adopt_fresh)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

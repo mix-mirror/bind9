@@ -845,17 +845,19 @@ load_a_record(dns_rdatacallbacks_t *callbacks, unsigned int i) {
 }
 
 /*
- * The commits between load passes only take bounded compaction steps,
- * so a zone that is loaded and never written again must have its trie
- * compacted when the load ends, or it would keep the garbage for good.
+ * A load builds the zone in a private trie and hands it over at the
+ * end, in one version change, compacted and with the old contents
+ * reclaimed.
  */
-ISC_RUN_TEST_IMPL(load_compacted) {
+ISC_RUN_TEST_IMPL(load_adopted) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
-	dns_fixedname_t forigin;
+	dns_dbnode_t *node = NULL;
+	dns_fixedname_t forigin, fname;
 	dns_rdatacallbacks_t callbacks;
 	dns_qpmulti_t *tree = NULL;
 	dns_qp_memusage_t mu;
+	uint64_t generation;
 
 	dns_test_namefromstring("test.test.", &forigin);
 	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT,
@@ -863,41 +865,155 @@ ISC_RUN_TEST_IMPL(load_compacted) {
 			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	tree = ((qpzonedb_t *)db)->tree;
-
-	/* tiny steps, so that the passes cannot finish the collector's work */
+	mu = dns_qpmulti_memusage(tree);
+	assert_int_equal(mu.leaves, 3);
 	LOCK(&tree->mutex);
-	tree->writer.compact_budget = 64;
+	generation = tree->writer.generation;
 	UNLOCK(&tree->mutex);
 
 	dns_rdatacallbacks_init(&callbacks);
 	result = dns_db_beginload(db, &callbacks);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	for (unsigned int pass = 0; pass < 10; pass++) {
-		callbacks.setup(callbacks.add_private);
-		for (unsigned int i = 0; i < 500; i++) {
-			load_a_record(&callbacks, pass * 500 + i);
-		}
-		callbacks.commit(callbacks.add_private);
+	assert_null(callbacks.setup);
+	assert_null(callbacks.commit);
+	for (unsigned int i = 0; i < 5000; i++) {
+		load_a_record(&callbacks, i);
 	}
-
-	/* the load left a cycle unfinished */
-	LOCK(&tree->mutex);
-	assert_true(tree->writer.compact_active);
-	UNLOCK(&tree->mutex);
-
 	result = dns_db_endload(db, &callbacks);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	/* and endload() finished it, with the whole trie considered */
+	/* one version change, not one per batch */
 	LOCK(&tree->mutex);
+	assert_int_equal(tree->writer.generation, generation + 1);
 	assert_false(tree->writer.compact_active);
-	assert_null(tree->writer.compact_key);
 	UNLOCK(&tree->mutex);
+
 	rcu_barrier();
 	mu = dns_qpmulti_memusage(tree);
-	assert_true(mu.leaves >= 5000);
+	assert_int_equal(mu.leaves, 5003);
 	assert_false(mu.fragmented);
 	assert_true(mu.free <= mu.used / 4);
+
+	dns_test_namefromstring("h00042.test.test.", &fname);
+	result = dns_db_findnode(db, dns_fixedname_name(&fname), false, &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_db_detachnode(&node);
+	result = dns_db_findnode(db, dns_fixedname_name(&forigin), false,
+				 &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_ptr_equal(node, ((qpzonedb_t *)db)->origin);
+	dns_db_detachnode(&node);
+
+	dns_db_detach(&db);
+	rcu_barrier();
+}
+
+/*
+ * Update listeners run when the load has finished, so what they find in
+ * the database, and what an iterator they keep sees, is the loaded zone.
+ */
+typedef struct {
+	isc_result_t found;
+	dns_dbiterator_t *iter;
+	unsigned int calls;
+} load_listener_t;
+
+static isc_result_t
+load_listener(dns_db_t *db, void *arg) {
+	load_listener_t *ll = arg;
+	dns_dbnode_t *node = NULL;
+	dns_fixedname_t fname;
+
+	ll->calls++;
+	dns_test_namefromstring("h00042.test.test.", &fname);
+	ll->found = dns_db_findnode(db, dns_fixedname_name(&fname), false,
+				    &node);
+	if (node != NULL) {
+		dns_db_detachnode(&node);
+	}
+	assert_int_equal(dns_db_createiterator(db, 0, &ll->iter),
+			 ISC_R_SUCCESS);
+	assert_int_equal(dns_dbiterator_first(ll->iter), ISC_R_SUCCESS);
+	return ISC_R_SUCCESS;
+}
+
+ISC_RUN_TEST_IMPL(load_notifies_listener) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	dns_dbnode_t *node = NULL;
+	dns_fixedname_t forigin, fname;
+	dns_rdatacallbacks_t callbacks;
+	load_listener_t ll = { .found = ISC_R_UNEXPECTED };
+	unsigned int names = 0;
+
+	dns_test_namefromstring("test.test.", &forigin);
+	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT,
+			       dns_fixedname_name(&forigin), dns_dbtype_zone,
+			       dns_rdataclass_in, 0, NULL, &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_db_updatenotify_register(db, load_listener, &ll);
+
+	dns_rdatacallbacks_init(&callbacks);
+	result = dns_db_beginload(db, &callbacks);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	for (unsigned int i = 0; i < 500; i++) {
+		load_a_record(&callbacks, i);
+	}
+	result = dns_db_endload(db, &callbacks);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	assert_int_equal(ll.calls, 1);
+	assert_int_equal(ll.found, ISC_R_SUCCESS);
+
+	/* the iterator the listener kept walks the loaded zone */
+	dns_fixedname_init(&fname);
+	for (result = dns_dbiterator_first(ll.iter); result == ISC_R_SUCCESS;
+	     result = dns_dbiterator_next(ll.iter))
+	{
+		result = dns_dbiterator_current(ll.iter, &node,
+						dns_fixedname_name(&fname));
+		assert_int_equal(result, ISC_R_SUCCESS);
+		dns_db_detachnode(&node);
+		names++;
+	}
+	assert_int_equal(result, ISC_R_NOMORE);
+	assert_true(names >= 500);
+	dns_dbiterator_destroy(&ll.iter);
+
+	dns_db_updatenotify_unregister(db, load_listener, &ll);
+	dns_db_detach(&db);
+	rcu_barrier();
+}
+
+/* A load that adds nothing, as after a parse error, leaves a usable db. */
+ISC_RUN_TEST_IMPL(load_empty) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	dns_dbnode_t *node = NULL;
+	dns_fixedname_t forigin;
+	dns_rdatacallbacks_t callbacks;
+	dns_qp_memusage_t mu;
+
+	dns_test_namefromstring("test.test.", &forigin);
+	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT,
+			       dns_fixedname_name(&forigin), dns_dbtype_zone,
+			       dns_rdataclass_in, 0, NULL, &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_rdatacallbacks_init(&callbacks);
+	result = dns_db_beginload(db, &callbacks);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	result = dns_db_endload(db, &callbacks);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	rcu_barrier();
+	mu = dns_qpmulti_memusage(((qpzonedb_t *)db)->tree);
+	assert_int_equal(mu.leaves, 3);
+
+	result = dns_db_findnode(db, dns_fixedname_name(&forigin), false,
+				 &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_db_detachnode(&node);
 
 	dns_db_detach(&db);
 	rcu_barrier();
@@ -912,7 +1028,9 @@ ISC_TEST_ENTRY(wildcard_foundname)
 ISC_TEST_ENTRY(wildcard_delegation_foundname)
 ISC_TEST_ENTRY(nodes_outside_zone)
 ISC_TEST_ENTRY(diffop_addresign)
-ISC_TEST_ENTRY(load_compacted)
+ISC_TEST_ENTRY(load_adopted)
+ISC_TEST_ENTRY(load_notifies_listener)
+ISC_TEST_ENTRY(load_empty)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

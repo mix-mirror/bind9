@@ -368,6 +368,12 @@ typedef struct qp_rcuctx {
 	struct rcu_head rcu_head;
 	isc_mem_t *mctx;
 	dns_qpmulti_t *multi;
+	/*% on the trie's list while the callback has chunks left [MT] */
+	ISC_LINK(struct qp_rcuctx) link;
+	/*% after dns_qpmulti_adopt(), the version whose leaves to detach */
+	dns_qpnode_t *oldreader;
+	/*% chunks below this index have been detached already [MT] */
+	dns_qpchunk_t done;
 	dns_qpchunk_t count;
 	dns_qpchunk_t chunk[];
 } qp_rcuctx_t;
@@ -651,6 +657,8 @@ struct dns_qpmulti {
 	ISC_LIST(dns_qpsnap_t) snapshots;
 	/*% deleted values waiting to be released, oldest first */
 	qp_deadlist_t dead;
+	/*% reclamation callbacks that still name chunks by index */
+	ISC_LIST(qp_rcuctx_t) reclaiming;
 	/*% refcount for memory reclamation */
 	isc_refcount_t references;
 	/*% a compaction cycle is active or due; read without the mutex */

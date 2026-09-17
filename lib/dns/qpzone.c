@@ -2296,29 +2296,11 @@ loading_addrdataset(void *arg, const dns_name_t *name, dns_rdataset_t *rdataset,
 	return result;
 }
 
-static void
-loading_setup(void *arg) {
-	qpz_load_t *loadctx = arg;
-	qpzonedb_t *qpdb = (qpzonedb_t *)loadctx->db;
-
-	dns_qpmulti_write(qpdb->tree, &loadctx->tree);
-}
-
-static void
-loading_commit(void *arg) {
-	qpz_load_t *loadctx = arg;
-	qpzonedb_t *qpdb = (qpzonedb_t *)loadctx->db;
-
-	if (loadctx->tree != NULL) {
-		dns_qp_compact(loadctx->tree, DNS_QPGC_MAYBE);
-		dns_qpmulti_commit(qpdb->tree, &loadctx->tree);
-	}
-}
-
 static isc_result_t
 beginload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	qpz_load_t *loadctx = NULL;
 	qpzonedb_t *qpdb = NULL;
+	isc_result_t result;
 	qpdb = (qpzonedb_t *)db;
 
 	REQUIRE(DNS_CALLBACK_VALID(callbacks));
@@ -2326,6 +2308,20 @@ beginload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 
 	loadctx = isc_mem_get(qpdb->common.mctx, sizeof(*loadctx));
 	*loadctx = (qpz_load_t){ .db = db };
+
+	/*
+	 * The zone is built in a private single-threaded trie, so the
+	 * load pays for neither transactions nor copy-on-write, and it
+	 * is handed to the shared trie in endload(). The apex nodes are
+	 * the same objects the shared trie already holds.
+	 */
+	dns_qp_create(qpdb->common.mctx, &qpmethods, qpdb, &loadctx->tree);
+	result = dns_qp_insert(loadctx->tree, qpdb->origin, 0);
+	INSIST(result == ISC_R_SUCCESS);
+	result = dns_qp_insert(loadctx->tree, qpdb->nsec_origin, 0);
+	INSIST(result == ISC_R_SUCCESS);
+	result = dns_qp_insert(loadctx->tree, qpdb->nsec3_origin, 0);
+	INSIST(result == ISC_R_SUCCESS);
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
 
@@ -2336,8 +2332,6 @@ beginload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
 
 	callbacks->update = loading_addrdataset;
-	callbacks->setup = loading_setup;
-	callbacks->commit = loading_commit;
 	callbacks->add_private = loadctx;
 
 	return ISC_R_SUCCESS;
@@ -2355,17 +2349,12 @@ endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	REQUIRE(loadctx->db == db);
 
 	/*
-	 * The commits during the load only took bounded compaction
-	 * steps, and a zone that is never updated again would keep the
-	 * garbage they left behind for good, so finish the job now.
+	 * A zone that is never updated again would keep whatever
+	 * garbage the load left behind for good, so tidy the private
+	 * trie once, then make it the published version.
 	 */
-	dns_qp_t *qp = loadctx->tree;
-	if (qp == NULL) {
-		dns_qpmulti_write(qpdb->tree, &qp);
-	}
-	dns_qp_compact(qp, DNS_QPGC_NOW);
-	dns_qpmulti_commit(qpdb->tree, &qp);
-	loadctx->tree = NULL;
+	dns_qp_compact(loadctx->tree, DNS_QPGC_NOW);
+	dns_qpmulti_adopt(qpdb->tree, &loadctx->tree);
 
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
 
@@ -2384,8 +2373,6 @@ endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	}
 
 	callbacks->update = NULL;
-	callbacks->setup = NULL;
-	callbacks->commit = NULL;
 	callbacks->add_private = NULL;
 
 	isc_mem_put(qpdb->common.mctx, loadctx, sizeof(*loadctx));

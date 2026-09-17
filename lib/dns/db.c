@@ -294,22 +294,26 @@ dns_db_endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	 * Finish loading 'db'.
 	 */
 
+	isc_result_t result = ISC_R_NOTIMPLEMENTED;
+
 	REQUIRE(DNS_DB_VALID(db));
 	REQUIRE(DNS_CALLBACK_VALID(callbacks));
 	REQUIRE(callbacks->add_private != NULL);
 
+	if (db->methods->endload != NULL) {
+		result = (db->methods->endload)(db, callbacks);
+	}
+
 	/*
-	 * When dns_db_endload() is called, we call the onupdate function
-	 * for all registered listeners, regardless of whether the underlying
-	 * database has an 'endload' implementation.
+	 * Tell the registered listeners once the database has finished
+	 * loading, regardless of whether it has an 'endload'
+	 * implementation: a database may only publish what was loaded
+	 * at this point, so an earlier notification would show the
+	 * listeners the contents from before the load.
 	 */
 	call_updatenotify(db);
 
-	if (db->methods->endload != NULL) {
-		return (db->methods->endload)(db, callbacks);
-	}
-
-	return ISC_R_NOTIMPLEMENTED;
+	return result;
 }
 
 isc_result_t

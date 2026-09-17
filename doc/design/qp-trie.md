@@ -691,6 +691,26 @@ kept as compact as possible by calling `dns_qp_compact()` with
 `DNS_QPGC_ALL` before committing.
 
 
+bulk loads by adoption
+----------------------
+
+Neither kind of transaction suits building a whole trie at once, such
+as loading a zone: every batch would copy paths and leave garbage
+behind, and take compaction steps to move it again, while nothing can
+read the trie until the load is finished. Instead, the contents are
+built in a private single-threaded trie, which mutates in place and
+compacts synchronously, and `dns_qpmulti_adopt()` publishes it as the
+new version in a single step.
+
+Adoption takes over the private trie's allocator state, then appends
+the previous version's chunks after it and queues them for
+reclamation, so that readers still holding the old anchor resolve their
+references through the old `base` array until they are done. Chunks
+that a reclamation callback queued earlier has not freed yet are
+renumbered, which is why the trie keeps a list of the outstanding
+callbacks.
+
+
 lightweight query transactions
 ------------------------------
 
