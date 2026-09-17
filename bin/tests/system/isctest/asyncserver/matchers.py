@@ -302,13 +302,13 @@ class LabelCount(Matcher):
     """
 
     def __init__(self, count: int) -> None:
-        self.count = count
+        self._count = count
 
     def match(self, qctx: QueryContext) -> bool:
-        return len(qctx.qname.labels) == self.count
+        return len(qctx.qname.labels) == self._count
 
     def __str__(self) -> str:
-        return f"QNAME of {self.count} labels"
+        return f"QNAME of {self._count} labels"
 
 
 class Once(Matcher):
