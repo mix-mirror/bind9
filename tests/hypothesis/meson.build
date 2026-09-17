@@ -9,13 +9,13 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-if python.found() and protoc.found() and proto_dep.found()
+if python.found() and protoc.found() and protoc_c.found() and proto_dep.found()
     u16bitmap_proto_c = custom_target(
         'u16bitmap-protobuf-c',
         input: files('u16bitmap_server.proto'),
         output: ['u16bitmap_server.pb-c.c', 'u16bitmap_server.pb-c.h'],
         command: [
-            protoc,
+            protoc_c,
             '--proto_path=@CURRENT_SOURCE_DIR@',
             '--c_out=@OUTDIR@',
             '@INPUT@',

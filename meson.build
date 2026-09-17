@@ -91,7 +91,8 @@ sh = find_program('sh')
 
 ## Feature gated
 krb5_config = find_program('krb5-config', required: gssapi_opt)
-protoc = find_program(['protoc', 'protoc-c'], required: dnstap_opt)
+protoc = find_program('protoc', required: false)
+protoc_c = find_program(['protoc', 'protoc-c'], required: dnstap_opt)
 dtrace = find_program(['dtrace', dtrace_shim], required: false)
 
 ## Testing
@@ -829,7 +830,7 @@ proto_dep = null_dep
 if dnstap_opt.allowed()
     fstrm_dep = dependency('libfstrm', required: dnstap_opt)
     proto_dep = dependency('libprotobuf-c', required: dnstap_opt)
-    if protoc.found() and fstrm_dep.found() and proto_dep.found()
+    if protoc_c.found() and fstrm_dep.found() and proto_dep.found()
         config.set('HAVE_DNSTAP', 1)
     endif
 endif
@@ -1122,7 +1123,7 @@ if config.has('HAVE_DNSTAP')
         input: ['dnstap.proto'],
         output: ['dnstap.pb-c.c', 'dnstap.pb-c.h'],
         command: [
-            protoc,
+            protoc_c,
             '--proto_path=@CURRENT_SOURCE_DIR@',
             '--c_out=@OUTDIR@',
             '@INPUT@',
