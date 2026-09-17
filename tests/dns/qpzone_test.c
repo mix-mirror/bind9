@@ -35,6 +35,9 @@
 #include <dns/rdataset.h>
 #include <dns/rdatastruct.h>
 #include <dns/rdatavec.h>
+
+#include "qp_p.h"
+
 #define KEEP_BEFORE
 
 #include "rdatavec_p.h"
@@ -802,6 +805,104 @@ ISC_RUN_TEST_IMPL(nodes_outside_zone) {
 	assert_null(db);
 }
 
+/*
+ * Add an A record for the i-th host through the load callbacks.
+ */
+static void
+load_a_record(dns_rdatacallbacks_t *callbacks, unsigned int i) {
+	char namebuf[64];
+	dns_fixedname_t fname;
+	dns_rdatalist_t rdatalist;
+	dns_rdataset_t rdataset;
+	dns_rdata_t rdata = DNS_RDATA_INIT;
+	unsigned char addr[4] = { 10, (i >> 16) & 0xff, (i >> 8) & 0xff,
+				  i & 0xff };
+	isc_result_t result;
+
+	snprintf(namebuf, sizeof(namebuf), "h%05u.test.test.", i);
+	dns_test_namefromstring(namebuf, &fname);
+
+	rdata.data = addr;
+	rdata.length = sizeof(addr);
+	rdata.rdclass = dns_rdataclass_in;
+	rdata.type = dns_rdatatype_a;
+
+	dns_rdatalist_init(&rdatalist);
+	rdatalist.ttl = 3600;
+	rdatalist.type = dns_rdatatype_a;
+	rdatalist.rdclass = dns_rdataclass_in;
+	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
+
+	dns_rdataset_init(&rdataset);
+	dns_rdatalist_tordataset(&rdatalist, &rdataset);
+
+	result = callbacks->update(callbacks->add_private,
+				   dns_fixedname_name(&fname), &rdataset,
+				   DNS_DIFFOP_ADD);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_rdataset_disassociate(&rdataset);
+}
+
+/*
+ * The commits between load passes only take bounded compaction steps,
+ * so a zone that is loaded and never written again must have its trie
+ * compacted when the load ends, or it would keep the garbage for good.
+ */
+ISC_RUN_TEST_IMPL(load_compacted) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	dns_fixedname_t forigin;
+	dns_rdatacallbacks_t callbacks;
+	dns_qpmulti_t *tree = NULL;
+	dns_qp_memusage_t mu;
+
+	dns_test_namefromstring("test.test.", &forigin);
+	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT,
+			       dns_fixedname_name(&forigin), dns_dbtype_zone,
+			       dns_rdataclass_in, 0, NULL, &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	tree = ((qpzonedb_t *)db)->tree;
+
+	/* tiny steps, so that the passes cannot finish the collector's work */
+	LOCK(&tree->mutex);
+	tree->writer.compact_budget = 64;
+	UNLOCK(&tree->mutex);
+
+	dns_rdatacallbacks_init(&callbacks);
+	result = dns_db_beginload(db, &callbacks);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	for (unsigned int pass = 0; pass < 10; pass++) {
+		callbacks.setup(callbacks.add_private);
+		for (unsigned int i = 0; i < 500; i++) {
+			load_a_record(&callbacks, pass * 500 + i);
+		}
+		callbacks.commit(callbacks.add_private);
+	}
+
+	/* the load left a cycle unfinished */
+	LOCK(&tree->mutex);
+	assert_true(tree->writer.compact_active);
+	UNLOCK(&tree->mutex);
+
+	result = dns_db_endload(db, &callbacks);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	/* and endload() finished it, with the whole trie considered */
+	LOCK(&tree->mutex);
+	assert_false(tree->writer.compact_active);
+	assert_null(tree->writer.compact_key);
+	UNLOCK(&tree->mutex);
+	rcu_barrier();
+	mu = dns_qpmulti_memusage(tree);
+	assert_true(mu.leaves >= 5000);
+	assert_false(mu.fragmented);
+	assert_true(mu.free <= mu.used / 4);
+
+	dns_db_detach(&db);
+	rcu_barrier();
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(ownercase)
 ISC_TEST_ENTRY(setownercase)
@@ -811,6 +912,7 @@ ISC_TEST_ENTRY(wildcard_foundname)
 ISC_TEST_ENTRY(wildcard_delegation_foundname)
 ISC_TEST_ENTRY(nodes_outside_zone)
 ISC_TEST_ENTRY(diffop_addresign)
+ISC_TEST_ENTRY(load_compacted)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
