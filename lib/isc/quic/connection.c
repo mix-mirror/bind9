@@ -2372,7 +2372,8 @@ isc_result_t
 isc_quic_conn_server_create(
 	isc_mem_t *mctx, isc_quic_router_t *router,
 	const isc_quic_conn_callbacks_t *callbacks, void *callback_arg,
-	const isc_quic_conn_options_t *options, isc_constregion_t initial_dcid,
+	const isc_quic_conn_options_t *options,
+	isc_quic_version_t initial_version, isc_constregion_t initial_dcid,
 	isc_constregion_t initial_scid, const isc_sockaddr_t *local,
 	const isc_sockaddr_t *peer, isc_quic_conn_t **connp) {
 	ngtcp2_transport_params transport_params;
@@ -2382,6 +2383,7 @@ isc_quic_conn_server_create(
 	ngtcp2_path path;
 	ngtcp2_cid dcid, scid;
 	isc_tls_t *tls = NULL;
+	uint32_t version;
 	int r;
 
 	REQUIRE(connp != NULL && *connp == NULL);
@@ -2390,6 +2392,8 @@ isc_quic_conn_server_create(
 		options->idle_timeout != isc_quic_timestamp_invalid &&
 		options->alpn.base != NULL &&
 		options->alpn.length <= sizeof(conn->alpn.data));
+	REQUIRE(initial_version == ISC_QUIC_VERSION_V1 ||
+		initial_version == ISC_QUIC_VERSION_V2);
 
 	ERR_set_mark();
 
@@ -2444,9 +2448,20 @@ isc_quic_conn_server_create(
 
 	memmove(conn->alpn.data, options->alpn.base, conn->alpn.len);
 
-	r = ngtcp2_conn_server_new(&conn->inner, &dcid, &scid, &path,
-				   NGTCP2_PROTO_VER_V1, &server_cb, &settings,
-				   &transport_params, &conn->mem, conn);
+	switch (initial_version) {
+	case ISC_QUIC_VERSION_V1:
+		version = NGTCP2_PROTO_VER_V1;
+		break;
+	case ISC_QUIC_VERSION_V2:
+		version = NGTCP2_PROTO_VER_V2;
+		break;
+	default:
+		UNREACHABLE();
+	}
+
+	r = ngtcp2_conn_server_new(&conn->inner, &dcid, &scid, &path, version,
+				   &server_cb, &settings, &transport_params,
+				   &conn->mem, conn);
 	switch (r) {
 	case 0:
 		break;
