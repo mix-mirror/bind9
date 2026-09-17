@@ -391,9 +391,109 @@ ISC_RUN_TEST_IMPL(qpmulti_memusage) {
 	dns_qpmulti_destroy(&qpm);
 }
 
+/* Empty reader chunks must be reclaimed when the bump allocator moves on. */
+ISC_RUN_TEST_IMPL(qpmulti_reclaim_bump) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	for (size_t i = 0; i < 4 * QP_CHUNK_SIZE; i++) {
+		dns_qpmulti_write(qpm, &qp);
+		dns_qpmulti_commit(qpm, &qp);
+	}
+	rcu_barrier();
+
+	dns_qp_memusage_t mu = dns_qpmulti_memusage(qpm);
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+
+	assert_int_equal(mu.leaves, 0);
+	assert_int_equal(mu.chunk_count, 1);
+}
+
+/* Leave empty mutable chunks below the automatic recycling threshold. */
+static void
+empty_mutable_chunks(dns_qp_t *qp, size_t i) {
+	item[i].len = 1;
+	item[i].key[0] = SHIFT_BITMAP + i;
+
+	for (size_t n = 0; n < 3 * QP_CHUNK_SIZE; n++) {
+		assert_int_equal(dns_qp_insert(qp, &item[i], i), ISC_R_SUCCESS);
+		assert_int_equal(dns_qp_deletekey(qp, item[i].key, item[i].len,
+						  NULL, NULL),
+				 ISC_R_SUCCESS);
+	}
+}
+
+ISC_RUN_TEST_IMPL(qpmulti_reclaim_mutable) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	dns_qpmulti_write(qpm, &qp);
+	empty_mutable_chunks(qp, 0);
+	dns_qpmulti_commit(qpm, &qp);
+	dns_qpmulti_write(qpm, &qp);
+	dns_qpmulti_commit(qpm, &qp);
+	rcu_barrier();
+
+	dns_qp_memusage_t mu = dns_qpmulti_memusage(qpm);
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+
+	assert_int_equal(mu.leaves, 0);
+	assert_int_equal(mu.chunk_count, 1);
+	assert_int_equal(item[0].refcount, 0);
+}
+
+/* Rollback must discard candidates while retaining the published version. */
+ISC_RUN_TEST_IMPL(qpmulti_reclaim_rollback) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpsnap_t *snap = NULL;
+
+	item[0].len = 1;
+	item[0].key[0] = SHIFT_BITMAP;
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	dns_qpmulti_write(qpm, &qp);
+	assert_int_equal(dns_qp_insert(qp, &item[0], 0), ISC_R_SUCCESS);
+	dns_qpmulti_commit(qpm, &qp);
+	dns_qpmulti_snapshot(qpm, &snap);
+
+	dns_qpmulti_update(qpm, &qp);
+	assert_int_equal(
+		dns_qp_deletekey(qp, item[0].key, item[0].len, NULL, NULL),
+		ISC_R_SUCCESS);
+	empty_mutable_chunks(qp, 1);
+	dns_qpmulti_rollback(qpm, &qp);
+
+	dns_qpmulti_write(qpm, &qp);
+	assert_true(checkkey(qp, 0, true, "after rollback"));
+	assert_int_equal(
+		dns_qp_deletekey(qp, item[0].key, item[0].len, NULL, NULL),
+		ISC_R_SUCCESS);
+	dns_qpmulti_commit(qpm, &qp);
+	rcu_barrier();
+	assert_true(checkkey(snap, 0, true, "snapshot after delete"));
+	dns_qpsnap_destroy(qpm, &snap);
+	rcu_barrier();
+
+	dns_qp_memusage_t mu = dns_qpmulti_memusage(qpm);
+	dns_qpmulti_destroy(&qpm);
+	rcu_barrier();
+
+	assert_int_equal(mu.leaves, 0);
+	assert_int_equal(mu.chunk_count, 1);
+	assert_int_equal(item[0].refcount, 0);
+	assert_int_equal(item[1].refcount, 0);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(qpmulti)
 ISC_TEST_ENTRY(qpmulti_memusage)
+ISC_TEST_ENTRY(qpmulti_reclaim_bump)
+ISC_TEST_ENTRY(qpmulti_reclaim_mutable)
+ISC_TEST_ENTRY(qpmulti_reclaim_rollback)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

@@ -526,6 +526,10 @@ next_capacity(uint32_t prev_capacity, uint32_t size) {
  */
 static dns_qpref_t
 chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
+	dns_qpchunk_t old_bump = qp->bump;
+	bool had_old_bump = old_bump < qp->chunk_max &&
+			    qp->usage[old_bump].exists;
+
 	INSIST(qp->base->ptr[chunk] == NULL);
 	INSIST(qp->usage[chunk].used == 0);
 	INSIST(qp->usage[chunk].free == 0);
@@ -543,6 +547,10 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 	qp->used_count += size;
 	qp->bump = chunk;
 	qp->fender = 0;
+
+	if (had_old_bump) {
+		maybe_reclaim_chunk(qp, old_bump);
+	}
 
 	if (qp->write_protect) {
 		TRACE("chunk %u base %p", chunk, qp->base->ptr[chunk]);
@@ -608,15 +616,7 @@ alloc_slow(dns_qp_t *qp, dns_qpweight_t size) {
  */
 static void
 alloc_reset(dns_qp_t *qp) {
-	dns_qpchunk_t old_bump = qp->bump;
-	bool had_old_bump = old_bump < qp->chunk_max &&
-			    qp->usage[old_bump].exists;
-
 	(void)alloc_slow(qp, 0);
-
-	if (had_old_bump && old_bump != qp->bump) {
-		maybe_reclaim_chunk(qp, old_bump);
-	}
 }
 
 /*
@@ -655,17 +655,17 @@ free_twigs(dns_qp_t *qp, dns_qpref_t twigs, dns_qpweight_t size) {
 	ENSURE(qp->free_count <= qp->used_count);
 	ENSURE(qp->usage[chunk].free <= qp->usage[chunk].used);
 
-	if (cells_immutable(qp, twigs)) {
+	bool immutable = cells_immutable(qp, twigs);
+	if (immutable) {
 		qp->hold_count += size;
 		ENSURE(qp->free_count >= qp->hold_count);
-		if (qp->usage[chunk].used == qp->usage[chunk].free) {
-			maybe_reclaim_chunk(qp, chunk);
-		}
-		return false;
 	} else {
 		zero_twigs(ref_ptr(qp, twigs), size);
-		return true;
 	}
+	if (qp->usage[chunk].used == qp->usage[chunk].free) {
+		maybe_reclaim_chunk(qp, chunk);
+	}
+	return !immutable;
 }
 
 /*
@@ -699,9 +699,9 @@ static void
 maybe_reclaim_chunk(dns_qp_t *qp, dns_qpchunk_t chunk) {
 	qp_usage_t *usage = &qp->usage[chunk];
 
-	if (chunk == qp->bump || !usage->exists || usage->discounted ||
-	    usage->reclaim_candidate || chunk_usage(qp, chunk) != 0 ||
-	    !chunk_immutable(qp, chunk))
+	if (qp->transaction_mode == QP_NONE || chunk == qp->bump ||
+	    !usage->exists || usage->discounted || usage->reclaim_candidate ||
+	    chunk_usage(qp, chunk) != 0)
 	{
 		return;
 	}
@@ -772,14 +772,41 @@ static void
 recycle(dns_qp_t *qp) {
 	unsigned int nfree = 0;
 
+	if (qp->transaction_mode != QP_NONE && qp->reclaim_count == 0) {
+		return;
+	}
+
 	isc_nanosecs_t start = isc_time_monotonic();
 
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (chunk != qp->bump && chunk_usage(qp, chunk) == 0 &&
-		    qp->usage[chunk].exists && !chunk_immutable(qp, chunk))
-		{
-			chunk_free(qp, chunk);
-			nfree++;
+	if (qp->transaction_mode == QP_NONE) {
+		for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
+			if (chunk != qp->bump && chunk_usage(qp, chunk) == 0 &&
+			    qp->usage[chunk].exists)
+			{
+				chunk_free(qp, chunk);
+				nfree++;
+			}
+		}
+	} else {
+		/*
+		 * Recycle unpublished empty chunks before the next transaction
+		 * makes them immutable. Keep shared chunks queued for RCU.
+		 */
+		dns_qpchunk_t *link = &qp->reclaim_head;
+		qp->reclaim_tail = INVALID_CHUNK;
+		while (*link != INVALID_CHUNK) {
+			dns_qpchunk_t chunk = *link;
+			qp_usage_t *usage = &qp->usage[chunk];
+
+			if (chunk_immutable(qp, chunk)) {
+				qp->reclaim_tail = chunk;
+				link = &usage->reclaim_next;
+			} else {
+				*link = usage->reclaim_next;
+				qp->reclaim_count--;
+				chunk_free(qp, chunk);
+				nfree++;
+			}
 		}
 	}
 
@@ -1359,9 +1386,7 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	rcu_assign_pointer(multi->reader, reader); /* COMMIT */
 
 	/* clean up what we can right now */
-	if (qp->transaction_mode == QP_UPDATE || QP_NEEDGC(qp)) {
-		recycle(qp);
-	}
+	recycle(qp);
 
 	/* schedule the rest for later */
 	reclaim_chunks(multi);
