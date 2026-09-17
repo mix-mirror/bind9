@@ -281,7 +281,7 @@ ref_cell(dns_qpref_t ref) {
 typedef struct qp_usage {
 	/*% transaction generation in which this chunk was allocated [MT] */
 	uint64_t generation;
-	/*% next chunk waiting for RCU reclamation [MT] */
+	/*% next empty chunk waiting for recycling or RCU reclamation [MT] */
 	dns_qpchunk_t reclaim_next;
 	/*% the allocation point, increases monotonically */
 	dns_qpcell_t used : QP_USAGE_BITS;
@@ -293,7 +293,7 @@ typedef struct qp_usage {
 	bool exists : 1;
 	/*% already subtracted from multi->*_count [MT] */
 	bool discounted : 1;
-	/*% listed for reclamation after a grace period [MT] */
+	/*% listed for recycling or reclamation after a grace period [MT] */
 	bool reclaim_candidate : 1;
 	/*% is a snapshot using this chunk? [MT] */
 	bool snapshot : 1;
@@ -501,7 +501,7 @@ struct dns_qp {
 	dns_qpcell_t hold_count;
 	/*% capacity of last allocated chunk, for exponential chunk growth */
 	dns_qpcell_t chunk_capacity;
-	/*% chunks waiting to be reclaimed after readers drain [MT] */
+	/*% empty chunks waiting for recycling or RCU reclamation [MT] */
 	dns_qpchunk_t reclaim_head, reclaim_tail, reclaim_count;
 	/*% current mutable transaction generation [MT] */
 	uint64_t generation;
