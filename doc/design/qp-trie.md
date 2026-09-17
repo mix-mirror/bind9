@@ -696,6 +696,17 @@ by the qp-trie garbage collector. Instead, the user provides
 `attach` and `detach` methods that the qp-trie code calls to update
 the reference counts in the value objects.
 
+The trie holds one reference per value, taken when the value is
+inserted. Copying twigs vectors, whether for copy-on-write or by the
+compactor, does not touch the counts, so the many copies a leaf's
+cell goes through over its life cost nothing in the value object.
+When a leaf is deleted, its value goes onto the transaction's
+retirement batch; after the commit the batch waits for a grace
+period, and for any snapshot of an older version to be destroyed,
+before the references are released. A value that is deleted and
+inserted again before that has two references until the retirement
+drains.
+
 Value object reference counts do not indicate whether the object is
 mutable: its refcount can be 1 while it is only in use by readers
 (and must be left unchanged), or newly created by a writer (and
@@ -716,14 +727,15 @@ but still in use by readers accessing an older version. The qp-trie
 uses a QSBR callback to clean up chunks when they are no longer used
 at all.
 
-When reclaiming a chunk, we have to scan it for any remaining leaf
-nodes. When nodes are accessibly only to the writer, they are zeroed
-out when they are freed. If they are shared with readers, they must be
-left in place (though the `free` count in the usage array is still
-adjucted), and finally `detach()`ed when the chunk is reclaimed.
+A leaf's reference belongs to the insertion that put it in the trie,
+not to the cell that holds it, so reclaiming a chunk does not release
+the values its cells refer to; see "lifecycle of value objects" above.
+Cells that only the writer can reach are zeroed when they are freed,
+and cells shared with readers are left in place, though the `free`
+count in the usage array is still adjusted.
 
-This chunk scan also cleans up old `base` arrays referred to by packed
-reader nodes.
+A chunk is scanned when it is reclaimed, to clean up old `base` arrays
+referred to by the packed reader nodes it contains.
 
 
 testing strategies

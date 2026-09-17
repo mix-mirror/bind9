@@ -261,13 +261,17 @@ typedef struct dns_qpchain {
  * leaf's values.
  *
  * The `attach` and `detach` methods adjust reference counts on value
- * objects. They support copy-on-write and safe memory reclamation
- * needed for multi-version concurrency. The `attach` method is only
- * called when the `dns_qpmulti_t` mutex is held, but `detach` is also
- * called without it, from the RCU thread that frees chunks after a
- * grace period and from dns_qpsnap_destroy(), so the two methods must
- * be safe to run concurrently with each other, as atomic reference
- * counts are.
+ * objects. The trie takes one reference when a value is inserted and
+ * releases it once no version of the trie that contains the value can
+ * be read any more: at once in a single-threaded trie, and otherwise
+ * after the deleting transaction has committed, a grace period has
+ * passed, and any snapshot of an older version has been destroyed.
+ * Copying the trie's internal nodes does not touch the counts. The
+ * `attach` method is only called when the `dns_qpmulti_t` mutex is
+ * held, but `detach` is also called without it, from the RCU thread
+ * after a grace period and from dns_qpsnap_destroy(), so the two
+ * methods must be safe to run concurrently with each other, as atomic
+ * reference counts are.
  *
  * Note: When a value object reference count is greater than one, the
  * object is in use by concurrent readers so it must not be modified. A
@@ -597,7 +601,9 @@ dns_qp_deletekey(dns_qp_t *qp, const dns_qpkey_t key, size_t keylen,
  * Delete a leaf from a qp-trie that matches the given key
  *
  * The leaf values are assigned to whichever of `*pval_r` and `*ival_r`
- * are not null, unless the return value is ISC_R_NOTFOUND.
+ * are not null, unless the return value is ISC_R_NOTFOUND. The trie
+ * keeps its reference on the value until no version that contains the
+ * leaf can be read, see the `detach` method.
  *
  * Requires:
  * \li  `qp` is a pointer to a valid qp-trie
