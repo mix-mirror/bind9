@@ -396,6 +396,35 @@ ISC_RUN_TEST_IMPL(qpmulti_memusage) {
 	dns_qpmulti_destroy(&qpm);
 }
 
+/*
+ * Every slot below the frontier that holds no chunk must be on the free
+ * list exactly once, and nothing else may be.
+ */
+static void
+check_free_slots(dns_qpmulti_t *qpm) {
+	dns_qp_t *qp = &qpm->writer;
+	unsigned int listed = 0, empty = 0;
+
+	LOCK(&qpm->mutex);
+	assert_true(qp->chunk_frontier <= qp->chunk_max);
+	for (dns_qpchunk_t c = qp->free_slot; c != INVALID_CHUNK;
+	     c = qp->usage[c].reclaim_next)
+	{
+		assert_true(c < qp->chunk_frontier);
+		assert_false(qp->usage[c].exists);
+		assert_true(++listed <= qp->chunk_frontier);
+	}
+	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
+		if (c < qp->chunk_frontier && !qp->usage[c].exists) {
+			empty++;
+		} else if (c >= qp->chunk_frontier) {
+			assert_false(qp->usage[c].exists);
+		}
+	}
+	assert_int_equal(listed, empty);
+	UNLOCK(&qpm->mutex);
+}
+
 /* Empty reader chunks must be reclaimed when the bump allocator moves on. */
 ISC_RUN_TEST_IMPL(qpmulti_reclaim_bump) {
 	dns_qpmulti_t *qpm = NULL;
@@ -407,6 +436,7 @@ ISC_RUN_TEST_IMPL(qpmulti_reclaim_bump) {
 		dns_qpmulti_commit(qpm, &qp);
 	}
 	rcu_barrier();
+	check_free_slots(qpm);
 
 	dns_qp_memusage_t mu = dns_qpmulti_memusage(qpm);
 	dns_qpmulti_destroy(&qpm);
@@ -471,6 +501,7 @@ ISC_RUN_TEST_IMPL(qpmulti_reclaim_rollback) {
 		ISC_R_SUCCESS);
 	empty_mutable_chunks(qp, 1);
 	dns_qpmulti_rollback(qpm, &qp);
+	check_free_slots(qpm);
 
 	dns_qpmulti_write(qpm, &qp);
 	assert_true(checkkey(qp, 0, true, "after rollback"));
@@ -482,6 +513,7 @@ ISC_RUN_TEST_IMPL(qpmulti_reclaim_rollback) {
 	assert_true(checkkey(snap, 0, true, "snapshot after delete"));
 	dns_qpsnap_destroy(qpm, &snap);
 	rcu_barrier();
+	check_free_slots(qpm);
 
 	dns_qp_memusage_t mu = dns_qpmulti_memusage(qpm);
 	dns_qpmulti_destroy(&qpm);

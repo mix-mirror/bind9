@@ -502,6 +502,10 @@ struct dns_qp {
 	dns_qpcell_t chunk_capacity;
 	/*% empty chunks waiting for recycling or RCU reclamation [MT] */
 	dns_qpchunk_t reclaim_head, reclaim_tail, reclaim_count;
+	/*% chunk slots freed for reuse, linked through `reclaim_next` */
+	dns_qpchunk_t free_slot;
+	/*% slots at or above this index have never held a chunk */
+	dns_qpchunk_t chunk_frontier;
 	/*% current mutable transaction generation [MT] */
 	uint64_t generation;
 	/*% what kind of transaction was most recently started [MT] */
