@@ -14,7 +14,7 @@ dnssec-policy <string> {
 	cdnskey <boolean>;
 	cds-digest-types { <string>; ... };
 	dnskey-ttl <duration>;
-	inline-signing <boolean>;
+	inline-signing <boolean>; // deprecated
 	keys { ( csk | ksk | zsk ) [ key-directory | key-store <string> ] lifetime <duration_or_unlimited> algorithm <string> [ tag-range <integer> <integer> ] [ <integer> ]; ... };
 	manual-mode <boolean>;
 	max-zone-ttl <duration>;
@@ -402,7 +402,7 @@ template <string> {
 	forward ( first | only );
 	forwarders [ port <integer> ] [ tls <string> ] { ( <ipv4_address> | <ipv6_address> ) [ port <integer> ] [ tls <string> ]; ... };
 	initial-file <quoted_string>;
-	inline-signing <boolean>;
+	inline-signing <boolean>; // deprecated
 	ixfr-from-differences <boolean>;
 	journal <quoted_string>;
 	key-directory <quoted_string>;

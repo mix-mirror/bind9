@@ -18,7 +18,7 @@ zone <string> [ <class> ] {
 	file <quoted_string>;
 	forward ( first | only );
 	forwarders [ port <integer> ] [ tls <string> ] { ( <ipv4_address> | <ipv6_address> ) [ port <integer> ] [ tls <string> ]; ... };
-	inline-signing <boolean>;
+	inline-signing <boolean>; // deprecated
 	ixfr-from-differences <boolean>;
 	journal <quoted_string>;
 	key-directory <quoted_string>;
