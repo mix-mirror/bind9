@@ -1791,6 +1791,7 @@ common_transport_params(ngtcp2_transport_params *params) {
 	params->initial_max_streams_bidi = initial_max_streams_bidi;
 	params->initial_max_streams_uni = initial_max_streams_uni;
 	params->initial_max_data = initial_max_data;
+	params->disable_active_migration = 1;
 	params->grease_quic_bit = 1;
 }
 
