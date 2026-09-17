@@ -49,8 +49,11 @@ variables:
 
   HYPOTHESIS_PROFILE: "ci"
 
-  # The nox sessions (see noxfile.py) reuse the Python packages the image
-  # already provides, downloading only those whose pinned version differs.
+  # The nox sessions (see noxfile.py) use the BIND build from the build
+  # job as it is and reuse the Python packages the image already
+  # provides, downloading only those whose pinned version differs.
+  NOX_BUILD_DIR: build
+  NOX_SKIP_BUILD: 1
   NOX_SYSTEM_SITE_PACKAGES: 1
 
   # Some jobs may clean up the build artifacts unless this is set to 0.
@@ -482,10 +485,6 @@ stages:
 .oom_check: &oom_check
     - sh "$CI_PROJECT_DIR"/util/oom-check.sh || true
 
-.display_pytest_failures: &display_pytest_failures
-    - awk '/^=+ FAILURES =+/{flag=1;next}/^=+.*=+$/{flag=0}flag' bin/tests/system/pytest.out.txt || true
-    - awk '/^=+ ERRORS =+/{flag=1;next}/^=+.*=+$/{flag=0}flag' bin/tests/system/pytest.out.txt || true
-
 .shotgun: &shotgun_job
   <<: *base_image
   stage: performance
@@ -540,36 +539,18 @@ stages:
 .system_test_common: &system_test_job
   <<: *default_triggering_rules
   stage: system
-  before_script:
-    - *setup_interfaces
-  # This script needs to: 1) fail if the system tests fail, 2) fail if
-  # the junit.xml file is broken, 3) produce the junit.xml file even if
-  # the system tests fail.  Therefore, $RET is used to "cache" the
-  # result of running pytest as interrupting the script immediately when
-  # system tests fail would make checking the contents of the junit.xml
-  # file impossible (GitLab Runner uses "set -o pipefail").
   script:
     - *fips_feature_test
     - *find_python
-    - *git_clone_bind9-qa
     - ( if [ "${CI_DISPOSABLE_ENVIRONMENT}" = "true" ]; then sleep 3000; "$PYTHON" "${CI_PROJECT_DIR}/bind9-qa/ci/get_running_system_tests.py"; fi ) &
-    - cd bin/tests/system
-    - RET=0
-    # The system tests run through nox (see noxfile.py) with the pinned
-    # Python packages, reusing those the image already provides
-    # (NOX_SYSTEM_SITE_PACKAGES), and the BIND build from the build job
-    # (NOX_BUILD_DIR, NOX_SKIP_BUILD), whose recorded Python interpreter
-    # nox uses for the tests.
-    - >
-      (NOX_BUILD_DIR=build NOX_SKIP_BUILD=1 nox --noxfile "$CI_PROJECT_DIR"/noxfile.py -s system_tests -- --junit-xml="$CI_PROJECT_DIR"/junit_pytest.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
-    - sh "$CI_PROJECT_DIR"/util/oom-check.sh || RET=1
-    - >
-      "$PYTHON" "$CI_PROJECT_DIR"/bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit_pytest.xml --output "$CI_PROJECT_DIR"/junit.xml
-    - (exit $RET)
-    - '( ! grep -F "grep: warning:" pytest.out.txt )'
-    - test "$CLEAN_BUILD_ARTIFACTS_ON_SUCCESS" -eq 0 || ( cd ../../.. && ninja -C build clean >/dev/null 2>&1 )
+    # The whole job (loopback interfaces, bind9-qa checkout, pytest with
+    # the pinned Python packages, OOM check, JUnit post-processing) is the
+    # ci_system_tests nox session (see noxfile.py), so that developers can
+    # run the same thing.  nox runs from the current directory so that the
+    # tarball job tests the extracted tree.
+    - nox -s ci_system_tests
+    - test "$CLEAN_BUILD_ARTIFACTS_ON_SUCCESS" -eq 0 || ninja -C build clean >/dev/null 2>&1
   after_script:
-    - *display_pytest_failures
     - *oom_check
   artifacts:
     untracked: true
@@ -582,7 +563,6 @@ stages:
 .system_test_tsan: &system_test_tsan_job
   <<: *system_test_job
   after_script:
-    - *display_pytest_failures
     - *oom_check
     - *parse_tsan
 
@@ -1456,14 +1436,19 @@ system:gcc:tarball:
   <<: *system_test_job
   before_script:
     - cd bind-*
-    - *setup_interfaces
   after_script:
     - cd bind-*
-    - *display_pytest_failures
     - *oom_check
   needs:
     - job: gcc:tarball
       artifacts: true
+  artifacts:
+    untracked: true
+    exclude:
+      - "**/__pycache__/**/*"
+    when: always
+    reports:
+      junit: bind-*/junit.xml
 
 unit:gcc:tarball:
   <<: *base_image
