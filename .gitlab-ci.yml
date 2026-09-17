@@ -1677,6 +1677,79 @@ docker-image:cloudsmith:
       when: manual
       allow_failure: true
 
+# Job generating a CycloneDX SBOM of the source tarball with cdxgen: the
+# C dependencies declared in meson.build (names and version constraints)
+# and, separately, the Python requirements used by the tests and docs.
+# See CONTAINER_IMAGE_SBOM_SIGNING.md, "Source tarball SBOM".
+
+tarball-sbom:
+  stage: build
+  image:
+    name: ghcr.io/cdxgen/cdxgen:v13.1.0-amd64@sha256:c5125d4b2783215159e2d5d13ad808257ad068ec88b3a01093db27020808bff2
+    entrypoint: [""]
+  variables:
+    # This job needs no BIND 9 source checkout, only the tarball artifact.
+    GIT_STRATEGY: none
+  script:
+    - TARBALL="$(ls build/meson-dist/bind-*.tar.xz)"
+    - VERSION="$(basename "${TARBALL}" .tar.xz)"
+    - VERSION="${VERSION#bind-}"
+    # The image has Python; its tarfile module handles .tar.xz without xz(1).
+    - python3 -c "import sys, tarfile; t = tarfile.open(sys.argv[1]); t.extractall(**({'filter':'data'} if hasattr(tarfile, 'data_filter') else {}))" "${TARBALL}"
+    - cdxgen -t c -r "bind-${VERSION}" --project-name bind9 --project-version "${VERSION}" --spec-version 1.6 --no-install-deps --fail-on-error -o "bind-${VERSION}.cdx.json"
+    - cdxgen -t python -r "bind-${VERSION}" --project-name bind9-dev --project-version "${VERSION}" --spec-version 1.6 --no-install-deps --fail-on-error -o "bind-${VERSION}.dev.cdx.json"
+    - |
+      python3 - "bind-${VERSION}.cdx.json" "bind-${VERSION}.dev.cdx.json" <<'EOF'
+      import json, sys
+      for path in sys.argv[1:]:
+          bom = json.load(open(path))
+          comps = bom.get("components", [])
+          print(f"{path}: {bom['metadata']['component']['name']} {bom['metadata']['component'].get('version')}, {len(comps)} components")
+          for c in comps:
+              print(f"  {c['name']} {c.get('version') or '-'} {c.get('purl', '')}")
+      EOF
+  artifacts:
+    paths:
+      - bind-*.cdx.json
+    reports:
+      cyclonedx:
+        - bind-*.cdx.json
+    expire_in: 1 week
+  needs:
+    - job: tarball-create
+      artifacts: true
+  tags:
+    - linux
+    - amd64
+  rules: *rule_docker_image
+
+# Job signing the source tarball SBOM as a standalone file with cosign, the
+# way a release would publish it next to the tarball and its GPG signature.
+
+tarball-sbom:sign:
+  stage: build
+  image: public.ecr.aws/docker/library/alpine:3.24
+  variables:
+    GIT_STRATEGY: none
+    COSIGN_YES: "true"
+  before_script:
+    - *install_sigstore_tools
+  script:
+    - if [ -z "${COSIGN_PRIVATE_KEY}" ] || [ -z "${COSIGN_PUBLIC_KEY}" ] || [ -z "${COSIGN_PASSWORD}" ]; then echo "COSIGN_PRIVATE_KEY, COSIGN_PUBLIC_KEY and COSIGN_PASSWORD CI variables are required; see CONTAINER_IMAGE_SBOM_SIGNING.md"; exit 1; fi
+    - for SBOM in bind-*.cdx.json; do cosign sign-blob --key "${COSIGN_PRIVATE_KEY}" --bundle "${SBOM}.sigstore.json" "${SBOM}"; done
+    - for SBOM in bind-*.cdx.json; do cosign verify-blob --key "${COSIGN_PUBLIC_KEY}" --bundle "${SBOM}.sigstore.json" "${SBOM}"; done
+  artifacts:
+    paths:
+      - bind-*.cdx.json.sigstore.json
+    expire_in: 1 week
+  needs:
+    - job: tarball-sbom
+      artifacts: true
+  tags:
+    - linux
+    - amd64
+  rules: *rule_docker_image
+
 # Jobs for debug GCC builds on openSUSE Tumbleweed (amd64)
 
 gcc:tumbleweed:amd64:
