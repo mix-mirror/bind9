@@ -2354,6 +2354,19 @@ endload(dns_db_t *db, dns_rdatacallbacks_t *callbacks) {
 	REQUIRE(loadctx != NULL);
 	REQUIRE(loadctx->db == db);
 
+	/*
+	 * The commits during the load only took bounded compaction
+	 * steps, and a zone that is never updated again would keep the
+	 * garbage they left behind for good, so finish the job now.
+	 */
+	dns_qp_t *qp = loadctx->tree;
+	if (qp == NULL) {
+		dns_qpmulti_write(qpdb->tree, &qp);
+	}
+	dns_qp_compact(qp, DNS_QPGC_NOW);
+	dns_qpmulti_commit(qpdb->tree, &qp);
+	loadctx->tree = NULL;
+
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
 
 	REQUIRE((qpdb->attributes & QPDB_ATTR_LOADING) != 0);
