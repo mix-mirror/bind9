@@ -1606,6 +1606,25 @@ docker-image:sign:
     expire_in: 1 week
   rules: *rule_docker_image
 
+# Job signing the pushed image keylessly with the GitLab OIDC token.  This
+# is expected to fail until https://gitlab.isc.org is a trusted issuer of
+# the public Sigstore instance (see CONTAINER_IMAGE_SBOM_SIGNING.md); it is
+# kept as a readiness probe and never blocks the pipeline.
+
+docker-image:sign-keyless:
+  <<: *docker_image_sign_job
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  script:
+    - cosign sign ${COSIGN_EXTRA_ARGS} "${IMAGE_DIGEST_REF}"
+    - cosign attest ${COSIGN_EXTRA_ARGS} --type cyclonedx --predicate sbom.cdx.json "${IMAGE_DIGEST_REF}"
+    - cosign verify --certificate-oidc-issuer "${CI_SERVER_URL}" --certificate-identity-regexp "^${CI_PROJECT_URL}//\.gitlab-ci\.yml@refs/" "${IMAGE_DIGEST_REF}"
+    - cosign verify-attestation --certificate-oidc-issuer "${CI_SERVER_URL}" --certificate-identity-regexp "^${CI_PROJECT_URL}//\.gitlab-ci\.yml@refs/" --type cyclonedx "${IMAGE_DIGEST_REF}" > /dev/null
+    - cosign tree "${IMAGE_DIGEST_REF}"
+  allow_failure: true
+  rules: *rule_docker_image
+
 # Jobs for debug GCC builds on openSUSE Tumbleweed (amd64)
 
 gcc:tumbleweed:amd64:
