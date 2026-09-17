@@ -1678,13 +1678,11 @@ dns_qp_gctime(isc_nanosecs_t *compact_p, isc_nanosecs_t *recycle_p,
  *  read-write transactions
  */
 
+/*
+ * The part of opening a transaction that needs the mutex held already.
+ */
 static dns_qp_t *
-transaction_open(dns_qpmulti_t *multi, dns_qp_t **qptp) {
-	REQUIRE(QPMULTI_VALID(multi));
-	REQUIRE(qptp != NULL && *qptp == NULL);
-
-	LOCK(&multi->mutex);
-
+transaction_open_locked(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	dns_qp_t *qp = &multi->writer;
 	INSIST(QP_VALID(qp));
 
@@ -1715,6 +1713,28 @@ transaction_open(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	return qp;
 }
 
+static dns_qp_t *
+transaction_open(dns_qpmulti_t *multi, dns_qp_t **qptp) {
+	REQUIRE(QPMULTI_VALID(multi));
+	REQUIRE(qptp != NULL && *qptp == NULL);
+
+	LOCK(&multi->mutex);
+	return transaction_open_locked(multi, qptp);
+}
+
+/*
+ * The allocator setup for a write transaction, see dns_qpmulti_write().
+ */
+static void
+write_setup(dns_qp_t *qp) {
+	if (qp->transaction_mode == QP_WRITE) {
+		qp->fender = qp->usage[qp->bump].used;
+	} else {
+		alloc_reset(qp);
+	}
+	qp->transaction_mode = QP_WRITE;
+}
+
 /*
  * a write is light
  *
@@ -1732,12 +1752,45 @@ dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	dns_qp_t *qp = transaction_open(multi, qptp);
 	TRACE("");
 
-	if (qp->transaction_mode == QP_WRITE) {
-		qp->fender = qp->usage[qp->bump].used;
-	} else {
-		alloc_reset(qp);
+	write_setup(qp);
+}
+
+bool
+dns_qpmulti_gcpending(dns_qpmulti_t *multi) {
+	REQUIRE(QPMULTI_VALID(multi));
+
+	return atomic_load_relaxed(&multi->gc_pending);
+}
+
+bool
+dns_qpmulti_gcstep(dns_qpmulti_t *multi) {
+	dns_qp_t *qp = NULL;
+
+	REQUIRE(QPMULTI_VALID(multi));
+
+	if (isc_mutex_trylock(&multi->mutex) != ISC_R_SUCCESS) {
+		/* a writer is busy; there is nothing to gain by waiting */
+		return true;
 	}
-	qp->transaction_mode = QP_WRITE;
+
+	qp = &multi->writer;
+	if (multi->destroying ||
+	    (!qp->compact_active && !qp->compact_all && !QP_NEEDGC(qp)))
+	{
+		atomic_store_relaxed(&multi->gc_pending, false);
+		UNLOCK(&multi->mutex);
+		return false;
+	}
+
+	multi->background_gc = true;
+	qp = NULL;
+	transaction_open_locked(multi, &qp);
+	TRACE("");
+	write_setup(qp);
+	compact_step(qp);
+	dns_qpmulti_commit(multi, &qp);
+
+	return atomic_load_relaxed(&multi->gc_pending);
 }
 
 /*
@@ -1831,8 +1884,17 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 			qp->usage[qp->bump].used * sizeof(dns_qpnode_t));
 		qp->usage[qp->bump].capacity = qp->usage[qp->bump].used;
 	} else {
-		/* one bounded step of compaction, unless already taken */
-		if (!qp->compact_stepped) {
+		/*
+		 * One bounded step of compaction, unless already taken.
+		 * When someone else takes steps from an idle hook, the
+		 * commit only steps in if that is not keeping up with the
+		 * allocations since the previous step.
+		 */
+		if (!qp->compact_stepped &&
+		    (!multi->background_gc ||
+		     qp->alloc_count - qp->alloc_at_step >
+			     (uint64_t)qp->compact_budget * QP_COMPACT_BACKLOG))
+		{
 			compact_step(qp);
 		}
 		multi->reader_ref = alloc_twigs(qp, READER_SIZE);
@@ -1851,6 +1913,10 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 
 	/* schedule the rest for later */
 	reclaim_chunks(multi);
+
+	/* tell an idle hook whether dns_qpmulti_gcstep() has work to do */
+	atomic_store_relaxed(&multi->gc_pending,
+			     qp->compact_active || QP_NEEDGC(qp));
 
 	*qptp = NULL;
 	UNLOCK(&multi->mutex);
@@ -2185,6 +2251,11 @@ dns_qpmulti_destroy(dns_qpmulti_t **qpmp) {
 	REQUIRE(QP_VALID(qp));
 	REQUIRE(multi->rollback == NULL);
 	REQUIRE(ISC_LIST_EMPTY(multi->snapshots));
+
+	/* stop dns_qpmulti_gcstep() from opening any more transactions */
+	LOCK(&multi->mutex);
+	multi->destroying = true;
+	UNLOCK(&multi->mutex);
 
 	rcuctx = isc_mem_get(qp->mctx, STRUCT_FLEX_SIZE(rcuctx, chunk, 0));
 	*rcuctx = (qp_rcuctx_t){
