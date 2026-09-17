@@ -1566,6 +1566,46 @@ docker-image:
     - runner-manager
   rules: *rule_docker_image
 
+# Job signing the pushed image and attesting its SBOMs with a cosign key
+# pair from the COSIGN_PRIVATE_KEY, COSIGN_PUBLIC_KEY (file-type) and
+# COSIGN_PASSWORD (masked) CI variables.  Kept separate from "docker-image"
+# so that the key is never exposed to the job running docker-in-docker.
+
+.docker-image-sign-job: &docker_image_sign_job
+  stage: build
+  image: public.ecr.aws/docker/library/alpine:3.24
+  variables:
+    GIT_STRATEGY: none
+    COSIGN_YES: "true"
+  before_script:
+    - *install_sigstore_tools
+    - cosign login -u gitlab-ci-token -p "${CI_JOB_TOKEN}" "${CI_REGISTRY}"
+  needs:
+    - job: docker-image
+      artifacts: true
+  tags:
+    - linux
+    - amd64
+
+docker-image:sign:
+  <<: *docker_image_sign_job
+  script:
+    - if [ -z "${COSIGN_PRIVATE_KEY}" ] || [ -z "${COSIGN_PUBLIC_KEY}" ] || [ -z "${COSIGN_PASSWORD}" ]; then echo "COSIGN_PRIVATE_KEY, COSIGN_PUBLIC_KEY and COSIGN_PASSWORD CI variables are required; see CONTAINER_IMAGE_SBOM_SIGNING.md"; exit 1; fi
+    - cosign sign --key "${COSIGN_PRIVATE_KEY}" ${COSIGN_EXTRA_ARGS} "${IMAGE_DIGEST_REF}"
+    - cosign attest --key "${COSIGN_PRIVATE_KEY}" ${COSIGN_EXTRA_ARGS} --type cyclonedx --predicate sbom.cdx.json "${IMAGE_DIGEST_REF}"
+    - cosign attest --key "${COSIGN_PRIVATE_KEY}" ${COSIGN_EXTRA_ARGS} --type spdxjson --predicate sbom.spdx.json "${IMAGE_DIGEST_REF}"
+    # Verify the way a consumer would, with the public key only.
+    - cosign verify --key "${COSIGN_PUBLIC_KEY}" "${IMAGE_DIGEST_REF}"
+    - cosign verify-attestation --key "${COSIGN_PUBLIC_KEY}" --type cyclonedx "${IMAGE_DIGEST_REF}" | jq -r .payload | base64 -d | jq '{predicateType, component: .predicate.metadata.component}'
+    - cosign verify-attestation --key "${COSIGN_PUBLIC_KEY}" --type spdxjson "${IMAGE_DIGEST_REF}" > /dev/null
+    - cosign tree "${IMAGE_DIGEST_REF}"
+    - cp "${COSIGN_PUBLIC_KEY}" cosign.pub
+  artifacts:
+    paths:
+      - cosign.pub
+    expire_in: 1 week
+  rules: *rule_docker_image
+
 # Jobs for debug GCC builds on openSUSE Tumbleweed (amd64)
 
 gcc:tumbleweed:amd64:
