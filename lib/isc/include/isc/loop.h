@@ -120,6 +120,21 @@ isc_loop_teardown(isc_loop_t *loop, isc_job_cb cb, void *cbarg);
  */
 
 void
+isc_loop_quiescent_start(isc_loop_t *loop, isc_job_t *job, isc_job_cb cb,
+			 void *cbarg);
+void
+isc_loop_quiescent_stop(isc_loop_t *loop, isc_job_t *job);
+/*%<
+ * Add or remove an action to be run while 'loop' is quiescent, once per
+ * iteration between its callbacks. The caller owns 'job' and must keep
+ * it alive until it has been stopped.
+ *
+ * Requires:
+ *\li	'loop' is a valid loop.
+ *\li	The caller is running on 'loop'.
+ */
+
+void
 isc_loopmgr_setup(isc_job_cb cb, void *cbarg);
 void
 isc_loopmgr_teardown(isc_job_cb cb, void *cbarg);

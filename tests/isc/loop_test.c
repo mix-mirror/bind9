@@ -128,8 +128,48 @@ ISC_RUN_TEST_IMPL(isc_loopmgr_sigterm) {
 	isc_loopmgr_run();
 }
 
+static atomic_uint quiescent_runs = 0;
+static isc_job_t quiescent_job;
+
+static void
+keep_running(void *arg ISC_ATTR_UNUSED) {
+	/* nothing: scheduling it is what makes the loop iterate */
+}
+
+static void
+quiescent_count(void *arg) {
+	isc_loop_t *loop = arg;
+
+	if (atomic_fetch_add(&quiescent_runs, 1) + 1 == 3) {
+		/* a job may unregister itself from inside its callback */
+		isc_loop_quiescent_stop(loop, &quiescent_job);
+		isc_loopmgr_shutdown();
+	} else {
+		isc_async_current(keep_running, NULL);
+	}
+}
+
+static void
+start_quiescent(void *arg ISC_ATTR_UNUSED) {
+	isc_loop_t *loop = isc_loop_main();
+
+	isc_loop_quiescent_start(loop, &quiescent_job, quiescent_count, loop);
+	isc_async_current(keep_running, NULL);
+}
+
+/* A quiescent job runs once per loop iteration until it stops itself. */
+ISC_RUN_TEST_IMPL(isc_loop_quiescent) {
+	atomic_store(&quiescent_runs, 0);
+
+	isc_loop_setup(isc_loop_main(), start_quiescent, NULL);
+	isc_loopmgr_run();
+
+	assert_int_equal(atomic_load(&quiescent_runs), 3);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(isc_loopmgr, setup_loopmgr, teardown_loopmgr)
+ISC_TEST_ENTRY_CUSTOM(isc_loop_quiescent, setup_loopmgr, teardown_loopmgr)
 ISC_TEST_ENTRY_CUSTOM(isc_loopmgr_pause, setup_loopmgr, teardown_loopmgr)
 ISC_TEST_ENTRY_CUSTOM(isc_loopmgr_runjob, setup_loopmgr, teardown_loopmgr)
 ISC_TEST_ENTRY_CUSTOM(isc_loopmgr_sigint, setup_loopmgr, teardown_loopmgr)
