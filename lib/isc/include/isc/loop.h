@@ -109,9 +109,13 @@ isc_job_t *
 isc_loop_setup(isc_loop_t *loop, isc_job_cb cb, void *cbarg);
 isc_job_t *
 isc_loop_teardown(isc_loop_t *loop, isc_job_cb cb, void *cbarg);
-/*%<
- * Schedule actions to be run when starting, and when shutting down,
- * one of the loops in a loop manager.
+void
+isc_loop_quiescent_start(isc_loop_t *loop, isc_job_t *job, isc_job_cb cb,
+			 void *cbarg);
+void
+isc_loop_quiescent_stop(isc_loop_t *loop, isc_job_t *job);
+/*%< Schedule actions to be run when starting, when shutting down, and when in
+ * the quiescent state on the loop.
  *
  * Requires:
  *\li	'loop' is a valid loop.

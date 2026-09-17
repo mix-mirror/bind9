@@ -206,6 +206,7 @@ loop_init(isc_loop_t *loop, isc_tid_t tid, const char *kind) {
 	*loop = (isc_loop_t){
 		.tid = tid,
 		.run_jobs = ISC_LIST_INITIALIZER,
+		.quiescent_jobs = ISC_LIST_INITIALIZER,
 	};
 
 	__cds_wfcq_init(&loop->async_jobs.head, &loop->async_jobs.tail);
@@ -248,16 +249,24 @@ loop_init(isc_loop_t *loop, isc_tid_t tid, const char *kind) {
 
 static void
 quiescent_cb(uv_prepare_t *handle) {
-	UNUSED(handle);
+	isc_loop_t *loop = uv_handle_get_data(handle);
 
 #if defined(RCU_QSBR)
 	/* safe memory reclamation */
 	rcu_quiescent_state();
-
-	/* mark the thread offline when polling */
-	rcu_thread_offline();
 #else
 	INSIST(!rcu_read_ongoing());
+#endif
+
+	ISC_LIST_FOREACH(loop->quiescent_jobs, job, link) {
+		isc_job_cb cb = job->cb;
+		void *cbarg = job->cbarg;
+		cb(cbarg);
+	}
+
+#if defined(RCU_QSBR)
+	/* mark the thread offline when polling */
+	rcu_thread_offline();
 #endif
 }
 
@@ -419,6 +428,29 @@ isc_loop_teardown(isc_loop_t *loop, isc_job_cb cb, void *cbarg) {
 			 &job->wfcq_node);
 
 	return job;
+}
+
+void
+isc_loop_quiescent_start(isc_loop_t *loop, isc_job_t *job, isc_job_cb cb,
+			 void *cbarg) {
+	REQUIRE(VALID_LOOP(loop));
+	REQUIRE(cb != NULL);
+	REQUIRE(loop->tid == isc_tid());
+
+	job->cb = cb;
+	job->cbarg = cbarg;
+	ISC_LINK_INIT(job, link);
+
+	ISC_LIST_ENQUEUE(loop->quiescent_jobs, job, link);
+}
+
+void
+isc_loop_quiescent_stop(isc_loop_t *loop, isc_job_t *job) {
+	REQUIRE(VALID_LOOP(loop));
+	REQUIRE(loop->tid == isc_tid());
+	REQUIRE(ISC_LINK_LINKED(job, link));
+
+	ISC_LIST_DEQUEUE(loop->quiescent_jobs, job, link);
 }
 
 void

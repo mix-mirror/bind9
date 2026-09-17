@@ -1040,11 +1040,26 @@ ISC_RUN_TEST_IMPL(qpmulti_compact_snapshot) {
 }
 
 /*
- * Compaction steps taken from a job that runs whenever the loop gets
- * around to it, with no write transaction of our own in between:
- * dns_qpmulti_gcstep() does all the work and never blocks.
+ * Compaction steps taken from a loop's quiescent hook, with no write
+ * transaction of our own in between: dns_qpmulti_gcstep() does all
+ * the work and never blocks.
  */
+static isc_job_t gc_job;
 static unsigned int gc_steps, gc_pumps;
+
+static void
+gc_quiescent(void *arg) {
+	dns_qpmulti_t *qpm = arg;
+
+	if (!dns_qpmulti_gcpending(qpm)) {
+		return;
+	}
+	uint32_t before = qpm->writer.compact_steps;
+	(void)dns_qpmulti_gcstep(qpm);
+	if (qpm->writer.compact_steps != before) {
+		gc_steps++;
+	}
+}
 
 static void
 gc_pump(void *arg) {
@@ -1052,13 +1067,8 @@ gc_pump(void *arg) {
 	dns_qp_memusage_t mu;
 
 	if (dns_qpmulti_gcpending(qpm)) {
-		uint32_t before = qpm->writer.compact_steps;
-
+		/* keep the loop iterating; the quiescent job does the work */
 		assert_true(++gc_pumps < 100000);
-		(void)dns_qpmulti_gcstep(qpm);
-		if (qpm->writer.compact_steps != before) {
-			gc_steps++;
-		}
 		isc_async_current(gc_pump, qpm);
 		return;
 	}
@@ -1074,6 +1084,8 @@ gc_pump(void *arg) {
 	assert_true(dns_qpmulti_gcstep(qpm));
 	assert_int_equal(qpm->writer.compact_steps, before);
 	UNLOCK(&qpm->mutex);
+
+	isc_loop_quiescent_stop(isc_loop_main(), &gc_job);
 
 	rcu_barrier();
 	mu = dns_qpmulti_memusage(qpm);
@@ -1103,7 +1115,7 @@ gc_start(void *arg ISC_ATTR_UNUSED) {
 	assert_true(dns_qpmulti_gcpending(qpm));
 	assert_int_equal(qpm->writer.compact_steps, 1);
 
-	gc_steps = gc_pumps = 0;
+	isc_loop_quiescent_start(isc_loop_main(), &gc_job, gc_quiescent, qpm);
 	isc_async_current(gc_pump, qpm);
 }
 

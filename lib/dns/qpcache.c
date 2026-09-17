@@ -228,6 +228,14 @@ struct qpcache {
 
 	dns_qpmulti_t *tree; /* QPmulti trie for data storage */
 
+	/*
+	 * The trie is compacted in bounded steps between the callbacks of
+	 * the loop that created the database, so that no query has to
+	 * wait for it. The database must therefore be created on a loop.
+	 */
+	isc_loop_t *quiescent_loop;
+	isc_job_t quiescent_job;
+
 	struct rcu_head rcu_head;
 
 	size_t buckets_count;
@@ -1879,10 +1887,20 @@ qpcache__destroy(qpcache_t *qpdb) {
 }
 
 static void
+qpcache_destroy_async(void *arg) {
+	qpcache_t *qpdb = (qpcache_t *)arg;
+
+	isc_loop_quiescent_stop(isc_loop(), &qpdb->quiescent_job);
+	isc_loop_detach(&qpdb->quiescent_loop);
+
+	qpcache_detach(&qpdb);
+}
+
+static void
 qpcache_destroy(dns_db_t *arg) {
 	qpcache_t *qpdb = (qpcache_t *)arg;
 
-	qpcache_detach(&qpdb);
+	isc_async_run(qpdb->quiescent_loop, qpcache_destroy_async, arg);
 }
 
 /*%
@@ -1915,7 +1933,6 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 
 	NODE_UNLOCK(nlock, &nlocktype);
 
-	dns_qp_compact(qp, DNS_QPGC_MAYBE);
 	dns_qpmulti_commit(qpdb->tree, &qp);
 }
 
@@ -2776,6 +2793,21 @@ nodecount(dns_db_t *db) {
 	return mu.leaves;
 }
 
+/*
+ * Runs once per iteration of the event loop, between its callbacks:
+ * one bounded step of compaction whenever the trie has garbage to
+ * collect, and nothing but a flag check otherwise. It never blocks on
+ * the trie's mutex.
+ */
+static void
+qpcache_compact(void *arg) {
+	qpcache_t *qpdb = arg;
+
+	if (dns_qpmulti_gcpending(qpdb->tree)) {
+		(void)dns_qpmulti_gcstep(qpdb->tree);
+	}
+}
+
 isc_result_t
 dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		    dns_dbtype_t type, dns_rdataclass_t rdclass,
@@ -2802,6 +2834,7 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		.common.references = 1,
 		.references = 1,
 		.buckets_count = nloops,
+		.quiescent_loop = isc_loop_ref(loop),
 	};
 
 	isc_rwlock_init(&qpdb->lock);
@@ -2833,6 +2866,9 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	 * Make the qp trie.
 	 */
 	dns_qpmulti_create(mctx, &qpmethods, qpdb, &qpdb->tree);
+
+	isc_loop_quiescent_start(loop, &qpdb->quiescent_job, qpcache_compact,
+				 qpdb);
 
 	qpdb->common.magic = DNS_DB_MAGIC;
 	qpdb->common.impmagic = QPDB_MAGIC;

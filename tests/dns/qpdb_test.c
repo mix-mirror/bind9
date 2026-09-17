@@ -36,6 +36,7 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
+#include "qp_p.h"
 #include "qpcache.c"
 #pragma GCC diagnostic pop
 
@@ -376,6 +377,65 @@ ISC_LOOP_TEST_IMPL(inline_key) {
 	isc_loopmgr_shutdown();
 }
 
+/*
+ * A cache that only ever gains nodes still gets its trie compacted,
+ * by the quiescent job of the loop it was created on, without any
+ * dead-node cleanup to trigger it.
+ */
+static unsigned int compact_pumps;
+
+static void
+compact_pump(void *arg) {
+	dns_db_t *db = arg;
+	qpcache_t *qpdb = (qpcache_t *)db;
+	dns_qpmulti_t *tree = qpdb->tree;
+
+	if (dns_qpmulti_gcpending(tree)) {
+		/* keep the loop iterating; the quiescent job does the work */
+		assert_true(++compact_pumps < 100000);
+		isc_async_current(compact_pump, db);
+		return;
+	}
+	assert_false(tree->writer.compact_active);
+	assert_true(tree->background_gc);
+	assert_true(tree->writer.compact_steps > 1);
+	assert_false(dns_qpmulti_memusage(tree).fragmented);
+
+	dns_db_detach(&db);
+	isc_loopmgr_shutdown();
+}
+
+ISC_LOOP_TEST_IMPL(compact_insert_only) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	isc_mem_t *mctx = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	dns_qp_t *qp = NULL;
+
+	isc_mem_create("test", &mctx);
+	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			       &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	for (int i = 0; i < 5000; i++) {
+		overmempurge_addrdataset(db, now, i, 50053, 16, false);
+	}
+
+	/* force a cycle in small steps, then let the loop run them */
+	qpcache_t *qpdb = (qpcache_t *)db;
+	qpdb->tree->writer.compact_budget = 64;
+	qpdb->tree->writer.compact_all = true;
+	dns_qpmulti_write(qpdb->tree, &qp);
+	dns_qpmulti_commit(qpdb->tree, &qp);
+	assert_true(dns_qpmulti_gcpending(qpdb->tree));
+
+	compact_pumps = 0;
+	isc_async_current(compact_pump, db);
+	/* dns_db_detach() and the shutdown happen in compact_pump() */
+	isc_mem_detach(&mctx);
+}
+
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
 	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
@@ -487,6 +547,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(inline_key, setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(compact_insert_only, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(allrdatasets_expiredok_skips_deleted_header,

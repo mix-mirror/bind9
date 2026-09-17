@@ -59,6 +59,7 @@ struct isc_loop {
 	/* Jobs queue */
 	uv_idle_t run_trigger;
 	isc_joblist_t run_jobs;
+	isc_joblist_t quiescent_jobs;
 
 	/* Pause */
 	uv_async_t pause_trigger;
