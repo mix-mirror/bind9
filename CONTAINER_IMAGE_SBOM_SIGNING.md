@@ -36,7 +36,8 @@ repository. It decides:
 
 The proof of concept (PoC) lives temporarily in this repository's
 `.gitlab-ci.yml` (jobs `docker-image`, `docker-image:sign`,
-`docker-image:sign-keyless`, `docker-image:cloudsmith`), because this
+`docker-image:sign-keyless`, `docker-image:cloudsmith`, and
+`tarball-sbom`, `tarball-sbom:sign` for the source tarball), because this
 repository already produces
 the source tarball, has the runners, and has a job that builds the
 image from that tarball. The jobs are written so that they can be
@@ -166,6 +167,89 @@ tooling all consume this form.
 but running syft and cosign as two explicit steps keeps the SBOM as a
 plain artifact (for the GitLab dependency list and for humans) and
 keeps the signing step free of any tool that is not cosign.
+
+Source tarball SBOM
+-------------------
+
+**Decision: also publish a CycloneDX SBOM of the source tarball, generated
+by [cdxgen](https://github.com/cdxgen/cdxgen) from `meson.build`, signed
+with cosign as a standalone file and shipped in the release directory
+next to the tarball and its GPG signature.**
+
+The image SBOM answers "what is inside this image". Packagers and
+subscribers building from the tarball ask a different question: "what
+does BIND 9 depend on", before any distribution has resolved it. That is
+a *source* SBOM: the declared dependencies with their version constraints,
+not the versions actually linked. syft cannot produce it (it catalogues
+installed packages, and a tarball contains none); cdxgen can, because it
+parses build manifests.
+
+### What cdxgen extracts from BIND 9
+
+cdxgen's C project type treats `meson.build` like `CMakeLists.txt`: the
+`project()` call becomes the top-level component and every
+`dependency('name', version: '>=x.y')` call becomes a component with the
+constraint recorded as the `cdx:build:versionSpecifiers` property.
+`declare_dependency()` (BIND's own internal libraries) is ignored, as
+are `dependency('')` placeholders. Names are matched against Meson's
+WrapDB to normalise them and attach upstream URLs; matched components get
+confidence 0.5, others 0. For `bind9` that yields, from the top-level
+`meson.build` alone, roughly: `threads`, `libcrypto`, `libssl`, `libuv`,
+`liburcu` (and its `-cds`/`-bp`/`-mb`/`-qsbr` flavours), `jemalloc`,
+`libfstrm`, `libprotobuf-c`, `json-c`, `libxml-2.0`, `libnghttp2`,
+`libngtcp2`, `libmaxminddb`, `libcap`, `libidn2`, `lmdb`, `zlib`,
+`libedit`, `cmocka`. Optional and test-only dependencies are included
+because the parser does not evaluate `required:`.
+
+Two things the parser does not do, both handled in the job:
+
+- The multi-line `project()` call defeats its version detection, so the
+  version is passed with `--project-version`; the name is set to `bind9`
+  with `--project-name`.
+- The Python requirements (`tests/`, `bin/tests/system/`, `doc/arm/`)
+  are test and documentation dependencies, not BIND's. They go into a
+  second SBOM (`-t python`, component `bind9-dev`) so that consumers do
+  not mistake `pytest` for a runtime dependency.
+
+### Limits, and what complements it
+
+- No resolved versions. That is correct for a source SBOM, but it means
+  vulnerability matching against it is coarse (constraint, not version).
+  The image SBOM and the distribution package metadata carry the resolved
+  versions; the design does not try to make the source SBOM do their job.
+- `meson introspect --dependencies` on a configured build tree knows the
+  versions that particular build resolved through pkg-config (on the
+  reference CI image today: OpenSSL 3.5.7, libuv 1.51.0, liburcu 0.15.6,
+  jemalloc 5.3.0, libxml2 2.12.10, libnghttp2 1.68.0, ...). A small
+  post-processing step could merge those into a *build* SBOM of the CI
+  build. Deferred; it would describe ISC's CI build, which nobody
+  installs.
+- `reuse spdx`, already a CI dependency through the `reuse` job, produces
+  a file-level SPDX document with the licence of every file in the
+  tarball. It is a licence inventory rather than a dependency SBOM, and
+  cheap to add to the release directory later.
+- cdxgen's own supply-chain hygiene is the same as for syft and cosign:
+  the job uses the official image pinned by digest, runs with
+  `--no-install-deps` so it never executes package managers, and
+  `--fail-on-error` so a parser failure is not silently an empty SBOM.
+
+### How it is published and signed
+
+The PoC job `tarball-sbom` runs after `tarball-create`, extracts the
+tarball and writes `bind-<version>.cdx.json` and
+`bind-<version>.dev.cdx.json` (CycloneDX 1.6, also handed to GitLab as
+a `cyclonedx` report). `tarball-sbom:sign` signs each file with
+`cosign sign-blob --bundle`, producing `<file>.sigstore.json`, and
+verifies with the public key. At release time the same two files belong
+in the `bind-<tag>-release` directory, where the existing `sign` job can
+add a GPG detached signature with the release key for consumers who
+verify tarballs today. The cosign bundle gives the same file a signature
+verifiable with the image key (or, later, keylessly).
+
+Known unknowns for the PoC: the cdxgen image runs as an unprivileged user
+(`cyclonedx`), which the GitLab docker executor usually tolerates but has
+not been tested on ISC's runners; and whether GitLab's dependency list
+ingests a source-level CycloneDX report usefully or just stores it.
 
 Signing method
 --------------
@@ -703,9 +787,10 @@ Open questions
 - Retention: the PoC pushes `bind9:<version>-<sha>` images into the
   project registry on every run. A cleanup policy for that repository
   is needed before the schedule runs it nightly.
-- Should the source tarball get an SBOM as well (cdxgen or syft on the
-  tarball, attached to the release directory next to the `.asc`)? It
-  is cheap and answers the same regulatory question for RPM/DEB users.
+- Source tarball SBOM: is a build SBOM with resolved versions (from
+  `meson introspect`) wanted in addition to the declared-dependency one,
+  and should `reuse spdx` output ship in the release directory as the
+  licence inventory?
 
 References
 ----------
