@@ -1034,7 +1034,7 @@ pull_packet_closed(isc_quic_conn_t *conn, isc_region_t out, size_t *written,
 
 	if (from != NULL) {
 		result = isc_sockaddr_fromsockaddr(
-			from, (const struct sockaddr *)&ps.path.local);
+			from, (const struct sockaddr *)&ps.local_addrbuf);
 		INSIST(result == ISC_R_SUCCESS);
 	}
 
