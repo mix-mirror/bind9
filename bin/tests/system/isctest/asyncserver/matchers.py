@@ -212,13 +212,13 @@ class Protocol(Matcher):
     """
 
     def __init__(self, protocol: DnsProtocol) -> None:
-        self.protocol = protocol
+        self._protocol = protocol
 
     def match(self, qctx: QueryContext) -> bool:
-        return qctx.protocol == self.protocol
+        return qctx.protocol == self._protocol
 
     def __str__(self) -> str:
-        return f"over {self.protocol.name}"
+        return f"over {self._protocol.name}"
 
 
 class Edns(Matcher):
