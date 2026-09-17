@@ -180,12 +180,17 @@ qp_test_dumpchunks(dns_qp_t *qp) {
 	dns_qpcell_t used_count = 0;
 	dns_qpcell_t free_count = 0;
 	dumpqp(qp, "qp");
+	printf("qp %p compact active %u all %u stuck %u keylen %u "
+	       "cutoff %llu steps %u evacuated %u budget %u\n",
+	       qp, qp->compact_active, qp->compact_all, qp->compact_stuck,
+	       qp->compact_keylen, (unsigned long long)qp->compact_cutoff,
+	       qp->compact_steps, qp->compact_evacuated, qp->compact_budget);
 	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
 		printf("qp %p chunk %u base %p "
-		       "used %u free %u generation %llu discounted %u "
-		       "reclaim_candidate %u reclaim_next %u\n",
+		       "used %u free %u capacity %u generation %llu "
+		       "discounted %u reclaim_candidate %u reclaim_next %u\n",
 		       qp, c, qp->base->ptr[c], qp->usage[c].used,
-		       qp->usage[c].free,
+		       qp->usage[c].free, qp->usage[c].capacity,
 		       (unsigned long long)qp->usage[c].generation,
 		       qp->usage[c].discounted, qp->usage[c].reclaim_candidate,
 		       qp->usage[c].reclaim_next);

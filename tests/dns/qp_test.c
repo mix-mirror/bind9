@@ -2160,6 +2160,462 @@ ISC_RUN_TEST_IMPL(qp_memusage) {
 	assert_null(qp);
 }
 
+/*
+ * Names for the compaction tests. The value stored in the trie is the
+ * pointer to the string, so the strings must stay put.
+ */
+#define COMPACT_NAMES 10000
+static char compact_names[COMPACT_NAMES][24];
+
+static void
+compact_names_setup(void) {
+	for (unsigned int i = 0; i < COMPACT_NAMES; i++) {
+		snprintf(compact_names[i], sizeof(compact_names[i]),
+			 "h%04u.example.", i);
+	}
+}
+
+/*
+ * Every twigs vector reachable from the root must live in a chunk
+ * allocated in generation `gen`, i.e. a full cycle moved all of them.
+ */
+static void
+check_moved(dns_qp_t *qp, dns_qpnode_t *n, uint64_t gen) {
+	if (!is_branch(n)) {
+		return;
+	}
+	dns_qpref_t ref = branch_twigs_ref(n);
+	assert_int_equal(qp->usage[ref_chunk(ref)].generation, gen);
+	for (dns_qpweight_t pos = 0; pos < branch_twigs_size(n); pos++) {
+		check_moved(qp, ref_ptr(qp, ref) + pos, gen);
+	}
+}
+
+static void
+check_all_moved(dns_qp_t *qp, uint64_t gen) {
+	assert_int_equal(qp->usage[ref_chunk(qp->root_ref)].generation, gen);
+	check_moved(qp, ref_ptr(qp, qp->root_ref), gen);
+}
+
+static bool
+name_present(dns_qp_t *qp, const char *str) {
+	dns_fixedname_t fixed;
+	void *pval = NULL;
+
+	dns_test_namefromstring(str, &fixed);
+	return dns_qp_getname(qp, dns_fixedname_name(&fixed),
+			      DNS_DBNAMESPACE_NORMAL, &pval,
+			      NULL) == ISC_R_SUCCESS &&
+	       pval == str;
+}
+
+static void
+delete_name(dns_qp_t *qp, const char *str) {
+	dns_fixedname_t fixed;
+	isc_result_t result;
+
+	dns_test_namefromstring(str, &fixed);
+	result = dns_qp_deletename(qp, dns_fixedname_name(&fixed),
+				   DNS_DBNAMESPACE_NORMAL, NULL, NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+}
+
+static void
+check_names(dns_qp_t *qp, unsigned int lo, unsigned int hi, bool present) {
+	for (unsigned int i = lo; i < hi; i++) {
+		assert_true(name_present(qp, compact_names[i]) == present);
+	}
+}
+
+/*
+ * Pretend a cycle is in progress and its next step resumes at `str`.
+ */
+static void
+set_cursor(dns_qp_t *qp, const char *str) {
+	dns_fixedname_t fixed;
+
+	dns_test_namefromstring(str, &fixed);
+	if (qp->compact_key == NULL) {
+		qp->compact_key = isc_mem_get(qp->mctx,
+					      sizeof(*qp->compact_key));
+	}
+	qp->compact_keylen = dns_qpkey_fromname(*qp->compact_key,
+						dns_fixedname_name(&fixed),
+						DNS_DBNAMESPACE_NORMAL);
+	qp->compact_active = true;
+	qp->compact_all = true;
+	qp->compact_cutoff = qp->generation + 1;
+	qp->compact_evacuated = 0;
+	/* by default, nothing on the path to the key is left unprocessed */
+	qp->compact_keyoffset = DNS_QP_MAXKEY;
+}
+
+/*
+ * The key offset of the branch one level below the root on the path
+ * to `str`: the subtree a real cycle would have deferred.
+ */
+static uint16_t
+subtree_offset(dns_qp_t *qp, const char *str) {
+	dns_fixedname_t fixed;
+	dns_qpkey_t key;
+	size_t len;
+	dns_qpnode_t *n = ref_ptr(qp, qp->root_ref);
+
+	dns_test_namefromstring(str, &fixed);
+	len = dns_qpkey_fromname(key, dns_fixedname_name(&fixed),
+				 DNS_DBNAMESPACE_NORMAL);
+	assert_true(is_branch(n));
+	n = branch_twig_ptr(qp, n, branch_keybit(n, key, len));
+	assert_true(is_branch(n));
+	return branch_key_offset(n);
+}
+
+/*
+ * Only chunks with more than an eighth of garbage are evacuated; a full
+ * chunk that happens to be small stays where it is.
+ */
+ISC_RUN_TEST_IMPL(qp_compact_fragmented) {
+	dns_qp_t *qp = NULL;
+	struct {
+		dns_qpchunk_t chunk;
+		void *base;
+		dns_qpcell_t used;
+	} packed[8];
+	unsigned int npacked = 0;
+
+	compact_names_setup();
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	for (unsigned int i = 0; i < 300; i++) {
+		insert_name(qp, compact_names[i], DNS_DBNAMESPACE_NORMAL);
+	}
+
+	/* pack the trie into fresh chunks, then retire the bump chunk */
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	alloc_reset(qp);
+
+	for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
+		if (c == qp->bump || !qp->usage[c].exists) {
+			continue;
+		}
+		assert_true(npacked < ARRAY_SIZE(packed));
+		assert_int_equal(qp->usage[c].free, 0);
+		assert_false(chunk_fragmented(qp, c));
+		packed[npacked].chunk = c;
+		packed[npacked].base = qp->base->ptr[c];
+		packed[npacked].used = qp->usage[c].used;
+		npacked++;
+	}
+	assert_true(npacked > 0);
+
+	/* a little garbage is below the threshold: nothing moves */
+	for (unsigned int i = 300; i < 304; i++) {
+		insert_name(qp, compact_names[i], DNS_DBNAMESPACE_NORMAL);
+	}
+	dns_qp_compact(qp, DNS_QPGC_NOW);
+	for (unsigned int i = 0; i < npacked; i++) {
+		dns_qpchunk_t c = packed[i].chunk;
+		assert_true(qp->usage[c].exists);
+		assert_ptr_equal(qp->base->ptr[c], packed[i].base);
+		assert_int_equal(qp->usage[c].used, packed[i].used);
+		assert_false(chunk_fragmented(qp, c));
+	}
+	check_names(qp, 0, 304, true);
+
+	/* enough garbage and the chunk is evacuated and freed */
+	for (unsigned int i = 0; i < 200; i++) {
+		delete_name(qp, compact_names[i]);
+	}
+	assert_true(chunk_fragmented(qp, packed[0].chunk));
+	dns_qp_compact(qp, DNS_QPGC_NOW);
+	for (unsigned int i = 0; i < npacked; i++) {
+		assert_false(qp->usage[packed[i].chunk].exists);
+	}
+	check_names(qp, 0, 200, false);
+	check_names(qp, 200, 304, true);
+
+	dns_qp_destroy(&qp);
+}
+
+/*
+ * A bounded cycle copies the whole trie in many small steps and ends
+ * with the garbage gone.
+ */
+static void
+steps_case(unsigned int names, dns_qpcell_t budget) {
+	dns_qp_t *qp = NULL;
+	dns_qp_memusage_t mu;
+	unsigned int steps = 0;
+
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	for (unsigned int i = 0; i < names; i++) {
+		insert_name(qp, compact_names[i], DNS_DBNAMESPACE_NORMAL);
+	}
+	mu = dns_qp_memusage(qp);
+
+	/* the cycle's own chunks get the new generation */
+	qp->generation++;
+	qp->compact_budget = budget;
+	qp->compact_all = true;
+	do {
+		compact_step(qp);
+		steps++;
+		/* every vector is visited and copied at most once */
+		assert_true(steps <= 2 * mu.live / budget + 2);
+		check_names(qp, 0, names, true);
+	} while (qp->compact_active);
+
+	assert_true(steps > 1);
+	assert_null(qp->compact_key);
+	assert_false(qp->compact_all);
+	assert_true(qp->compact_evacuated >= mu.live);
+	check_all_moved(qp, qp->generation);
+
+	mu = dns_qp_memusage(qp);
+	assert_true(mu.free <= mu.used / 8);
+
+	dns_qp_destroy(&qp);
+}
+
+ISC_RUN_TEST_IMPL(qp_compact_steps) {
+	compact_names_setup();
+	steps_case(300, 64);
+	steps_case(COMPACT_NAMES, QP_COMPACT_BUDGET);
+}
+
+/*
+ * Resuming from a saved key must process exactly the vectors whose
+ * least leaf sorts at or after the key, however the trie changed in
+ * the meantime. Everything sits in the bump chunk, which is never
+ * evacuated for being fragmented, so `compact_all` alone decides what
+ * gets copied and compact_evacuated tells us what was processed.
+ */
+static void
+resume_case(const char *const names[], const char *cursor, const char *delete,
+	    dns_qpcell_t expected) {
+	/* leaf values must be aligned, which string literals need not be */
+	static char store[8][16] __attribute__((__aligned__(8)));
+	dns_qp_t *qp = NULL;
+	unsigned int count = 0;
+	int deleted = -1;
+
+	for (; names[count] != NULL; count++) {
+		INSIST(count < ARRAY_SIZE(store));
+		strlcpy(store[count], names[count], sizeof(store[count]));
+		if (delete != NULL && strcmp(names[count], delete) == 0) {
+			deleted = count;
+		}
+	}
+
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	for (unsigned int i = 0; i < count; i++) {
+		insert_name(qp, store[i], DNS_DBNAMESPACE_NORMAL);
+	}
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+
+	set_cursor(qp, cursor);
+	if (deleted >= 0) {
+		delete_name(qp, store[deleted]);
+	}
+	compact_step(qp);
+
+	assert_false(qp->compact_active);
+	assert_null(qp->compact_key);
+	assert_int_equal(qp->compact_evacuated, expected);
+	for (unsigned int i = 0; i < count; i++) {
+		assert_true(name_present(qp, store[i]) == ((int)i != deleted));
+	}
+
+	dns_qp_destroy(&qp);
+}
+
+ISC_RUN_TEST_IMPL(qp_compact_resume) {
+	/* the cursor leaf is the first twig of a branch that collapses */
+	static const char *const first[] = { "a.example.", "b1.example.",
+					     "b2.example.", "b3.example.",
+					     NULL };
+	/* the collapsed branch sorts after the key: process it */
+	resume_case(first, "a.example.", "a.example.", 3);
+	/* not collapsed: the key's own leaf, then its later sibling */
+	resume_case(first, "a.example.", NULL, 3);
+
+	/* the cursor leaf is the last twig of a branch that collapses */
+	static const char *const last[] = { "b1.example.", "b2.example.",
+					    "b3.example.", "z.example.", NULL };
+	/* the collapsed branch sorts before the key: nothing to do */
+	resume_case(last, "z.example.", "z.example.", 0);
+	resume_case(last, "z.example.", NULL, 0);
+
+	/* the key's subtree is gone: resume with the later siblings */
+	static const char *const gone[] = { "a1.example.", "a2.example.",
+					    "c1.example.", "c2.example.",
+					    NULL };
+	resume_case(gone, "b.example.", NULL, 2);
+
+	/* the key still exists: its later branch siblings are processed */
+	static const char *const equal[] = { "a.example.",  "b1.example.",
+					     "b2.example.", "c1.example.",
+					     "c2.example.", NULL };
+	resume_case(equal, "b1.example.", NULL, 2);
+	/*
+	 * The key sorts before everything: process the whole trie.
+	 * The branch the resume path runs through is not copied by
+	 * `compact_all` (a real cycle did that when it first entered
+	 * it off-path), so only the two subtrees count.
+	 */
+	resume_case(equal, "0.example.", NULL, 4);
+	/* the key sorts after everything: nothing to do */
+	resume_case(equal, "zz.example.", NULL, 0);
+}
+
+/*
+ * When the key names the least leaf of a subtree that a step deferred,
+ * that subtree and the path within it were never processed, so a full
+ * cycle must copy them even though they lie on the resume path.
+ */
+ISC_RUN_TEST_IMPL(qp_compact_resume_deferred) {
+	static char store[4][16] __attribute__((__aligned__(8)));
+	static const char *const names[] = { "a.example.", "b1.example.",
+					     "b2.example.", "b3.example." };
+	dns_qp_t *qp = NULL;
+
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	for (unsigned int i = 0; i < ARRAY_SIZE(names); i++) {
+		strlcpy(store[i], names[i], sizeof(store[i]));
+		insert_name(qp, store[i], DNS_DBNAMESPACE_NORMAL);
+	}
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+
+	/* the "b" subtree was deferred: its vector must be copied */
+	set_cursor(qp, "b1.example.");
+	qp->compact_keyoffset = subtree_offset(qp, "b1.example.");
+	compact_step(qp);
+	assert_false(qp->compact_active);
+	assert_int_equal(qp->compact_evacuated, 3);
+
+	/* the path to the key was processed: nothing to copy */
+	set_cursor(qp, "b1.example.");
+	compact_step(qp);
+	assert_false(qp->compact_active);
+	assert_int_equal(qp->compact_evacuated, 0);
+
+	for (unsigned int i = 0; i < ARRAY_SIZE(names); i++) {
+		assert_true(name_present(qp, store[i]));
+	}
+	dns_qp_destroy(&qp);
+}
+
+/*
+ * Order two keys: negative, zero or positive like memcmp().
+ */
+static int
+key_order(const dns_qpkey_t a, size_t alen, const dns_qpkey_t b, size_t blen) {
+	size_t off = qpkey_compare(a, alen, b, blen);
+	if (off == QPKEY_EQUAL) {
+		return 0;
+	}
+	return (int)qpkey_bit(a, alen, off) - (int)qpkey_bit(b, blen, off);
+}
+
+/*
+ * A step always makes progress, even with no budget at all, and the
+ * cursor only ever moves forward. Between steps the cursor's own key is
+ * deleted and new names are inserted on both sides of it.
+ */
+ISC_RUN_TEST_IMPL(qp_compact_progress) {
+	dns_qp_t *qp = NULL;
+	dns_qpkey_t prev;
+	size_t prevlen = 0;
+	bool have_prev = false;
+	unsigned int steps = 0, inserted = 300, deleted = 0;
+	dns_qp_memusage_t mu;
+
+	compact_names_setup();
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	for (unsigned int i = 0; i < 300; i++) {
+		insert_name(qp, compact_names[i], DNS_DBNAMESPACE_NORMAL);
+	}
+	mu = dns_qp_memusage(qp);
+
+	qp->compact_budget = 0;
+	qp->compact_all = true;
+	do {
+		compact_step(qp);
+		steps++;
+		assert_true(steps <= mu.live + 2);
+		if (!qp->compact_active) {
+			break;
+		}
+		assert_non_null(qp->compact_key);
+		if (have_prev) {
+			assert_true(key_order(*qp->compact_key,
+					      qp->compact_keylen, prev,
+					      prevlen) > 0);
+		}
+		memmove(prev, *qp->compact_key, qp->compact_keylen);
+		prevlen = qp->compact_keylen;
+		have_prev = true;
+
+		/* mutate around the cursor every few steps */
+		if (steps % 3 == 0) {
+			void *pval = NULL;
+			if (dns_qp_getkey(qp, prev, prevlen, &pval, NULL) ==
+			    ISC_R_SUCCESS)
+			{
+				delete_name(qp, pval);
+				deleted++;
+			}
+			if (inserted < COMPACT_NAMES) {
+				insert_name(qp, compact_names[inserted++],
+					    DNS_DBNAMESPACE_NORMAL);
+			}
+		}
+	} while (true);
+
+	assert_true(steps > 1);
+	assert_true(deleted > 0);
+	assert_int_equal(dns_qp_memusage(qp).leaves, inserted - deleted);
+
+	dns_qp_destroy(&qp);
+}
+
+/*
+ * A cycle that finds nothing fragmented examines the trie without
+ * copying anything, and is not mistaken for a stuck collector.
+ */
+ISC_RUN_TEST_IMPL(qp_compact_examine_only) {
+	dns_qp_t *qp = NULL;
+	dns_qp_memusage_t before, after;
+	unsigned int steps = 0;
+
+	compact_names_setup();
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	for (unsigned int i = 0; i < 300; i++) {
+		insert_name(qp, compact_names[i], DNS_DBNAMESPACE_NORMAL);
+	}
+	dns_qp_compact(qp, DNS_QPGC_ALL);
+	alloc_reset(qp);
+	before = dns_qp_memusage(qp);
+
+	qp->compact_budget = 64;
+	compact_cycle_start(qp, true);
+	do {
+		compact_step(qp);
+		steps++;
+		assert_true(steps <= before.live / 64 + 2);
+	} while (qp->compact_active);
+
+	assert_true(steps > 1);
+	assert_int_equal(qp->compact_evacuated, 0);
+	assert_false(qp->compact_all);
+	assert_false(qp->compact_stuck);
+	after = dns_qp_memusage(qp);
+	assert_int_equal(after.used, before.used);
+	assert_int_equal(after.free, before.free);
+	check_names(qp, 0, 300, true);
+
+	dns_qp_destroy(&qp);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(qp_basics)
 ISC_TEST_ENTRY(qp_memusage)
@@ -2171,6 +2627,12 @@ ISC_TEST_ENTRY(qpchain)
 ISC_TEST_ENTRY(predecessors)
 ISC_TEST_ENTRY(fixiterator)
 ISC_TEST_ENTRY(qpkey_delete)
+ISC_TEST_ENTRY(qp_compact_fragmented)
+ISC_TEST_ENTRY(qp_compact_steps)
+ISC_TEST_ENTRY(qp_compact_resume)
+ISC_TEST_ENTRY(qp_compact_resume_deferred)
+ISC_TEST_ENTRY(qp_compact_progress)
+ISC_TEST_ENTRY(qp_compact_examine_only)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
