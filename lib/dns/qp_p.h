@@ -218,6 +218,13 @@ STATIC_ASSERT(QP_SAFETY_MARGIN >= QP_CHUNK_BYTES,
 #define QP_COMPACT_BUDGET_MAX 16
 
 /*
+ * When an idle hook takes the compaction steps, a commit only steps in
+ * once this many budgets' worth of cells have been allocated since the
+ * previous step.
+ */
+#define QP_COMPACT_BACKLOG 4
+
+/*
  * The chunk base and usage arrays are resized geometically and start off
  * with two entries.
  */
@@ -648,6 +655,12 @@ struct dns_qpmulti {
 	qp_deadlist_t dead;
 	/*% refcount for memory reclamation */
 	isc_refcount_t references;
+	/*% a compaction cycle is active or due; read without the mutex */
+	atomic_bool gc_pending;
+	/*% dns_qpmulti_gcstep() is in use, so commits can hold back */
+	bool background_gc;
+	/*% dns_qpmulti_destroy() has been called */
+	bool destroying;
 };
 
 /***********************************************************************

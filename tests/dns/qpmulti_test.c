@@ -23,6 +23,7 @@
 #include <cmocka.h>
 
 #include <isc/assertions.h>
+#include <isc/async.h>
 #include <isc/atomic.h>
 #include <isc/lib.h>
 #include <isc/log.h>
@@ -1038,6 +1039,84 @@ ISC_RUN_TEST_IMPL(qpmulti_compact_snapshot) {
 	check_refcounts(true);
 }
 
+/*
+ * Compaction steps taken from a job that runs whenever the loop gets
+ * around to it, with no write transaction of our own in between:
+ * dns_qpmulti_gcstep() does all the work and never blocks.
+ */
+static unsigned int gc_steps, gc_pumps;
+
+static void
+gc_pump(void *arg) {
+	dns_qpmulti_t *qpm = arg;
+	dns_qp_memusage_t mu;
+
+	if (dns_qpmulti_gcpending(qpm)) {
+		uint32_t before = qpm->writer.compact_steps;
+
+		assert_true(++gc_pumps < 100000);
+		(void)dns_qpmulti_gcstep(qpm);
+		if (qpm->writer.compact_steps != before) {
+			gc_steps++;
+		}
+		isc_async_current(gc_pump, qpm);
+		return;
+	}
+	assert_false(qpm->writer.compact_active);
+	assert_true(gc_steps > 1);
+	/* the forced cycle's first step came from our commit, the rest here */
+	assert_int_equal(qpm->writer.compact_steps, gc_steps + 1);
+	assert_true(qpm->background_gc);
+
+	/* while a writer holds the mutex, a step is refused, not awaited */
+	LOCK(&qpm->mutex);
+	uint32_t before = qpm->writer.compact_steps;
+	assert_true(dns_qpmulti_gcstep(qpm));
+	assert_int_equal(qpm->writer.compact_steps, before);
+	UNLOCK(&qpm->mutex);
+
+	rcu_barrier();
+	mu = dns_qpmulti_memusage(qpm);
+	assert_int_equal(mu.leaves, ITEM_COUNT);
+	assert_false(mu.fragmented);
+	check_refcounts(false);
+
+	dns_qpmulti_destroy(&qpm);
+	isc_loopmgr_shutdown();
+}
+
+static void
+gc_start(void *arg ISC_ATTR_UNUSED) {
+	dns_qpmulti_t *qpm = NULL;
+	dns_qp_t *qp = NULL;
+
+	dns_qpmulti_create(isc_g_mctx, &test_methods, NULL, &qpm);
+	set_budget(qpm, 256);
+	insert_all(qpm, 100);
+	compact_to_completion(qpm, 10000);
+
+	/* force a cycle; this commit takes its first step */
+	force_cycle(qpm);
+	dns_qpmulti_write(qpm, &qp);
+	dns_qpmulti_commit(qpm, &qp);
+	assert_true(qpm->writer.compact_active);
+	assert_true(dns_qpmulti_gcpending(qpm));
+	assert_int_equal(qpm->writer.compact_steps, 1);
+
+	gc_steps = gc_pumps = 0;
+	isc_async_current(gc_pump, qpm);
+}
+
+ISC_RUN_TEST_IMPL(qpmulti_gcstep) {
+	setup_loopmgr(NULL);
+	setup_items();
+	isc_loop_setup(isc_loop_main(), gc_start, NULL);
+	isc_loopmgr_run();
+	rcu_barrier();
+	isc_loopmgr_destroy();
+	check_refcounts(true);
+}
+
 /* Destroying a trie with a saved cursor must not leak it. */
 ISC_RUN_TEST_IMPL(qpmulti_compact_destroy) {
 	dns_qpmulti_t *qpm = NULL;
@@ -1075,6 +1154,7 @@ ISC_TEST_ENTRY(qpmulti_compact_empty)
 ISC_TEST_ENTRY(qpmulti_compact_mutate)
 ISC_TEST_ENTRY(qpmulti_compact_snapshot)
 ISC_TEST_ENTRY(qpmulti_compact_destroy)
+ISC_TEST_ENTRY(qpmulti_gcstep)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

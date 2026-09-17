@@ -801,6 +801,38 @@ dns_qpsnap_destroy(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp);
  * \li  `*qpsp == NULL`
  */
 
+bool
+dns_qpmulti_gcpending(dns_qpmulti_t *multi);
+/*%<
+ * Is there garbage collection work to do on the trie?
+ *
+ * True while a compaction cycle is in progress, or the trie has become
+ * fragmented enough to start one. This is a cheap check that does not
+ * take the modification mutex, intended for an idle hook that calls
+ * dns_qpmulti_gcstep() while it returns true.
+ *
+ * Requires:
+ * \li  `multi` is a pointer to a valid multi-threaded qp-trie
+ */
+
+bool
+dns_qpmulti_gcstep(dns_qpmulti_t *multi);
+/*%<
+ * Do one bounded increment of garbage collection, in a write
+ * transaction of its own, from a thread that has time to spare.
+ *
+ * The call never blocks: if another thread holds the modification
+ * mutex nothing is done, and the caller should try again later. Once
+ * this has been used, the commits of ordinary write transactions only
+ * compact when the allocations since the previous increment show that
+ * this caller is not keeping up.
+ *
+ * Returns true if there is more work to do.
+ *
+ * Requires:
+ * \li  `multi` is a pointer to a valid multi-threaded qp-trie
+ */
+
 void
 dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp);
 /*%<
