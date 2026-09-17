@@ -425,11 +425,11 @@ chunk_get_raw(dns_qp_t *qp, size_t len) {
 }
 
 static void
-chunk_free_raw(dns_qp_t *qp, void *ptr) {
-	if (qp->write_protect) {
+chunk_free_raw(isc_mem_t *mctx, bool write_protect, void *ptr) {
+	if (write_protect) {
 		RUNTIME_CHECK(munmap(ptr, chunk_size_raw()) == 0);
 	} else {
-		isc_mem_free(qp->mctx, ptr);
+		isc_mem_free(mctx, ptr);
 	}
 }
 
@@ -459,7 +459,7 @@ write_protect(dns_qp_t *qp, dns_qpchunk_t chunk) {
 #else
 
 #define chunk_get_raw(qp, size) isc_mem_allocate(qp->mctx, size)
-#define chunk_free_raw(qp, ptr) isc_mem_free(qp->mctx, ptr)
+#define chunk_free_raw(mctx, write_protect, ptr) isc_mem_free(mctx, ptr)
 
 #define chunk_shrink_raw(qp, ptr, size) isc_mem_reallocate(qp->mctx, ptr, size)
 
@@ -735,34 +735,93 @@ chunk_discount(dns_qp_t *qp, dns_qpchunk_t chunk) {
 }
 
 /*
- * When a chunk is being recycled, we need to detach any leaves that
- * remain, and free any `base` arrays that have been marked as unused.
+ * A chunk that has been taken away from the writer, whose leaves and
+ * packed readers still need detaching before its memory is freed.
+ */
+typedef struct qp_freechunk {
+	dns_qpnode_t *base;
+	dns_qpcell_t used;
+} qp_freechunk_t;
+
+/*
+ * What chunk_release() needs from the trie, copied while the mutex is
+ * held: the fields are constant for the life of the trie, but a
+ * rollback rewrites the whole writer with memmove(), so they must not
+ * be read from it without the mutex.
+ */
+typedef struct qp_release {
+	isc_mem_t *mctx;
+	const dns_qpmethods_t *methods;
+	void *uctx;
+	bool write_protect;
+} qp_release_t;
+
+static void
+release_context(dns_qp_t *qp, qp_release_t *rel) {
+	*rel = (qp_release_t){
+		.mctx = qp->mctx,
+		.methods = qp->methods,
+		.uctx = qp->uctx,
+		.write_protect = qp->write_protect,
+	};
+}
+
+/*
+ * Take a chunk away from the writer: remove it from the total counts
+ * and from the chunk arrays, so that its slot can be reused. This needs
+ * the writer mutex, but the scan and free in chunk_release() do not, so
+ * a caller that holds the mutex on behalf of other threads can drop it
+ * in between and keep them waiting for a bounded time only.
  */
 static void
-chunk_free(dns_qp_t *qp, dns_qpchunk_t chunk) {
+chunk_detach(dns_qp_t *qp, dns_qpchunk_t chunk, qp_freechunk_t *fc) {
 	if (qp->write_protect) {
 		TRACE("chunk %u base %p", chunk, qp->base->ptr[chunk]);
 	}
+	*fc = (qp_freechunk_t){
+		.base = qp->base->ptr[chunk],
+		.used = qp->usage[chunk].used,
+	};
+	chunk_discount(qp, chunk);
+	qp->base->ptr[chunk] = NULL;
+	qp->usage[chunk] = (qp_usage_t){};
+}
 
-	dns_qpnode_t *n = qp->base->ptr[chunk];
-	for (dns_qpcell_t count = qp->usage[chunk].used; count > 0;
-	     count--, n++)
-	{
+/*
+ * When a chunk is being freed, we need to detach any leaves that
+ * remain, and free any `base` arrays that have been marked as unused.
+ * Nothing is read from the trie itself, so once the chunk has been
+ * detached this is safe without the writer mutex.
+ */
+static void
+chunk_release(const qp_release_t *rel, const qp_freechunk_t *fc) {
+	dns_qpnode_t *base = fc->base;
+	dns_qpnode_t *n = base;
+
+	for (dns_qpcell_t count = fc->used; count > 0; count--, n++) {
 		if (node_tag(n) == LEAF_TAG && node_pointer(n) != NULL) {
-			detach_leaf(qp, n);
+			rel->methods->detach(rel->uctx, leaf_pval(n),
+					     leaf_ival(n));
 		} else if (count > 1 && reader_valid(n)) {
 			dns_qpreader_t qpr;
 			unpack_reader(&qpr, n);
 			/* pairs with dns_qpmulti_commit() */
 			if (qpbase_unref(&qpr)) {
-				isc_mem_free(qp->mctx, qpr.base);
+				isc_mem_free(rel->mctx, qpr.base);
 			}
 		}
 	}
-	chunk_discount(qp, chunk);
-	chunk_free_raw(qp, qp->base->ptr[chunk]);
-	qp->base->ptr[chunk] = NULL;
-	qp->usage[chunk] = (qp_usage_t){};
+	chunk_free_raw(rel->mctx, rel->write_protect, base);
+}
+
+static void
+chunk_free(dns_qp_t *qp, dns_qpchunk_t chunk) {
+	qp_release_t rel;
+	qp_freechunk_t fc;
+
+	release_context(qp, &rel);
+	chunk_detach(qp, chunk, &fc);
+	chunk_release(&rel, &fc);
 }
 
 /*
@@ -822,7 +881,14 @@ recycle(dns_qp_t *qp) {
 }
 
 /*
- * asynchronous cleanup
+ * How many chunks the RCU callback detaches per mutex acquisition. It
+ * does the expensive part, detaching every leaf in a chunk, without
+ * the mutex, so writers only ever wait for the bookkeeping.
+ */
+#define QP_RECLAIM_BATCH 32
+
+/*
+ * asynchronous cleanup, after a grace period
  */
 static void
 reclaim_chunks_cb(struct rcu_head *arg) {
@@ -830,45 +896,53 @@ reclaim_chunks_cb(struct rcu_head *arg) {
 	REQUIRE(QPRCU_VALID(rcuctx));
 	dns_qpmulti_t *multi = rcuctx->multi;
 	REQUIRE(QPMULTI_VALID(multi));
-
-	LOCK(&multi->mutex);
 	dns_qp_t *qp = &multi->writer;
+	qp_release_t rel;
+	unsigned int nfree = 0;
 
-	/*
-	 * If chunk_max is zero, chunks have already been freed.
-	 */
-	if (qp->chunk_max != 0) {
-		unsigned int nfree = 0;
-		isc_nanosecs_t start = isc_time_monotonic();
+	isc_nanosecs_t start = isc_time_monotonic();
 
-		INSIST(QP_VALID(qp));
+	for (unsigned int i = 0; i < rcuctx->count; i += QP_RECLAIM_BATCH) {
+		qp_freechunk_t batch[QP_RECLAIM_BATCH];
+		unsigned int n = 0;
 
-		for (unsigned int i = 0; i < rcuctx->count; i++) {
-			dns_qpchunk_t chunk = rcuctx->chunk[i];
-			if (qp->usage[chunk].snapshot) {
-				/* clean up when snapshot is destroyed */
-				qp->usage[chunk].snapfree = true;
-			} else {
-				chunk_free(qp, chunk);
-				nfree++;
+		LOCK(&multi->mutex);
+		if (i == 0) {
+			release_context(qp, &rel);
+		}
+		/*
+		 * If chunk_max is zero, the trie has been destroyed and
+		 * all its chunks have already been freed.
+		 */
+		if (qp->chunk_max != 0) {
+			INSIST(QP_VALID(qp));
+			for (unsigned int k = i;
+			     k < i + QP_RECLAIM_BATCH && k < rcuctx->count; k++)
+			{
+				dns_qpchunk_t chunk = rcuctx->chunk[k];
+				if (qp->usage[chunk].snapshot) {
+					/* clean up when snapshot is destroyed
+					 */
+					qp->usage[chunk].snapfree = true;
+				} else {
+					chunk_detach(qp, chunk, &batch[n++]);
+				}
 			}
 		}
+		UNLOCK(&multi->mutex);
 
-		isc_nanosecs_t time = isc_time_monotonic() - start;
-		recycle_time += time;
-
-		if (nfree > 0) {
-			LOG_STATS("qp reclaim" PRItime "free %u chunks", time,
-				  nfree);
-			LOG_STATS(
-				"qp reclaim leaf %u live %u used %u free %u "
-				"hold %u",
-				qp->leaf_count, qp->used_count - qp->free_count,
-				qp->used_count, qp->free_count, qp->hold_count);
+		for (unsigned int k = 0; k < n; k++) {
+			chunk_release(&rel, &batch[k]);
 		}
+		nfree += n;
 	}
 
-	UNLOCK(&multi->mutex);
+	isc_nanosecs_t time = isc_time_monotonic() - start;
+	atomic_fetch_add_relaxed(&recycle_time, time);
+
+	if (nfree > 0) {
+		LOG_STATS("qp reclaim" PRItime "free %u chunks", time, nfree);
+	}
 
 	dns_qpmulti_detach(&multi);
 	isc_mem_putanddetach(&rcuctx->mctx, rcuctx,
@@ -933,9 +1007,10 @@ reclaim_chunks(dns_qpmulti_t *multi) {
  * When a snapshot is destroyed, clean up chunks that need free()ing
  * and are not used by any remaining snapshots.
  */
-static void
-marksweep_chunks(dns_qpmulti_t *multi) {
-	unsigned int nfree = 0;
+static unsigned int
+marksweep_chunks(dns_qpmulti_t *multi, qp_freechunk_t **batchp) {
+	unsigned int nfree = 0, n = 0;
+	qp_freechunk_t *batch = NULL;
 
 	isc_nanosecs_t start = isc_time_monotonic();
 
@@ -955,13 +1030,28 @@ marksweep_chunks(dns_qpmulti_t *multi) {
 		qpw->usage[chunk].snapshot = qpw->usage[chunk].snapmark;
 		qpw->usage[chunk].snapmark = false;
 		if (qpw->usage[chunk].snapfree && !qpw->usage[chunk].snapshot) {
-			chunk_free(qpw, chunk);
 			nfree++;
 		}
 	}
 
+	/*
+	 * Detach the chunks now, but leave freeing them to the caller
+	 * once it has dropped the mutex.
+	 */
+	if (nfree > 0) {
+		batch = isc_mem_cget(qpw->mctx, nfree, sizeof(*batch));
+		for (dns_qpchunk_t chunk = 0; chunk < qpw->chunk_max; chunk++) {
+			if (qpw->usage[chunk].snapfree &&
+			    !qpw->usage[chunk].snapshot)
+			{
+				chunk_detach(qpw, chunk, &batch[n++]);
+			}
+		}
+		INSIST(n == nfree);
+	}
+
 	isc_nanosecs_t time = isc_time_monotonic() - start;
-	recycle_time += time;
+	atomic_fetch_add_relaxed(&recycle_time, time);
 
 	if (nfree > 0) {
 		LOG_STATS("qp marksweep" PRItime "free %u chunks", time, nfree);
@@ -970,6 +1060,9 @@ marksweep_chunks(dns_qpmulti_t *multi) {
 			qpw->leaf_count, qpw->used_count - qpw->free_count,
 			qpw->used_count, qpw->free_count, qpw->hold_count);
 	}
+
+	*batchp = batch;
+	return nfree;
 }
 
 /***********************************************************************
@@ -1558,12 +1651,22 @@ dns_qpsnap_destroy(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp) {
 	 * eagerly reclaim chunks that are now unused, so that memory does
 	 * not accumulate when a trie has a lot of updates and snapshots
 	 */
-	marksweep_chunks(multi);
+	qp_release_t rel;
+	qp_freechunk_t *batch = NULL;
+	unsigned int nfree = marksweep_chunks(multi, &batch);
 
+	release_context(&multi->writer, &rel);
 	isc_mem_free(multi->writer.mctx, qp);
 
 	*qpsp = NULL;
 	UNLOCK(&multi->mutex);
+
+	for (unsigned int i = 0; i < nfree; i++) {
+		chunk_release(&rel, &batch[i]);
+	}
+	if (batch != NULL) {
+		isc_mem_cput(rel.mctx, batch, nfree, sizeof(*batch));
+	}
 }
 
 /***********************************************************************

@@ -272,8 +272,12 @@ typedef struct dns_qpchain {
  *
  * The `attach` and `detach` methods adjust reference counts on value
  * objects. They support copy-on-write and safe memory reclamation
- * needed for multi-version concurrency. The methods are only called
- * when the `dns_qpmulti_t` mutex is held.
+ * needed for multi-version concurrency. The `attach` method is only
+ * called when the `dns_qpmulti_t` mutex is held, but `detach` is also
+ * called without it, from the RCU thread that frees chunks after a
+ * grace period and from dns_qpsnap_destroy(), so the two methods must
+ * be safe to run concurrently with each other, as atomic reference
+ * counts are.
  *
  * Note: When a value object reference count is greater than one, the
  * object is in use by concurrent readers so it must not be modified. A
