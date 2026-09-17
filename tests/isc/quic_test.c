@@ -583,6 +583,7 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 	isc_result_t result;
 	endpoint_t *client, *server;
 	struct stream_state *stream;
+	isc_quic_version_t version;
 	uint8_t buf[1200];
 	size_t len, i;
 
@@ -615,14 +616,14 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 
 		conn = NULL;
 		result = isc_quic_router_handle_packet(
-			server->router, (isc_constregion_t){ buf, len }, NULL,
-			&dcid, &scid, NULL, &conn);
+			server->router, (isc_constregion_t){ buf, len },
+			&version, &dcid, &scid, NULL, &conn);
 		assert_int_equal(result, ISC_R_NOTFOUND);
 
 		server->state[i].conn = NULL;
 		result = isc_quic_conn_server_create(
 			isc_g_mctx, server->router, &callbacks, server,
-			&server->opts, dcid, scid, &to, &from,
+			&server->opts, version, dcid, scid, &to, &from,
 			&server->state[i].conn);
 		assert_int_equal(result, ISC_R_SUCCESS);
 		assert_non_null(server->state[i].conn);
@@ -773,6 +774,7 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_closed_stream_no_write) {
 	isc_result_t result;
 	endpoint_t *client, *server;
 	struct stream_state *stream;
+	isc_quic_version_t version;
 	uint8_t buf[1200];
 	size_t len;
 
@@ -795,13 +797,13 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_closed_stream_no_write) {
 
 	packet.length = len;
 	conn = NULL;
-	result = isc_quic_router_handle_packet(server->router, packet, NULL,
+	result = isc_quic_router_handle_packet(server->router, packet, &version,
 					       &dcid, &scid, NULL, &conn);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 	server->state[0].conn = NULL;
 	result = isc_quic_conn_server_create(
 		isc_g_mctx, server->router, &callbacks, server, &server->opts,
-		dcid, scid, &to, &from, &server->state[0].conn);
+		version, dcid, scid, &to, &from, &server->state[0].conn);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	rcu_barrier();
