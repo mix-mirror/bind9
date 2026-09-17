@@ -246,8 +246,7 @@ ref_cell(dns_qpref_t ref) {
  * `base` array.
  *
  * In multithreaded code, the `usage` array is only used when the
- * `dns_qpmulti_t` mutex is held, and there is only one version of
- * it in active use (maybe with a snapshot for rollback support).
+ * `dns_qpmulti_t` mutex is held, and there is only one version of it.
  *
  * The two arrays are separate because they have rather different
  * access patterns, different lifetimes, and different element sizes.
@@ -258,10 +257,9 @@ ref_cell(dns_qpref_t ref) {
  * in use in a chunk, we only need to know how many of them there are.
  *
  * After we have finished allocating from a chunk, the `used` counter
- * is the size we need to know for shrinking the chunk and for
- * scanning it to detach leaf values before the chunk is free()d. The
- * `free` counter tells us when the chunk needs compacting and when it
- * has become empty.
+ * is the size we need to know for scanning it to detach leaf values
+ * before the chunk is free()d. The `free` counter tells us when the
+ * chunk needs compacting and when it has become empty.
  *
  * The `exists` flag allows the chunk scanning loops to look at the
  * usage array only.
@@ -453,12 +451,11 @@ struct dns_qpsnap {
  *
  * There are some flags that alter the behaviour of write transactions.
  *
- *  - The `transaction_mode` indicates whether the current transaction is a
- *    light write or a heavy update, or (between transactions) the previous
- *    transaction's mode, because the setup for the next transaction
- *    depends on how the previous one committed. The mode is set at the
- *    start of each transaction. It is QP_NONE in a single-threaded qp-trie
- *    to detect if part of a `dns_qpmulti_t` is passed to dns_qp_destroy().
+ *  - The `transaction_mode` says whether the trie is modified inside
+ *    write transactions, and keeps that value between them, because the
+ *    setup for the next transaction depends on how the previous one
+ *    committed. It is QP_NONE in a single-threaded qp-trie, which also
+ *    detects if part of a `dns_qpmulti_t` is passed to dns_qp_destroy().
  *
  *  - The `compact_all` flag is used when every node in the trie should be
  *    copied. (Usually compation aims to avoid moving nodes out of
@@ -509,7 +506,7 @@ struct dns_qp {
 	/*% current mutable transaction generation [MT] */
 	uint64_t generation;
 	/*% what kind of transaction was most recently started [MT] */
-	enum { QP_NONE, QP_WRITE, QP_UPDATE } transaction_mode : 2;
+	enum { QP_NONE, QP_WRITE } transaction_mode : 2;
 	/*% compact the entire trie [MT] */
 	bool compact_all : 1;
 	/*% optionally when compiled with fuzzing support [MT] */
@@ -524,8 +521,7 @@ struct dns_qp {
  * description of what it points to.
  *
  * The main object under the protection of the mutex is the `writer`
- * containing all the allocator state. There can be a backup copy when
- * we want to be able to rollback an update transaction.
+ * containing all the allocator state.
  *
  * There is a `reader_ref` which corresponds to the `reader` pointer
  * (`ref_ptr(multi->reader_ref) == multi->reader`). The `reader_ref` is
@@ -548,8 +544,6 @@ struct dns_qpmulti {
 	dns_qpref_t reader_ref;
 	/*% the main working structure */
 	dns_qp_t writer;
-	/*% saved allocator state to support rollback */
-	dns_qp_t *rollback;
 	/*% all snapshots of this trie */
 	ISC_LIST(dns_qpsnap_t) snapshots;
 	/*% refcount for memory reclamation */

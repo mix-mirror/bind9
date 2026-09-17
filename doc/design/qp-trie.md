@@ -603,8 +603,8 @@ in `lib/dns/qp_p.h` for the relevant definitions.
 
 BIND stores each zone separately, and there can be a very large number
 of zones in a server. To avoid wasting memory on small zones that only
-have a few names, chunks can be "shrunk" using `realloc()` to fit just
-the nodes that have been allocated.
+have a few names, chunks start small and grow geometrically as a trie
+fills up.
 
 
 chunk metadata
@@ -618,10 +618,9 @@ Alongside the `base` array is a `usage` array, indexed the same way.
 Instead of keeping track of individual nodes, the allocator just keeps
 a count of how many nodes have been allocated from a chunk, and how
 many were subsequently freed. The `used` count of the newest chunk
-also serves as the allocation point for the bump allocator, and the
-size of the chunk when it has been shrunk. This is why we increment
-the `free` count when a node is discarded, instead of decrementing the
-`used` count. The `usage` array also contains some fields used for
+also serves as the allocation point for the bump allocator. This is
+why we increment the `free` count when a node is discarded, instead of
+decrementing the `used` count. The `usage` array also contains some fields used for
 chunk reclamation, about which more below.
 
 The `base` and `usage` arrays are separate because the `usage` array
@@ -652,7 +651,7 @@ load, such as a resolver cache. They minimize the amount of allocation
 by re-using the same chunk for the bump allocator across multiple
 transactions until it fills up.
 
-When a write (or update) is committed, a new packed read-only trie
+When a write is committed, a new packed read-only trie
 anchor is created. This contains a pointer to the `base` array and a
 32-bit reference to the trie's root node. The packed reader is stored
 in a pair of nodes in the current chunk, allocated by the bump
@@ -660,17 +659,9 @@ allocator, so it does not need to be `malloc()`ed separately, and so
 the chunk reclamation machinery can also reclaim the `base` array when
 it is no longer in use.
 
-
-heavyweight update transactions
--------------------------------
-
-By contrast, "update" transactions are intended to keep memory usage
-as low as possible between writes. On commit, the trie is compacted,
-and the bump allocator's chunk is shrunk to fit. When a transaction is
-opened, a fresh chunk must be allocated.
-
-Update transactions also support rollback, which requires making a
-copy of all the chunk metadata.
+A trie that is rarely written, such as an authoritative zone, can be
+kept as compact as possible by calling `dns_qp_compact()` with
+`DNS_QPGC_ALL` before committing.
 
 
 lightweight query transactions
@@ -719,11 +710,11 @@ mutable - see the "todo" in `include/dns/qp.h`.
 chunk cleanup
 -------------
 
-After a "write" or "update" transaction has committed, there can be a
-number of chunks that are no longer needed by the latest version of
-the trie, but still in use by readers accessing an older version.
-The qp-trie uses a QSBR callback to clean up chunks when they are no
-longer used at all.
+After a write transaction has committed, there can be a number of
+chunks that are no longer needed by the latest version of the trie,
+but still in use by readers accessing an older version. The qp-trie
+uses a QSBR callback to clean up chunks when they are no longer used
+at all.
 
 When reclaiming a chunk, we have to scan it for any remaining leaf
 nodes. When nodes are accessibly only to the writer, they are zeroed
