@@ -3758,6 +3758,19 @@ configure_view_delegdb(const cfg_obj_t **maps, dns_view_t *pview,
 
 static const char *const response_synonyms[] = { "response", NULL };
 
+static uint32_t
+scale_fetch_quota(uint32_t quota) {
+	uint32_t nloops = isc_loopmgr_nloops();
+
+	if (quota == 0) {
+		return 0;
+	}
+	if (quota > UINT32_MAX / nloops) {
+		return UINT32_MAX;
+	}
+	return quota * nloops;
+}
+
 /*
  * Configure 'view' according to 'vconfig', taking defaults from
  * 'config' where values are missing in 'vconfig'.
@@ -4468,7 +4481,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 		result = named_config_get(maps, "fetches-per-server", &obj);
 		INSIST(result == ISC_R_SUCCESS);
 		obj2 = cfg_tuple_get(obj, "fetches");
-		fps = cfg_obj_asuint32(obj2);
+		fps = scale_fetch_quota(cfg_obj_asuint32(obj2));
 		obj2 = cfg_tuple_get(obj, "response");
 		if (!cfg_obj_isvoid(obj2)) {
 			const char *resp = cfg_obj_asstring(obj2);
@@ -5024,7 +5037,8 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	result = named_config_get(maps, "fetches-per-zone", &obj);
 	INSIST(result == ISC_R_SUCCESS);
 	obj2 = cfg_tuple_get(obj, "fetches");
-	dns_resolver_setfetchesperzone(view->resolver, cfg_obj_asuint32(obj2));
+	dns_resolver_setfetchesperzone(
+		view->resolver, scale_fetch_quota(cfg_obj_asuint32(obj2)));
 	obj2 = cfg_tuple_get(obj, "response");
 	if (!cfg_obj_isvoid(obj2)) {
 		const char *resp = cfg_obj_asstring(obj2);

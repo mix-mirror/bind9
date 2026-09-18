@@ -1792,6 +1792,7 @@ fctx_hash(fetchctx_t *fctx) {
 	isc_hash32_hash(&hash32, fctx->name->ndata, fctx->name->length, false);
 	isc_hash32_hash(&hash32, &fctx->options, sizeof(fctx->options), true);
 	isc_hash32_hash(&hash32, &fctx->type, sizeof(fctx->type), true);
+	isc_hash32_hash(&hash32, &fctx->tid, sizeof(fctx->tid), true);
 	return isc_hash32_finalize(&hash32);
 }
 
@@ -1802,6 +1803,7 @@ fctx_match(struct cds_lfht_node *ht_node, const void *key) {
 	const fetchctx_t *fctx1 = key;
 
 	return fctx0->options == fctx1->options && fctx0->type == fctx1->type &&
+	       fctx0->tid == fctx1->tid &&
 	       dns_name_equal(fctx0->name, fctx1->name);
 }
 
@@ -10655,6 +10657,7 @@ get_attached_fctx(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		.name = UNCONST(name),
 		.options = options,
 		.type = type,
+		.tid = isc_tid(),
 	};
 	fetchctx_t *fctx = NULL;
 	uint32_t hashval = fctx_hash(&key);
