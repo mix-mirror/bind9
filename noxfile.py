@@ -20,6 +20,8 @@ Developer entry point for running the checks and tests locally.
     nox -s doctest                     run the doctests of the system test
                                        library
     nox -s ci_doctest                  run the doctests the way the CI job does
+    nox -s build_asan                  build with ASAN and UBSAN
+    nox -s system_tests_asan -- -k x   run the system tests against that build
     nox -s docs                        build the ARM and the manual pages
     nox -s doc_misc                    regenerate the grammar files in doc/misc
     nox -s docs_pdf                    build the ARM as PDF (needs TeX Live)
@@ -46,6 +48,8 @@ logs which ones it applied.
 Environment variables:
 
     NOX_BUILD_DIR              build directory (default: build-nox)
+    NOX_ASAN_BUILD_DIR         build directory of build_asan (default:
+                               NOX_BUILD_DIR with -asan appended)
     NOX_CC                     compiler, gcc (default) or clang; CI builds
                                with clang on Debian trixie only
     NOX_SKIP_BUILD=1           use the build directory as it is, do not
@@ -100,6 +104,7 @@ nox.options.reuse_venv = "always"
 nox.options.default_venv_backend = "virtualenv"
 
 BUILD_DIR = os.environ.get("NOX_BUILD_DIR", "build-nox")
+ASAN_BUILD_DIR = os.environ.get("NOX_ASAN_BUILD_DIR", BUILD_DIR + "-asan")
 DOCS_BUILD_DIR = os.environ.get("NOX_DOCS_BUILD_DIR", BUILD_DIR + "-docs")
 SKIP_BUILD = os.environ.get("NOX_SKIP_BUILD") == "1"
 CC = os.environ.get("NOX_CC", "gcc")
@@ -476,6 +481,15 @@ def build(session):
     meson_compile(session, BUILD_DIR)
 
 
+@nox.session(python=False)
+def build_asan(session):
+    "Configure and compile BIND with ASAN and UBSAN in the ASAN build directory"
+    if SKIP_BUILD:
+        return
+    meson_setup(session, ASAN_BUILD_DIR, sanitizer="asan")
+    meson_compile(session, ASAN_BUILD_DIR)
+
+
 @nox.session(python=False, requires=["build"])
 def unit_tests(session):
     "Run the unit tests"
@@ -485,6 +499,13 @@ def unit_tests(session):
 @pysession(python=build_python(), requires=["build"])
 def system_tests(session):
     "Run the system tests (extra arguments are passed to pytest)"
+    install(session, TEST_REQUIREMENTS)
+    run_system_tests(session, *session.posargs)
+
+
+@pysession(python=build_python(ASAN_BUILD_DIR), requires=["build_asan"])
+def system_tests_asan(session):
+    "Run the system tests against the ASAN build (extra arguments go to pytest)"
     install(session, TEST_REQUIREMENTS)
     run_system_tests(session, *session.posargs)
 
