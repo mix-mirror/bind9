@@ -496,6 +496,10 @@ isc_quic_conn_server_create(
 
 ISC_REFCOUNT_DECL(isc_quic_conn);
 
+void *
+isc_quic_conn_get_callback_arg(const isc_quic_conn_t *conn)
+	ISC_ATTR_ACCESS(read_only, 1);
+
 isc_result_t
 isc_quic_conn_shutdown(isc_quic_conn_t *conn);
 /**<

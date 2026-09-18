@@ -857,6 +857,8 @@ isc_result_t
 isc_nm_listenquic(uint32_t workers, isc_sockaddr_t *iface,
 		  isc_quic_conn_options_t *options,
 		  isc_nm_accept_cb_t accept_cb, void *accept_cb_arg,
+		  isc_nm_cb_t stream_open_cb, void *stream_open_cb_arg,
+		  isc_nm_recv_cb_t recv_cb, void *recv_cb_arg,
 		  isc_nm_quiclistener_t **listenerp);
 
 void

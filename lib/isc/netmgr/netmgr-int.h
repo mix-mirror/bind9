@@ -263,15 +263,19 @@ struct isc_nmhandle {
 	union {
 		isc_nm_http_session_t *httpsession;
 		struct {
-			int64_t stream_id;
 			isc_quic_conn_t *conn;
+			isc__nm_quic_stream_t *stream;
 		} quic;
 	};
 
 	isc_sockaddr_t peer;
 	isc_sockaddr_t local;
 	bool proxy_is_unspec;
-	struct isc_nmhandle *proxy_udphandle;
+
+	union {
+		struct isc_nmhandle *proxy_udphandle;
+		isc_nmhandle_t *parent_handle;
+	};
 	isc_nm_opaquecb_t doreset; /* reset extra callback, external */
 	isc_nm_opaquecb_t dofree;  /* free extra callback, external */
 #if ISC_NETMGR_TRACE
@@ -571,6 +575,8 @@ struct isc_nmsocket {
 	struct {
 		isc_quic_conn_t *conn;
 		ISC_LIST(isc__nm_quic_stream_t) streams;
+		isc_nm_cb_t stream_open_cb;
+		void *stream_open_cb_arg;
 	} quic;
 #endif
 
@@ -1326,10 +1332,17 @@ isc__nm_proxyudp_send(isc_nmhandle_t *handle, isc_region_t *region,
 
 #ifdef HAVE_LIBNGTCP2
 void
+isc__nmhandle_quic_destroy(isc_nmhandle_t *handle, uint64_t application_code);
+
+void
 isc__nmsocket_quic_timer_stop(isc_nmsocket_t *sock);
 
 void
 isc__nm_quic_close(isc_nmsocket_t *sock);
+
+void
+isc__nm_quic_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
+		  void *cbarg);
 
 void
 isc__nm_quic_read(isc_nmhandle_t *handle, isc_nm_recv_cb_t cb, void *cbarg);
