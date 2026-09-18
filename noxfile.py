@@ -442,6 +442,9 @@ def run_doctest(session, *args):
             "pytest",
             "--noconftest",
             "--doctest-modules",
+            # the tests/ directories hold system tests, run by the system
+            # test jobs
+            "--ignore-glob=*/tests",
             *args,
             "isctest",
         )
