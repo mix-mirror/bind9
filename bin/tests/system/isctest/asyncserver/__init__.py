@@ -113,6 +113,7 @@ class AsyncServer:
 
     def __init__(
         self,
+        init_handler: Callable[[], None] | None,
         udp_handler: _UdpHandler | None,
         tcp_handler: _TcpHandler | None,
         pidfile: str | None = None,
@@ -139,6 +140,7 @@ class AsyncServer:
 
         self._ip_addresses: tuple[str, str] = (ipv4_address, ipv6_address)
         self._port: int = port
+        self._init_handler: Callable[[], None] | None = init_handler
         self._udp_handler: _UdpHandler | None = udp_handler
         self._tcp_handler: _TcpHandler | None = tcp_handler
         self._pidfile: str | None = pidfile
@@ -172,15 +174,10 @@ class AsyncServer:
         await self._listen_udp()
         await self._listen_tcp()
         self._write_pidfile()
-        self._load()
+        if self._init_handler:
+            self._init_handler()
         await self._work_done
         self._cleanup_pidfile()
-
-    def _load(self) -> None:
-        """
-        Load whatever the server serves.  This runs once the server is up, so
-        that a refusal to serve something shows in the server's log.
-        """
 
     def _get_asyncio_loop(self) -> asyncio.AbstractEventLoop:
         try:
@@ -443,7 +440,9 @@ class AsyncDnsServer(AsyncServer):
         keyring: dict[dns.name.Name, dns.tsig.Key] | Literal[False] | None = None,
         acknowledge_manual_dname_handling: bool = False,
     ) -> None:
-        super().__init__(self._handle_udp, self._handle_tcp, "ans.pid")
+        super().__init__(
+            self._handle_init, self._handle_udp, self._handle_tcp, "ans.pid"
+        )
 
         self._zone_tree: _ZoneTree = _ZoneTree()
         self._zones: dict[dns.name.Name, dns.zone.Zone] = {}
@@ -456,10 +455,6 @@ class AsyncDnsServer(AsyncServer):
         self._default_aa = default_aa
         self._keyring = keyring
         self._acknowledge_manual_dname_handling = acknowledge_manual_dname_handling
-
-    def _load(self) -> None:
-        self._load_zones()
-        self._load_keys()
 
     def install_response_handler(
         self, handler: ResponseHandler, prepend: bool = False
@@ -507,6 +502,10 @@ class AsyncDnsServer(AsyncServer):
         if self._connection_handler:
             raise RuntimeError("Only one connection handler can be installed")
         self._connection_handler = handler
+
+    def _handle_init(self) -> None:
+        self._load_zones()
+        self._load_keys()
 
     def _scan_directory(self, directory: str) -> Iterator[os.DirEntry]:
         directory_path = pathlib.Path(directory)
