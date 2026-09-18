@@ -644,6 +644,15 @@ valid for old roots. Growth never reallocates a published base. A cursor and
 occupied-slot count avoid scanning the protected prefix on ordinary appends
 and distinguish reuse of existing capacity from geometric growth.
 
+Once geometric growth has been selected, its copy omits fully dead non-bump
+chunks without acquiring physical references for them. It rebuilds writer
+accounting and unlinks omitted mutable chunks before releasing the old base.
+The current bump is retained until its replacement is allocated. Allocation
+starts at the first hole in the grown base, not at the old capacity boundary,
+keeping the published prefix lower and leaving more space for later appends.
+This does not pre-count dead chunks to avoid growth: the geometric capacity
+decision is unchanged. Snapshot and same-capacity copies remain unfiltered.
+
 Physical chunks have a reference count, allocation watermark, and capacity in a
 header before their nodes. Base entries still point directly at the nodes,
 so this adds no indirection to lookup. A chunk's destructor scans its

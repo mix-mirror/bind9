@@ -433,37 +433,34 @@ base_detach(dns_qpbase_t **basep) {
 	isc_mem_detach(&mctx);
 }
 
-/*
- * Each copied mapping acquires its own physical chunk reference. This also
- * handles geometric growth: the source may have been published, so it must
- * remain allocated at the same address until its owners release it. Copy
- * writer metadata too, preserving mutable bits on in-transaction growth.
- */
+/* Allocate the SoA storage shared by exact copies and filtered growth. */
 static dns_qpbase_t *
-base_copy(dns_qp_t *qp, dns_qpbase_t *old, dns_qpchunk_t newmax) {
-	dns_qpbase_t *base = isc_mem_allocate(qp->mctx, base_size(newmax));
-	REQUIRE(old == NULL || newmax >= old->chunk_max);
+base_alloc(const dns_qp_t *qp, dns_qpchunk_t count) {
+	dns_qpbase_t *base = isc_mem_allocate(qp->mctx, base_size(count));
+	memset(base, 0, base_size(count));
 	*base = (dns_qpbase_t){
 		.magic = QPBASE_MAGIC,
 		.methods = qp->methods,
 		.uctx = qp->uctx,
-		.chunk_max = newmax,
-		.free = (uint16_t *)((char *)base + base_free_offset(newmax)),
-		.ptr = (dns_qpnode_t **)((char *)base +
-					 base_ptr_offset(newmax)),
+		.chunk_max = count,
+		.free = (uint16_t *)((char *)base + base_free_offset(count)),
+		.ptr = (dns_qpnode_t **)((char *)base + base_ptr_offset(count)),
 	};
 	isc_refcount_init(&base->refcount, 1);
 	isc_mem_attach(qp->mctx, &base->mctx);
-	memset(base->immutable, 0, base_bitmap_size(newmax));
-	if (old != NULL) {
-		memmove(base->immutable, old->immutable,
-			base_bitmap_size(old->chunk_max));
-	}
-	for (dns_qpchunk_t i = 0; i < newmax; i++) {
-		base->free[i] = old != NULL && i < old->chunk_max ? old->free[i]
-								  : 0;
-		base->ptr[i] = old != NULL && i < old->chunk_max ? old->ptr[i]
-								 : NULL;
+	return base;
+}
+
+/* Exact copy for snapshots, rollback setup, and same-capacity clones.
+ * Acquires chunk references but never changes writer state. */
+static dns_qpbase_t *
+base_copy(const dns_qp_t *qp, const dns_qpbase_t *old) {
+	dns_qpchunk_t count = old->chunk_max;
+	dns_qpbase_t *base = base_alloc(qp, count);
+	memmove(base->immutable, old->immutable, base_bitmap_size(count));
+	memmove(base->free, old->free, count * sizeof(base->free[0]));
+	memmove(base->ptr, old->ptr, count * sizeof(base->ptr[0]));
+	for (dns_qpchunk_t i = 0; i < count; i++) {
 		if (base->ptr[i] != NULL) {
 			qp_chunk_t *chunk = chunk_fromnodes(base->ptr[i]);
 			isc_refcount_increment(&chunk->references);
@@ -473,11 +470,80 @@ base_copy(dns_qp_t *qp, dns_qpbase_t *old, dns_qpchunk_t newmax) {
 }
 
 static void
-base_clone(dns_qp_t *qp, dns_qpchunk_t newmax) {
+base_clone(dns_qp_t *qp) {
 	dns_qpbase_t *old = qp->base;
-	qp->base = base_copy(qp, old, newmax);
+	qp->base = base_copy(qp, old);
 	qp->protected = 0;
 	qp->alloc_next = 0;
+	base_detach(&old);
+}
+
+/*
+ * Geometric growth has already been selected. Omit dead non-bump mappings,
+ * rebuild writer accounting, and start allocation at the first resulting
+ * hole. The next allocation replaces the bump, which we retain here.
+ */
+static void
+base_grow(dns_qp_t *qp, dns_qpchunk_t newmax) {
+	REQUIRE(newmax > qp->chunk_max);
+	dns_qpbase_t *old = qp->base;
+	dns_qpbase_t *base = base_alloc(qp, newmax);
+	dns_qpchunk_t oldmax = old != NULL ? old->chunk_max : 0;
+	dns_qpchunk_t first = oldmax, limit = 0, count = 0, dead = 0;
+	dns_qpcell_t used = 0, freed = 0, held = 0;
+
+	if (old != NULL) {
+		memmove(base->immutable, old->immutable,
+			base_bitmap_size(oldmax));
+	}
+	for (dns_qpchunk_t i = 0; i < oldmax; i++) {
+		if (old->ptr[i] != NULL) {
+			qp_chunk_t *chunk = chunk_fromnodes(old->ptr[i]);
+			if (i == qp->bump || chunk->used != old->free[i]) {
+				base->ptr[i] = old->ptr[i];
+				base->free[i] = old->free[i];
+				isc_refcount_increment(&chunk->references);
+				limit = i + 1;
+				count++;
+				used += chunk->used;
+				freed += old->free[i];
+				dead += chunk->used == old->free[i];
+				if (chunk_immutable(base, i)) {
+					held += old->free[i];
+				}
+			}
+		}
+		if (base->ptr[i] == NULL) {
+			first = ISC_MIN(first, i);
+			chunk_set_mutable(base, i);
+		}
+	}
+	/* Unlink omitted mutable chunks before releasing the old base. */
+	dns_qpchunk_t index = qp->mutable_head;
+	dns_qpchunk_t *link = &qp->mutable_head;
+	while (index != INVALID_CHUNK) {
+		qp_chunk_t *chunk = chunk_fromnodes(old->ptr[index]);
+		dns_qpchunk_t next = chunk->mutable_next;
+		if (base->ptr[index] != NULL) {
+			*link = index;
+			link = &chunk->mutable_next;
+		}
+		index = next;
+	}
+	*link = INVALID_CHUNK;
+
+	qp->base = base;
+	qp->protected = 0;
+	qp->alloc_next = first;
+	qp->chunk_limit = limit;
+	qp->chunk_count = count;
+	qp->dead_count = dead;
+	qp->used_count = used;
+	qp->free_count = freed;
+	/* The old bump's immutable bit will cover its whole allocation once
+	 * the next allocation replaces it, including previously freed suffix
+	 * cells. All free cells in retained immutable chunks are then held. */
+	qp->hold_count = held;
 	base_detach(&old);
 }
 
@@ -567,7 +633,11 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
  */
 static void
 realloc_chunk_arrays(dns_qp_t *qp, dns_qpchunk_t newmax) {
-	base_clone(qp, newmax);
+	if (newmax > qp->chunk_max) {
+		base_grow(qp, newmax);
+	} else {
+		base_clone(qp);
+	}
 	qp->chunk_max = newmax;
 
 	TRACE("qpbase %p max %u", qp->base, qp->chunk_max);
@@ -796,7 +866,7 @@ reclaim_chunks(dns_qp_t *qp) {
 	if (reclaim_needed(qp)) {
 		/* Previously published mappings require a private base. */
 		if (qp->protected != 0) {
-			base_clone(qp, qp->chunk_max);
+			base_clone(qp);
 		}
 		for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
 			if (chunk != qp->bump && qp->base->ptr[chunk] != NULL &&
@@ -1146,7 +1216,7 @@ dns_qpmulti_update(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	multi->rollback = rollback;
 
 	if (qp->base != NULL) {
-		base_clone(qp, qp->chunk_max);
+		base_clone(qp);
 	}
 	alloc_reset(qp);
 }
@@ -1289,7 +1359,7 @@ dns_qpmulti_snapshot(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp) {
 	if (qps->base != NULL) {
 		/* A private copy freezes metadata and cannot retain later
 		 * appends. */
-		qps->base = base_copy(qpw, qps->base, qps->base->chunk_max);
+		qps->base = base_copy(qpw, qps->base);
 	}
 	ISC_LIST_INITANDAPPEND(multi->snapshots, qps, link);
 

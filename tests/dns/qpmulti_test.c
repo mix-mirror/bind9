@@ -655,9 +655,11 @@ ISC_RUN_TEST_IMPL(qpmulti_base_metadata) {
 		check_base_layout(qp->base);
 		for (dns_qpchunk_t c = 0; c < qp->chunk_max; c++) {
 			if (qp->base->ptr[c] != NULL) {
-				assert_int_equal(chunk_immutable(qp->base, c),
-						 c < old->chunk_max &&
-							 old->ptr[c] != NULL);
+				assert_int_equal(
+					chunk_immutable(qp->base, c),
+					c < old->chunk_max &&
+						old->ptr[c] ==
+							qp->base->ptr[c]);
 			}
 		}
 		if (qp->chunk_max > old->chunk_max && qp->chunk_max > 8) {
@@ -692,6 +694,107 @@ ISC_RUN_TEST_IMPL(qpmulti_base_metadata) {
 	isc_mem_put(isc_g_mctx, counters, free_bytes);
 	dns_qpread_destroy(multi, &read);
 	dns_qpsnap_destroy(multi, &saved);
+	dns_qpmulti_destroy(&multi);
+	drain_versions();
+	for (uint32_t i = 0; i < ARRAY_SIZE(values); i++) {
+		assert_int_equal(atomic_load_relaxed(&values[i].references), 0);
+	}
+}
+
+static void
+check_writer_counts(dns_qp_t *qp) {
+	dns_qpcell_t used = 0, freed = 0;
+	dns_qpchunk_t count = 0, dead = 0, mutable = 0;
+	for (dns_qpchunk_t i = 0; i < qp->chunk_max; i++) {
+		if (qp->base->ptr[i] == NULL) {
+			assert_int_equal(qp->base->free[i], 0);
+			continue;
+		}
+		qp_chunk_t *chunk = chunk_fromnodes(qp->base->ptr[i]);
+		count++;
+		used += chunk->used;
+		freed += qp->base->free[i];
+		dead += chunk->used == qp->base->free[i];
+		mutable += !chunk_immutable(qp->base, i);
+		assert_true(i < qp->chunk_limit);
+	}
+	assert_int_equal(count, qp->chunk_count);
+	assert_int_equal(dead, qp->dead_count);
+	assert_int_equal(used, qp->used_count);
+	assert_int_equal(freed, qp->free_count);
+	assert_true(qp->hold_count <= freed);
+	dns_qpchunk_t linked = 0;
+	for (dns_qpchunk_t i = qp->mutable_head; i != INVALID_CHUNK;) {
+		assert_true(i < qp->chunk_max);
+		assert_non_null(qp->base->ptr[i]);
+		assert_false(chunk_immutable(qp->base, i));
+		assert_true(++linked <= count);
+		i = chunk_fromnodes(qp->base->ptr[i])->mutable_next;
+	}
+	assert_int_equal(linked, mutable);
+}
+
+ISC_RUN_TEST_IMPL(qpmulti_growth_filter) {
+	lifetime_item_t values[128] = { 0 };
+	dns_qpmulti_t *multi = NULL;
+	dns_qp_t *qp = NULL;
+	dns_qpread_t old = { 0 };
+	dns_qpsnap_t *snap = NULL;
+	dns_qpmulti_create(isc_g_mctx, &lifetime_methods, NULL, &multi);
+	dns_qpmulti_write(multi, &qp);
+	assert_int_equal(dns_qp_insert(qp, &values[0], 0), ISC_R_SUCCESS);
+	dns_qpmulti_commit(multi, &qp);
+	dns_qpmulti_query(multi, &old);
+	dns_qpmulti_snapshot(multi, &snap);
+	assert_int_equal(old.base->chunk_max, 2);
+	dns_qpnode_t *original = old.base->ptr[0];
+	unsigned int references =
+		isc_refcount_current(&chunk_fromnodes(original)->references);
+
+	/* First roll back a filtered growth, then commit the same operation. */
+	for (unsigned int round = 0; round < 2; round++) {
+		dns_qpmulti_update(multi, &qp);
+		assert_int_equal(qp->bump, 1);
+		uint32_t end = 1;
+		while (qp->chunk_max == 2 && end < ARRAY_SIZE(values)) {
+			assert_int_equal(dns_qp_insert(qp, &values[end], end),
+					 ISC_R_SUCCESS);
+			end++;
+			check_writer_counts(qp);
+		}
+		/* Grow even though pruning creates room at index zero. */
+		assert_int_equal(qp->chunk_max, GROWTH_FACTOR(2));
+		assert_int_equal(qp->bump, 0);
+		assert_int_equal(qp->chunk_limit, 2);
+		assert_ptr_not_equal(qp->base->ptr[0], original);
+		assert_non_null(qp->base->ptr[1]);
+		for (dns_qpchunk_t i = 2; i < qp->chunk_max; i++) {
+			assert_null(qp->base->ptr[i]);
+		}
+		assert_int_equal(qp->hold_count, 0);
+		assert_int_equal(
+			isc_refcount_current(
+				&chunk_fromnodes(original)->references),
+			references);
+		assert_ptr_equal(old.base->ptr[0], original);
+		lifetime_check(&old, values, 0, 1, true);
+		lifetime_check(snap, values, 0, 1, true);
+		lifetime_check(qp, values, 0, end, true);
+		if (round == 0) {
+			dns_qpmulti_rollback(multi, &qp);
+			assert_ptr_equal(multi->writer.base, old.base);
+			for (uint32_t i = 1; i < end; i++) {
+				assert_int_equal(atomic_load_relaxed(
+							 &values[i].references),
+						 0);
+			}
+		} else {
+			dns_qpmulti_commit(multi, &qp);
+		}
+		check_writer_counts(&multi->writer);
+	}
+	dns_qpread_destroy(multi, &old);
+	dns_qpsnap_destroy(multi, &snap);
 	dns_qpmulti_destroy(&multi);
 	drain_versions();
 	for (uint32_t i = 0; i < ARRAY_SIZE(values); i++) {
@@ -965,6 +1068,7 @@ ISC_TEST_ENTRY(qpmulti_memusage)
 ISC_TEST_ENTRY(qpmulti_versions)
 ISC_TEST_ENTRY(qpmulti_clone_rollback)
 ISC_TEST_ENTRY(qpmulti_base_metadata)
+ISC_TEST_ENTRY(qpmulti_growth_filter)
 ISC_TEST_ENTRY(qpmulti_append)
 ISC_TEST_ENTRY(qpmulti_empty_versions)
 ISC_TEST_ENTRY(qpmulti_reclaim_without_mutex)
