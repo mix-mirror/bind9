@@ -107,10 +107,10 @@ struct qpcnode {
 
 	/*%
 	 * These three each get a byte of their own: 'nspace' never changes
-	 * and is read without any lock, by lookups and by iterators on a
-	 * snapshot, while the two flags are written under the node lock
-	 * inside a write transaction, and a write to a bit field would be
-	 * a store to the whole byte that the lock-free readers share.
+	 * and is read without any lock, by lookups and by iterators, while
+	 * the two flags are written under the node lock inside a write
+	 * transaction, and a write to a bit field would be a store to the
+	 * whole byte that the lock-free readers share.
 	 */
 	uint8_t nspace; /*%< range is 0..3 */
 	bool havensec;
@@ -404,7 +404,7 @@ typedef struct qpc_dbit {
 	isc_result_t result;
 	dns_fixedname_t fixed;
 	dns_name_t *name;
-	dns_qpsnap_t *snap;
+	dns_qpread_t qpr;
 	dns_qpiter_t iter;
 	qpcnode_t *node;
 } qpc_dbit_t;
@@ -2056,13 +2056,15 @@ qpcache_createiterator(dns_db_t *db, unsigned int options ISC_ATTR_UNUSED,
 	*qpdbiter = (qpc_dbit_t){
 		.common.methods = &dbiterator_methods,
 		.common.magic = DNS_DBITERATOR_MAGIC,
+		/*
+		 * The read handle and the cursor are taken in
+		 * resume_iteration(), not here.
+		 */
 		.paused = true,
 	};
 
 	qpdbiter->name = dns_fixedname_initname(&qpdbiter->fixed);
 	dns_db_attach(db, &qpdbiter->common.db);
-	dns_qpmulti_snapshot(qpdb->tree, &qpdbiter->snap);
-	dns_qpiter_init(qpdbiter->snap, &qpdbiter->iter);
 
 	*iteratorp = (dns_dbiterator_t *)qpdbiter;
 	return ISC_R_SUCCESS;
@@ -2980,26 +2982,64 @@ dereference_iter_node(qpc_dbit_t *qpdbiter DNS__DB_FLARG) {
 	qpdbiter->node = NULL;
 }
 
+/*
+ * Order two nodes the way the trie does. A node's stored key ends with
+ * the terminator dns_qpkey_fromname() writes, which is what the trie
+ * reads past the end of a shorter key, so the keys compare directly.
+ */
+static int
+qpcnode_keycmp(const qpcnode_t *a, const qpcnode_t *b) {
+	size_t len = (a->keylen < b->keylen ? a->keylen : b->keylen) + 1;
+	int cmp = memcmp(a->key, b->key, len);
+
+	if (cmp != 0) {
+		return cmp;
+	}
+	return a->keylen < b->keylen ? -1 : a->keylen > b->keylen ? 1 : 0;
+}
+
 static void
-resume_iteration(qpc_dbit_t *qpdbiter, bool continuing) {
+resume_iteration(qpc_dbit_t *qpdbiter) {
+	qpcache_t *qpdb = (qpcache_t *)qpdbiter->common.db;
+
 	REQUIRE(qpdbiter->paused);
 
 	/*
-	 * If we're being called from dbiterator_next, we may need
-	 * to reinitialize the iterator to the current name. The
-	 * tree could have changed while it was unlocked, which
-	 * would make the iterator traversal inconsistent.
-	 *
-	 * As long as the iterator is holding a reference to
-	 * qpdbiter->node, the node won't be removed from the tree,
-	 * so the lookup should always succeed.
+	 * A query handle is an RCU read section, so it is only held while
+	 * the iterator is running: it must not span a return to the event
+	 * loop, and it belongs to whichever thread does the traversal.
 	 */
-	if (continuing && qpdbiter->node != NULL) {
+	dns_qpmulti_query(qpdb->tree, &qpdbiter->qpr);
+
+	/*
+	 * The handle is a fresh view of the trie, and the cursor points
+	 * into the version it was built from, so it has to be rebuilt
+	 * from the name we stopped at. The trie may have changed in the
+	 * meantime: our node can have been removed from the published
+	 * version, in which case dns_qp_lookup() leaves the cursor on its
+	 * closest predecessor, which is where iteration resumes.
+	 */
+	if (qpdbiter->node != NULL) {
+		void *pval = NULL;
 		isc_result_t result;
-		result = dns_qp_lookup(qpdbiter->snap, qpdbiter->name,
+
+		result = dns_qp_lookup(&qpdbiter->qpr, qpdbiter->name,
 				       DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter,
 				       NULL, NULL, NULL);
-		INSIST(result == ISC_R_SUCCESS);
+		if (result != ISC_R_SUCCESS &&
+		    dns_qpiter_current(&qpdbiter->iter, &pval, NULL) ==
+			    ISC_R_SUCCESS &&
+		    qpcnode_keycmp(pval, qpdbiter->node) > 0)
+		{
+			/*
+			 * Our node is gone and nothing in the trie comes
+			 * before it, so the predecessor search wrapped the
+			 * cursor around to the last key. Everything that is
+			 * left sorts after the name we stopped at, so start
+			 * again from the beginning.
+			 */
+			dns_qpiter_init(&qpdbiter->qpr, &qpdbiter->iter);
+		}
 	}
 
 	qpdbiter->paused = false;
@@ -3011,7 +3051,9 @@ dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG) {
 	qpcache_t *qpdb = (qpcache_t *)qpdbiter->common.db;
 	dns_db_t *db = NULL;
 
-	dns_qpsnap_destroy(qpdb->tree, &qpdbiter->snap);
+	if (!qpdbiter->paused) {
+		dns_qpread_destroy(qpdb->tree, &qpdbiter->qpr);
+	}
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
@@ -3038,12 +3080,12 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	}
 
 	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, false);
+		resume_iteration(qpdbiter);
 	}
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	dns_qpiter_init(qpdbiter->snap, &qpdbiter->iter);
+	dns_qpiter_init(&qpdbiter->qpr, &qpdbiter->iter);
 	result = dns_qpiter_next(&qpdbiter->iter, (void **)&qpdbiter->node,
 				 NULL);
 
@@ -3090,12 +3132,12 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 	}
 
 	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, false);
+		resume_iteration(qpdbiter);
 	}
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	result = dns_qp_lookup(qpdbiter->snap, name, DNS_DBNAMESPACE_NORMAL,
+	result = dns_qp_lookup(&qpdbiter->qpr, name, DNS_DBNAMESPACE_NORMAL,
 			       &qpdbiter->iter, NULL, (void **)&qpdbiter->node,
 			       NULL);
 
@@ -3134,7 +3176,7 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 	}
 
 	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, true);
+		resume_iteration(qpdbiter);
 	}
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
@@ -3170,7 +3212,7 @@ dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 	REQUIRE(node != NULL);
 
 	if (qpdbiter->paused) {
-		resume_iteration(qpdbiter, false);
+		resume_iteration(qpdbiter);
 	}
 
 	if (name != NULL) {
@@ -3186,6 +3228,7 @@ dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 static isc_result_t
 dbiterator_pause(dns_dbiterator_t *iterator) {
 	qpc_dbit_t *qpdbiter = (qpc_dbit_t *)iterator;
+	qpcache_t *qpdb = (qpcache_t *)iterator->db;
 
 	if (qpdbiter->result != ISC_R_SUCCESS &&
 	    qpdbiter->result != ISC_R_NOTFOUND &&
@@ -3199,6 +3242,7 @@ dbiterator_pause(dns_dbiterator_t *iterator) {
 		return ISC_R_SUCCESS;
 	}
 
+	dns_qpread_destroy(qpdb->tree, &qpdbiter->qpr);
 	qpdbiter->paused = true;
 
 	return ISC_R_SUCCESS;
