@@ -137,10 +137,8 @@ PYTEST_LOG = os.path.join(SYSTEM_TEST_DIR, "pytest.out.txt")
 
 # pip skips the packages that the system already provides in the pinned
 # version, so only the missing or differing ones get downloaded
-if os.environ.get("NOX_SYSTEM_SITE_PACKAGES") == "1":
-    VENV_PARAMS = ["--system-site-packages"]
-else:
-    VENV_PARAMS = []
+SYSTEM_SITE_PACKAGES = os.environ.get("NOX_SYSTEM_SITE_PACKAGES") == "1"
+VENV_PARAMS = ["--system-site-packages"] if SYSTEM_SITE_PACKAGES else []
 
 
 def build_var(name, build_dir=BUILD_DIR):
@@ -171,6 +169,17 @@ def install(session, requirements):
     if session.venv_backend == "none":
         return  # `nox --no-venv`: use whatever is installed on the system
     session.install("-r", requirements)
+
+
+def run_tool(session, *args, **kwargs):
+    """session.run a tool installed by `install`.
+
+    With NOX_SYSTEM_SITE_PACKAGES the tools the system already provides
+    are not installed into the venv, so nox finds them outside it and
+    warns about that; external=True silences the warning.
+    """
+    kwargs.setdefault("external", SYSTEM_SITE_PACKAGES)
+    return session.run(*args, **kwargs)
 
 
 def python(session):
@@ -341,8 +350,11 @@ def pip_compile(session):
     for group, output in (("test", TEST_REQUIREMENTS), ("lint", LINT_REQUIREMENTS)):
         # pip-compile does not read dependency groups itself
         source = os.path.join(tmp, f"{group}.in")
-        session.run("dependency-groups", "-f", "pyproject.toml", "-o", source, group)
-        session.run(
+        run_tool(
+            session, "dependency-groups", "-f", "pyproject.toml", "-o", source, group
+        )
+        run_tool(
+            session,
             "pip-compile",
             "--generate-hashes",
             "--strip-extras",
@@ -591,7 +603,7 @@ def ci_system_tests(session):
 def mypy(session):
     "Run mypy on the system test library"
     install(session, LINT_REQUIREMENTS)
-    session.run("mypy", *git_ls_files(session, "bin/tests/system/isctest/*.py"))
+    run_tool(session, "mypy", *git_ls_files(session, "bin/tests/system/isctest/*.py"))
 
 
 @pysession
@@ -600,42 +612,42 @@ def pylint(session):
     install(session, LINT_REQUIREMENTS)
     # the pylint plugins in doc/arm/_ext import sphinx
     install(session, "doc/arm/requirements.txt")
-    session.run("pylint", *git_ls_files(session, "*.py"))
+    run_tool(session, "pylint", *git_ls_files(session, "*.py"))
 
 
 @pysession
 def black(session):
     "Check the Python formatting with black"
     install(session, LINT_REQUIREMENTS)
-    session.run("black", "--check", *git_ls_files(session, "*.py"))
+    run_tool(session, "black", "--check", *git_ls_files(session, "*.py"))
 
 
 @pysession
 def black_fix(session):
     "Reformat the Python files with black"
     install(session, LINT_REQUIREMENTS)
-    session.run("black", *git_ls_files(session, "*.py"))
+    run_tool(session, "black", *git_ls_files(session, "*.py"))
 
 
 @pysession
 def ruff(session):
     "Run ruff"
     install(session, LINT_REQUIREMENTS)
-    session.run("ruff", "check", *git_ls_files(session, "*.py"))
+    run_tool(session, "ruff", "check", *git_ls_files(session, "*.py"))
 
 
 @pysession
 def ruff_fix(session):
     "Apply the ruff fixes"
     install(session, LINT_REQUIREMENTS)
-    session.run("ruff", "check", "--fix", *git_ls_files(session, "*.py"))
+    run_tool(session, "ruff", "check", "--fix", *git_ls_files(session, "*.py"))
 
 
 @pysession
 def vulture(session):
     "Look for dead Python code with vulture"
     install(session, LINT_REQUIREMENTS)
-    session.run("vulture", *git_ls_files(session, "*.py"))
+    run_tool(session, "vulture", *git_ls_files(session, "*.py"))
 
 
 @nox.session(python=False)
