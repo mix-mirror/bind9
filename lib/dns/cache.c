@@ -29,11 +29,6 @@
 
 #include <dns/cache.h>
 #include <dns/db.h>
-#include <dns/dbiterator.h>
-#include <dns/masterdump.h>
-#include <dns/rdata.h>
-#include <dns/rdataset.h>
-#include <dns/rdatasetiter.h>
 #include <dns/stats.h>
 
 #ifdef HAVE_JSON_C
@@ -311,102 +306,6 @@ dns_cache_flush(dns_cache_t *cache) {
 	return ISC_R_SUCCESS;
 }
 
-static isc_result_t
-clearnode(dns_db_t *db, dns_dbnode_t *node) {
-	dns_rdatasetiter_t *iter = NULL;
-
-	RETERR(dns_db_allrdatasets(db, node, NULL, DNS_DB_STALEOK,
-				   (isc_stdtime_t)0, &iter));
-
-	DNS_RDATASETITER_FOREACH(iter) {
-		isc_result_t result;
-		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-
-		dns_rdatasetiter_current(iter, &rdataset);
-		result = dns_db_deleterdataset(db, node, NULL, rdataset.type,
-					       rdataset.covers);
-		dns_rdataset_disassociate(&rdataset);
-		if (result != ISC_R_SUCCESS && result != DNS_R_UNCHANGED) {
-			break;
-		}
-	}
-
-	dns_rdatasetiter_destroy(&iter);
-	return ISC_R_SUCCESS;
-}
-
-static isc_result_t
-cleartree(dns_db_t *db, const dns_name_t *name) {
-	isc_result_t result, answer = ISC_R_SUCCESS;
-	dns_dbiterator_t *iter = NULL;
-	dns_dbnode_t *node = NULL, *top = NULL;
-	dns_fixedname_t fnodename;
-	dns_name_t *nodename;
-
-	/*
-	 * Create the node if it doesn't exist so dns_dbiterator_seek()
-	 * can find it.  We will continue even if this fails.
-	 */
-	(void)dns_db_findnode(db, name, true, &top);
-
-	nodename = dns_fixedname_initname(&fnodename);
-
-	CHECK(dns_db_createiterator(db, 0, &iter));
-
-	result = dns_dbiterator_seek(iter, name);
-	if (result == DNS_R_PARTIALMATCH) {
-		result = dns_dbiterator_next(iter);
-	}
-	if (result != ISC_R_SUCCESS) {
-		goto cleanup;
-	}
-
-	while (result == ISC_R_SUCCESS) {
-		result = dns_dbiterator_current(iter, &node, nodename);
-		if (result == DNS_R_NEWORIGIN) {
-			result = ISC_R_SUCCESS;
-		}
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
-		/*
-		 * Are we done?
-		 */
-		if (!dns_name_issubdomain(nodename, name)) {
-			goto cleanup;
-		}
-
-		/*
-		 * If clearnode fails record and move onto the next node.
-		 */
-		result = clearnode(db, node);
-		if (result != ISC_R_SUCCESS && answer == ISC_R_SUCCESS) {
-			answer = result;
-		}
-		dns_db_detachnode(&node);
-		result = dns_dbiterator_next(iter);
-	}
-
-cleanup:
-	if (result == ISC_R_NOMORE || result == ISC_R_NOTFOUND) {
-		result = ISC_R_SUCCESS;
-	}
-	if (result != ISC_R_SUCCESS && answer == ISC_R_SUCCESS) {
-		answer = result;
-	}
-	if (node != NULL) {
-		dns_db_detachnode(&node);
-	}
-	if (iter != NULL) {
-		dns_dbiterator_destroy(&iter);
-	}
-	if (top != NULL) {
-		dns_db_detachnode(&top);
-	}
-
-	return answer;
-}
-
 isc_result_t
 dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
 	return dns_cache_flushnode(cache, name, false);
@@ -414,39 +313,11 @@ dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name) {
 
 isc_result_t
 dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree) {
-	isc_result_t result;
-	dns_dbnode_t *node = NULL;
-	dns_db_t *db = NULL;
-
+	REQUIRE(VALID_CACHE(cache));
+	REQUIRE(name != NULL);
 	REQUIRE(!(tree && dns_name_isroot(name)));
 
-	LOCK(&cache->lock);
-	if (cache->db != NULL) {
-		dns_db_attach(cache->db, &db);
-	}
-	UNLOCK(&cache->lock);
-	if (db == NULL) {
-		return ISC_R_SUCCESS;
-	}
-
-	if (tree) {
-		result = cleartree(cache->db, name);
-	} else {
-		result = dns_db_findnode(cache->db, name, false, &node);
-		if (result == ISC_R_NOTFOUND) {
-			result = ISC_R_SUCCESS;
-			goto cleanup_db;
-		}
-		if (result != ISC_R_SUCCESS) {
-			goto cleanup_db;
-		}
-		result = clearnode(cache->db, node);
-		dns_db_detachnode(&node);
-	}
-
-cleanup_db:
-	dns_db_detach(&db);
-	return result;
+	return ISC_R_NOTIMPLEMENTED;
 }
 
 isc_stats_t *

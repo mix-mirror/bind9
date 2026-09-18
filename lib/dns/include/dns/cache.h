@@ -200,11 +200,8 @@ dns_cache_flush(dns_cache_t *cache);
 isc_result_t
 dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree);
 /*
- * Flush the data for node 'name' from the cache.
- *
- * If 'tree' is true, then also flush all nodes under 'name'. (Note that
- * flushing of a tree only works for names below the root. To flush the
- * entire tree, use dns_cache_flush().)
+ * Per-name and subtree flushing are not supported by the per-thread cache.
+ * Use dns_cache_flush() to replace the entire cache.
  *
  * Requires:
  *\li	'cache' to be valid.
@@ -212,22 +209,20 @@ dns_cache_flushnode(dns_cache_t *cache, const dns_name_t *name, bool tree);
  *\li	if 'tree' is true, then 'name' is not root.
  *
  * Returns:
- *\li	#ISC_R_SUCCESS
- *\li	other error returns.
+ *\li	#ISC_R_NOTIMPLEMENTED
  */
 
 isc_result_t
 dns_cache_flushname(dns_cache_t *cache, const dns_name_t *name);
 /*
- * Flush a given name from the cache.  Equivalent to
- * dns_cache_flushpartial(cache, name, false).
+ * Per-name flushing is not supported by the per-thread cache.
  *
  * Requires:
  *\li	'cache' to be valid.
  *\li	'name' to be valid.
  *
  * Returns:
- *\li	#ISC_R_SUCCESS
+ *\li	#ISC_R_NOTIMPLEMENTED
  *\li	other error returns.
  */
 
