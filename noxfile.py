@@ -17,6 +17,9 @@ Developer entry point for running the checks and tests locally.
     nox -s system_tests -- -k dnssec   pass extra arguments to pytest
     nox -s ci_system_tests             run the system tests the way the CI
                                        job does (see the session)
+    nox -s doctest                     run the doctests of the system test
+                                       library
+    nox -s ci_doctest                  run the doctests the way the CI job does
     nox -s docs                        build the ARM and the manual pages
     nox -s doc_misc                    regenerate the grammar files in doc/misc
     nox -s docs_pdf                    build the ARM as PDF (needs TeX Live)
@@ -349,8 +352,8 @@ def pip_compile(session):
 # The build runs without a virtual environment so that meson does not record
 # the venv python as the interpreter for the system tests.
 @nox.session(python=False)
-def build(session):
-    "Configure and compile BIND in the build directory"
+def configure(session):
+    "Configure the build directory"
     if SKIP_BUILD:
         return
     session.run(
@@ -366,6 +369,13 @@ def build(session):
         BUILD_DIR,
         external=True,
     )
+
+
+@nox.session(python=False, requires=["configure"])
+def build(session):
+    "Compile BIND in the build directory"
+    if SKIP_BUILD:
+        return
     session.run("meson", "compile", "-C", BUILD_DIR, "-j", "-1", external=True)
 
 
@@ -380,6 +390,58 @@ def system_tests(session):
     "Run the system tests (extra arguments are passed to pytest)"
     install(session, TEST_REQUIREMENTS)
     run_system_tests(session, *session.posargs)
+
+
+def run_doctest(session, *args):
+    """Run the doctests of the system test library.
+
+    The library reads the build variables, which the system-test-init
+    target writes into the source tree; the target does not compile
+    anything.
+    """
+    if not SKIP_BUILD:
+        session.run(
+            "meson", "compile", "-C", BUILD_DIR, "system-test-init", external=True
+        )
+    # from the system test directory, like the system tests: `python -m
+    # pytest` puts the current directory first on sys.path, and from inside
+    # isctest its hypothesis subpackage would shadow the real one
+    with session.chdir(SYSTEM_TEST_DIR):
+        session.run(
+            python(session),
+            "-m",
+            "pytest",
+            "--noconftest",
+            "--doctest-modules",
+            *args,
+            "isctest",
+        )
+
+
+@pysession(python=build_python(), requires=["configure"])
+def doctest(session):
+    "Run the doctests of the system test library (extra arguments go to pytest)"
+    install(session, TEST_REQUIREMENTS)
+    run_doctest(session, *session.posargs)
+
+
+@pysession(python=build_python(), requires=["configure"])
+def ci_doctest(session):
+    "Run the doctests the way the CI job does (extra arguments go to pytest)"
+    install(session, TEST_REQUIREMENTS)
+    checkout_bind9_qa(session)
+    # the JUnit post-processing runs, and validates junit.xml, even when
+    # the doctests fail
+    junit_pytest = "junit_doctest.xml"
+    passed = attempt(
+        run_doctest,
+        session,
+        f"--junit-xml={os.path.abspath(junit_pytest)}",
+        *session.posargs,
+    )
+    postprocess_junit(session, "junit.xml", junit_pytest)
+    if not passed:
+        session.error("the doctests failed")
 
 
 @pysession(python=build_python(), requires=["build"])
