@@ -38,9 +38,16 @@ docs_setup session): meson records the sphinx-build it finds at the first
 setup, so the directory of the build session would keep whatever the system
 had.
 
+The build directories are configured with the meson machine files the CI
+build jobs use (ci/*.ini): ci/common.ini, the overlay of the platform the
+build runs on when CI has one for it, and the sanitizer's; the session
+logs which ones it applied.
+
 Environment variables:
 
     NOX_BUILD_DIR              build directory (default: build-nox)
+    NOX_CC                     compiler, gcc (default) or clang; CI builds
+                               with clang on Debian trixie only
     NOX_SKIP_BUILD=1           use the build directory as it is, do not
                                configure or compile (CI gets it from the
                                build job)
@@ -66,6 +73,7 @@ anything.
 
 import glob
 import os
+import platform
 import re
 import shutil
 import sys
@@ -94,6 +102,7 @@ nox.options.default_venv_backend = "virtualenv"
 BUILD_DIR = os.environ.get("NOX_BUILD_DIR", "build-nox")
 DOCS_BUILD_DIR = os.environ.get("NOX_DOCS_BUILD_DIR", BUILD_DIR + "-docs")
 SKIP_BUILD = os.environ.get("NOX_SKIP_BUILD") == "1"
+CC = os.environ.get("NOX_CC", "gcc")
 CLANG_FORMAT = os.environ.get("CLANG_FORMAT", "clang-format")
 
 QA_REPO = "https://gitlab.isc.org/isc-projects/bind9-qa.git"
@@ -129,9 +138,9 @@ else:
     VENV_PARAMS = []
 
 
-def build_var(name):
+def build_var(name, build_dir=BUILD_DIR):
     """A variable recorded by the build for the system tests, if built yet."""
-    path = os.path.join(BUILD_DIR, "bin/tests/system/isctest/vars/.build_vars", name)
+    path = os.path.join(build_dir, "bin/tests/system/isctest/vars/.build_vars", name)
     try:
         with open(path, encoding="utf-8") as f:
             return f.read().strip()
@@ -139,9 +148,9 @@ def build_var(name):
         return None
 
 
-def build_python():
+def build_python(build_dir=BUILD_DIR):
     """The interpreter the build found, to run the system tests with."""
-    interpreter = build_var("PYTHON")
+    interpreter = build_var("PYTHON", build_dir)
     if interpreter and os.access(interpreter, os.X_OK):
         return interpreter
     return None
@@ -349,6 +358,106 @@ def pip_compile(session):
             f.write(pins)
 
 
+def os_release():
+    """The fields of /etc/os-release, empty where there is none."""
+    fields = {}
+    try:
+        with open("/etc/os-release", encoding="utf-8") as f:
+            for line in f:
+                key, sep, value = line.strip().partition("=")
+                if sep:
+                    fields[key] = value.strip('"')
+    except FileNotFoundError:
+        pass
+    return fields
+
+
+def platform_overlay(release):
+    """The name of the ci/*.ini overlay for the platform `release` describes.
+
+    The names are those of the CI build jobs' machine files, one per image
+    (see .gitlab-ci.yml); Fedora and Debian trixie on amd64 are the base
+    platforms, which need none.  A name that has no file falls back to none
+    so that the build works on platforms CI does not cover.
+    """
+    distro = release.get("ID", platform.system().lower())
+    version = release.get("VERSION_ID", platform.release()).partition(".")[0]
+    codename = release.get("VERSION_CODENAME", "")
+    if distro in ("almalinux", "freebsd"):
+        name = distro + version
+    elif distro == "opensuse-tumbleweed":
+        name = "tumbleweed"
+    elif distro == "debian":
+        if "/sid" in release.get("PRETTY_NAME", ""):
+            name = "sid"
+        elif codename == "trixie" and platform.machine() in ("i386", "i686"):
+            name = "trixie386"
+        else:
+            name = codename
+    elif distro == "ubuntu":
+        name = codename
+    else:
+        name = distro
+    if os.path.exists(machine_file(name)):
+        return name
+    return None
+
+
+def machine_file(name):
+    """The path of the ci/*.ini machine file `name`."""
+    return os.path.join("ci", f"{name}.ini")
+
+
+def machine_files(session, sanitizer=None):
+    """The meson machine files for a build on this platform, in meson order.
+
+    Later files override earlier ones: the common options, the platform
+    overlay, the sanitizer's, then the compiler's, like the CI build jobs
+    pass them.
+    """
+    release = os_release()
+    names = ["common"]
+    overlay = platform_overlay(release)
+    if overlay:
+        names.append(overlay)
+    else:
+        session.log(
+            "no ci/*.ini overlay for %s %s, using the base options",
+            release.get("ID", platform.system()),
+            release.get("VERSION_ID", platform.release()),
+        )
+    if sanitizer:
+        names.append(sanitizer)
+    if CC == "clang":
+        if release.get("VERSION_CODENAME") != "trixie":
+            session.error("CI builds with clang on Debian trixie only (NOX_CC)")
+        names.append("clang-trixie")
+        if sanitizer:
+            names.append("clang-sanitizer")
+    elif CC != "gcc":
+        session.error(f"NOX_CC={CC}: the machine files cover gcc and clang")
+    return [machine_file(name) for name in names]
+
+
+def meson_setup(session, build_dir, sanitizer=None):
+    """Configure `build_dir` with the machine files for this platform."""
+    files = machine_files(session, sanitizer)
+    session.log("meson machine files: %s", " ".join(files))
+    args = []
+    for path in files:
+        args += ["--native-file", path]
+    session.run("meson", "setup", "--reconfigure", *args, build_dir, external=True)
+
+
+def meson_compile(session, build_dir):
+    """Compile BIND and the system test helpers in `build_dir`."""
+    session.run("meson", "compile", "-C", build_dir, "-j", "-1", external=True)
+    # not a default target, but the system tests need it
+    session.run(
+        "meson", "compile", "-C", build_dir, "system-test-dependencies", external=True
+    )
+
+
 # The build runs without a virtual environment so that meson does not record
 # the venv python as the interpreter for the system tests.
 @nox.session(python=False)
@@ -356,19 +465,7 @@ def configure(session):
     "Configure the build directory"
     if SKIP_BUILD:
         return
-    session.run(
-        "meson",
-        "setup",
-        "--reconfigure",
-        "--libdir=lib",
-        "-Dcmocka=enabled",
-        "-Ddeveloper=enabled",
-        "-Dleak-detection=enabled",
-        "-Doptimization=1",
-        "-Dnamed-lto=thin",
-        BUILD_DIR,
-        external=True,
-    )
+    meson_setup(session, BUILD_DIR)
 
 
 @nox.session(python=False, requires=["configure"])
@@ -376,7 +473,7 @@ def build(session):
     "Compile BIND in the build directory"
     if SKIP_BUILD:
         return
-    session.run("meson", "compile", "-C", BUILD_DIR, "-j", "-1", external=True)
+    meson_compile(session, BUILD_DIR)
 
 
 @nox.session(python=False, requires=["build"])
@@ -593,9 +690,9 @@ def docs_setup(session):
     install(session, DOCS_REQUIREMENTS)
     sphinx_build = docs_sphinx_build(session)
     mode = "--reconfigure"
-    machine_file = []
+    setup_args = []
     if sphinx_build is not None:
-        machine_file = ["--native-file", docs_machine_file(session, sphinx_build)]
+        setup_args = ["--native-file", docs_machine_file(session, sphinx_build)]
         if not docs_build_dir_uses(sphinx_build):
             session.log(
                 f"{DOCS_BUILD_DIR} was configured with another sphinx-build, wiping it"
@@ -606,7 +703,7 @@ def docs_setup(session):
         "setup",
         mode,
         "-Ddoc=enabled",
-        *machine_file,
+        *setup_args,
         DOCS_BUILD_DIR,
         external=True,
     )
