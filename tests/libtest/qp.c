@@ -119,9 +119,9 @@ qp_test_maxkeylen(dns_qp_t *qp) {
 static void
 dumpread(dns_qpreadable_t qpr, const char *type, const char *tail) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
-	printf("%s %p root %u %u:%u base %p methods %p%s", type, qp,
+	printf("%s %p root %u %u:%u base %p limit %u methods %p%s", type, qp,
 	       qp->root_ref, ref_chunk(qp->root_ref), ref_cell(qp->root_ref),
-	       qp->base, qp->methods, tail);
+	       qp->base, qp->chunk_limit, qp->methods, tail);
 }
 
 static void

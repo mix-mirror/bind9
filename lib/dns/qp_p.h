@@ -227,7 +227,8 @@ ref_cell(dns_qpref_t ref) {
  * to a value that should trigger an obvious bug. See qp_init()
  * and get_root() below.
  */
-#define INVALID_REF ((dns_qpref_t)~0UL)
+#define INVALID_REF   ((dns_qpref_t)~0UL)
+#define INVALID_CHUNK UINT32_MAX
 
 /***********************************************************************
  *
@@ -237,8 +238,9 @@ ref_cell(dns_qpref_t ref) {
 /*
  * A base contains three separate arrays in one allocation: an immutable
  * bitmap, logical free counters, and chunk pointers. Readers only use the
- * pointers. Writers modify the metadata only in a private base; keeping the
- * old base is sufficient to preserve these counters for update rollback.
+ * pointers. The serialized writer may change metadata in an appendable base;
+ * readers and callbacks never consult it. Updates clone before changing it,
+ * and persistent snapshots own private copies.
  */
 
 /*
@@ -253,6 +255,8 @@ typedef struct qp_chunk {
 	isc_refcount_t references;
 	dns_qpcell_t used;
 	dns_qpcell_t capacity;
+	/*% writer-only chain of chunks allocated since the last commit */
+	dns_qpchunk_t mutable_next;
 	dns_qpnode_t nodes[];
 } qp_chunk_t;
 
@@ -262,11 +266,12 @@ chunk_fromnodes(dns_qpnode_t *nodes) {
 }
 
 /*
- * Published mappings are immutable. The writer clones its base at the start
- * of each transaction and may then remove/reuse indices immediately. Old
- * bases retain their physical chunks independently of the current writer.
- * Bases have references from writers, published versions and snapshots.
- * Transient readers use RCU and never adjust reference counts.
+ * Published mappings never change. Writes may append above their protected
+ * prefix; clearing/reusing that prefix or growing the allocation requires a
+ * clone. A base owns every non-NULL mapping, including later appends, until
+ * its final reference is released. Only that final owner scans the pointers
+ * without writer synchronization. Transient readers follow their root and
+ * may enumerate pointers only below their version's chunk_limit.
  */
 struct dns_qpbase {
 	unsigned int magic;
@@ -346,6 +351,8 @@ ref_ptr(dns_qpreadable_t qpr, dns_qpref_t ref) {
  * The location of the root node is actually a dns_qpref_t, but is
  * declared in DNS_QPREADER_FIELDS as uint32_t to avoid leaking too
  * many internal details into the public API.
+ * `chunk_limit` is a version's stable pointer-enumeration bound, not the
+ * base capacity or a bound for reading writer-only allocation metadata.
  *
  * The `uctx` and `methods` support callbacks into the user's code.
  * They are constant after initialization.
@@ -359,7 +366,7 @@ ref_ptr(dns_qpreadable_t qpr, dns_qpref_t ref) {
 	 })
 
 /*
- * A snapshot owns a reference to the published immutable base. Its chunks
+ * A snapshot owns a private copy of the committed base. Its chunks
  * survive independently of the current writer's indices and of RCU grace
  * periods. The list is retained only to check that snapshots have been
  * destroyed before their qpmulti; reclamation needs no mark/sweep.
@@ -416,6 +423,17 @@ struct dns_qp {
 	isc_mem_t *mctx;
 	/*% number of slots in the base arrays */
 	dns_qpchunk_t chunk_max;
+	/*% entries below this bound must not be cleared/replaced [MT] */
+	dns_qpchunk_t protected;
+	/*% next candidate slot for allocation (never below protected) */
+	dns_qpchunk_t alloc_next;
+	/*% writer-only chain of newly allocated mutable chunks */
+	dns_qpchunk_t mutable_head;
+	/*% chunks whose used and free counters are equal, including empty bump
+	 */
+	dns_qpchunk_t dead_count;
+	/*% occupied slots, to distinguish reuse from geometric growth */
+	dns_qpchunk_t chunk_count;
 	/*% which chunk is used for allocations */
 	dns_qpchunk_t bump;
 	/*% nodes in the `bump` chunk below `fender` are read only [MT] */
@@ -759,6 +777,7 @@ typedef struct qp_version {
 	struct rcu_head rcu_head;
 	dns_qpmulti_t *multi;
 	dns_qpbase_t *base;
+	dns_qpchunk_t chunk_limit;
 	dns_qpnode_t reader[READER_SIZE];
 } qp_version_t;
 
@@ -790,6 +809,8 @@ unpack_reader(dns_qpreader_t *qp, dns_qpnode_t *reader) {
 	INSIST(reader_valid(reader));
 	dns_qpmulti_t *multi = node_pointer(&reader[0]);
 	dns_qpbase_t *base = node_pointer(&reader[1]);
+	qp_version_t *version = caa_container_of(reader, qp_version_t,
+						 reader[0]);
 	INSIST(QPMULTI_VALID(multi));
 	INSIST(QPBASE_VALID(base));
 	*qp = (dns_qpreader_t){
@@ -797,6 +818,7 @@ unpack_reader(dns_qpreader_t *qp, dns_qpnode_t *reader) {
 		.uctx = multi->uctx,
 		.methods = multi->methods,
 		.root_ref = node32(&reader[1]),
+		.chunk_limit = version->chunk_limit,
 		.base = base,
 	};
 	return multi;

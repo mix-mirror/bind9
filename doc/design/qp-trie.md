@@ -627,28 +627,41 @@ must represent a completely free chunk too. The physical chunk header holds
 `used` and the allocation's `capacity`; `used` is also the bump allocation
 point. Discarding cells increments `free` rather than decrementing `used`.
 
-Published base arrays are immutable. Each transaction clones the base
-and acquires one reference to each physical chunk in the copied mapping.
-The writer can then clear dead mappings and reuse their indices without
-waiting for readers of older versions. Each old root retains its own
-base, so the same index can refer to different physical allocations in
-different versions.
+Published pointer mappings are immutable, but the writer may append new
+chunks beyond the published prefix while capacity remains. Old roots cannot
+refer to these slots; publishing a new root orders initialization of the
+chunks and their mappings before new readers use them. Each packed version
+also records a stable `chunk_limit`, separate from allocated `chunk_max`.
+Root-directed lookup does not need this bound, but a transient reader must
+not enumerate pointers above its version's bound or inspect writer metadata.
+
+The writer's `protected` bound prevents clearing or replacing any previously
+published slot. To remove such mappings, reuse holes below that bound, or
+grow the allocation geometrically, the writer clones the base and acquires
+one physical chunk reference per copied mapping. The clone is private, so it
+can clear dead mappings and reuse indices immediately; the old base remains
+valid for old roots. Growth never reallocates a published base. A cursor and
+occupied-slot count avoid scanning the protected prefix on ordinary appends
+and distinguish reuse of existing capacity from geometric growth.
 
 Physical chunks have a reference count, allocation watermark, and capacity in a
 header before their nodes. Base entries still point directly at the nodes,
 so this adds no indirection to lookup. A chunk's destructor scans its
-watermark only after the last owning base releases it. Logical free counters
-are private to each base version. An update saves the old base and restores
-it on rollback, restoring its bitmap and counters without an undo journal.
+watermark only after the last owning base releases it. The bitmap and logical
+free counters are writer-only bookkeeping: ordinary writes can modify them
+in a base shared with transient readers. An update clones before modification
+and saves the old base for rollback, restoring its metadata without a journal.
 Updates allocate into fresh chunks, so existing physical watermarks need
 no rollback bookkeeping.
 
-Opening a transaction initializes its new immutable bitmap to all ones;
-allocating a chunk clears that index's bit. The bump's `fender` boundary
-overrides the bit while allocating into its mutable suffix. Bases grow
-geometrically by allocating and copying all three arrays; growth within a
-transaction preserves the bitmap instead of freezing the chunks. The old
-allocation remains alive until all its owners release it.
+Allocating a chunk clears its immutable bit and links its physical header
+into a writer-only chain of new chunks. Commit walks only this chain to set
+their bits; opening an ordinary write neither copies nor scans the base.
+The bump's `fender` boundary overrides its immutable bit for a mutable suffix.
+Recycling walks the same chain, unlinking empty non-bump chunks before freeing
+them. Growth copies the bitmap unchanged, preserving mutability during the
+transaction. The chain uses indices, so shrinking an update's bump allocation
+does not invalidate its links; callbacks never follow these links.
 
 
 lightweight write transactions
@@ -697,11 +710,13 @@ heavyweight read-only snapshots
 -------------------------------
 
 A "snapshot" is for things like zone transfers that need a long-lived
-consistent view of a zone. A snapshot retains the published root and a
-reference to its immutable base. Creating a snapshot does not copy the
-base or enumerate chunks. Destroying it releases the base reference;
-the last owner of a base releases all its chunk references. No snapshot
-mark/sweep pass is needed.
+consistent view of a zone. Under the writer mutex, snapshot creation captures
+the published root and copies the base's bitmap, counters, and pointers,
+acquiring one reference per physical chunk. This is O(base capacity), not
+O(1), but the private copy cannot retain chunks appended later. Destruction
+releases these references outside the writer mutex. No snapshot mark/sweep
+pass is needed. Frozen snapshot metadata does not make shared physical
+headers historical: the writer may still advance an old bump's watermark.
 
 
 
@@ -730,14 +745,25 @@ mutable - see the "todo" in `include/dns/qp.h`.
 chunk cleanup
 -------------
 
+The writer counts empty chunks as cells are allocated or freed. A commit
+with no empty chunks to retire (apart from a fresh, zero-sized bump) skips
+reclamation discovery entirely. Otherwise it replaces a dead nonzero-sized
+bump, freezes newly allocated chunks, clones a protected base if necessary,
+and scans/removes empty mappings from the private base. This slow path is
+still O(base capacity); the optimization removes unconditional copying and
+scanning, not all linear operations.
+
 After a "write" or "update" transaction has committed, there can be a
 number of chunks that are no longer needed by the latest version of
 the trie, but still in use by readers accessing an older version.
 The qp-trie uses an RCU callback to release the retired version's base.
 The callback takes no writer mutex and never interprets an index through
 the current writer. Bases and physical chunks carry all necessary lifetime
-information. Snapshot references can keep a base alive beyond the grace
-period.
+information. Each base owns every non-NULL mapping, including later appends.
+A delayed transient reader can therefore conservatively retain appended
+chunks until that shared base is finally released. The final base destructor
+can scan the whole capacity: the last reference implies there is no writer
+left to append. Private snapshots hold physical chunks independently.
 
 When reclaiming a chunk, we have to scan it for any remaining leaf
 nodes. When nodes are accessibly only to the writer, they are zeroed

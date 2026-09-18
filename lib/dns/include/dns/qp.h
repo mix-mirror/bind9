@@ -121,11 +121,12 @@ typedef struct dns_qpmulti dns_qpmulti_t;
  * but a non-standard extension won't make these declarations neater if
  * we must also have a standard alternative.)
  */
-#define DNS_QPREADER_FIELDS                   \
-	uint32_t		    magic;    \
-	dns_qpref_t		    root_ref; \
-	dns_qpbase_t		   *base;     \
-	void			   *uctx;     \
+#define DNS_QPREADER_FIELDS                      \
+	uint32_t		    magic;       \
+	dns_qpref_t		    root_ref;    \
+	uint32_t		    chunk_limit; \
+	dns_qpbase_t		   *base;        \
+	void			   *uctx;        \
 	const struct dns_qpmethods *methods
 
 typedef struct dns_qpbase dns_qpbase_t; /* private, declared in qp_p.h */
@@ -772,9 +773,9 @@ dns_qpmulti_snapshot(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp);
 /*%<
  * Start a heavyweight (long) read-only transaction
  *
- * This function briefly takes and releases the modification mutex
- * while allocating a copy of the trie's metadata. While the snapshot
- * exists it does not interfere with other read-only or read-write
+ * This function holds the modification mutex while copying the base metadata
+ * and acquiring its physical chunk references (O(base capacity)). While the
+ * snapshot exists it does not interfere with other read-only or read-write
  * transactions on the trie.
  *
  * Requires:

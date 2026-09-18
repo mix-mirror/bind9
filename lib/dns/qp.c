@@ -419,6 +419,9 @@ base_detach(dns_qpbase_t **basep) {
 	if (base == NULL || isc_refcount_decrement(&base->refcount) != 1) {
 		return;
 	}
+	/* The writer owns a reference while appending: final release cannot
+	 * race with pointer initialization, and does not inspect its metadata.
+	 */
 	for (dns_qpchunk_t i = 0; i < base->chunk_max; i++) {
 		if (base->ptr[i] != NULL) {
 			chunk_release(base, base->ptr[i]);
@@ -433,13 +436,11 @@ base_detach(dns_qpbase_t **basep) {
 /*
  * Each copied mapping acquires its own physical chunk reference. This also
  * handles geometric growth: the source may have been published, so it must
- * remain allocated at the same address until its owners release it. The
- * immutable argument distinguishes transaction opening from in-transaction
- * growth: only the former must freeze existing chunks.
+ * remain allocated at the same address until its owners release it. Copy
+ * writer metadata too, preserving mutable bits on in-transaction growth.
  */
-static void
-base_clone(dns_qp_t *qp, dns_qpchunk_t newmax, bool immutable) {
-	dns_qpbase_t *old = qp->base;
+static dns_qpbase_t *
+base_copy(dns_qp_t *qp, dns_qpbase_t *old, dns_qpchunk_t newmax) {
 	dns_qpbase_t *base = isc_mem_allocate(qp->mctx, base_size(newmax));
 	REQUIRE(old == NULL || newmax >= old->chunk_max);
 	*base = (dns_qpbase_t){
@@ -453,10 +454,8 @@ base_clone(dns_qp_t *qp, dns_qpchunk_t newmax, bool immutable) {
 	};
 	isc_refcount_init(&base->refcount, 1);
 	isc_mem_attach(qp->mctx, &base->mctx);
-	/* Opening a transaction freezes all old chunks. Growth preserves bits.
-	 */
-	memset(base->immutable, immutable ? 0xff : 0, base_bitmap_size(newmax));
-	if (!immutable && old != NULL) {
+	memset(base->immutable, 0, base_bitmap_size(newmax));
+	if (old != NULL) {
 		memmove(base->immutable, old->immutable,
 			base_bitmap_size(old->chunk_max));
 	}
@@ -470,8 +469,28 @@ base_clone(dns_qp_t *qp, dns_qpchunk_t newmax, bool immutable) {
 			isc_refcount_increment(&chunk->references);
 		}
 	}
-	qp->base = base;
+	return base;
+}
+
+static void
+base_clone(dns_qp_t *qp, dns_qpchunk_t newmax) {
+	dns_qpbase_t *old = qp->base;
+	qp->base = base_copy(qp, old, newmax);
+	qp->protected = 0;
+	qp->alloc_next = 0;
 	base_detach(&old);
+}
+
+/* Freeze only allocations made since the previous commit, not the base. */
+static void
+freeze_chunks(dns_qp_t *qp) {
+	while (qp->mutable_head != INVALID_CHUNK) {
+		dns_qpchunk_t index = qp->mutable_head;
+		qp_chunk_t *chunk = chunk_fromnodes(qp->base->ptr[index]);
+		qp->mutable_head = chunk->mutable_next;
+		chunk->mutable_next = INVALID_CHUNK;
+		qp->base->immutable[index / 8] |= 1U << (index % 8);
+	}
 }
 
 /***********************************************************************
@@ -518,7 +537,7 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 	INSIST(qp->base->ptr[chunk] == NULL);
 	INSIST(qp->base->free[chunk] == 0);
 	INSIST(qp->chunk_capacity <= QP_CHUNK_SIZE);
-	INSIST(isc_refcount_current(&qp->base->refcount) == 1);
+	INSIST(chunk >= qp->protected);
 
 	qp->chunk_capacity = next_capacity(qp->chunk_capacity * 2u, size);
 	qp_chunk_t *physical = isc_mem_allocate(
@@ -527,9 +546,16 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
 	isc_refcount_init(&physical->references, 1);
 	physical->used = size;
 	physical->capacity = qp->chunk_capacity;
+	physical->mutable_next = qp->mutable_head;
+	qp->mutable_head = chunk;
 	qp->base->ptr[chunk] = physical->nodes;
+	qp->chunk_count++;
+	qp->chunk_limit = ISC_MAX(qp->chunk_limit, chunk + 1);
 	chunk_set_mutable(qp->base, chunk);
 	qp->used_count += size;
+	if (size == 0) {
+		qp->dead_count++;
+	}
 	qp->bump = chunk;
 	qp->fender = 0;
 
@@ -541,7 +567,7 @@ chunk_alloc(dns_qp_t *qp, dns_qpchunk_t chunk, dns_qpweight_t size) {
  */
 static void
 realloc_chunk_arrays(dns_qp_t *qp, dns_qpchunk_t newmax) {
-	base_clone(qp, newmax, false);
+	base_clone(qp, newmax);
 	qp->chunk_max = newmax;
 
 	TRACE("qpbase %p max %u", qp->base, qp->chunk_max);
@@ -555,14 +581,19 @@ static dns_qpref_t
 alloc_slow(dns_qp_t *qp, dns_qpweight_t size) {
 	dns_qpchunk_t chunk;
 
-	for (chunk = 0; chunk < qp->chunk_max; chunk++) {
+	for (chunk = qp->alloc_next; chunk < qp->chunk_max; chunk++) {
 		if (qp->base->ptr[chunk] == NULL) {
+			qp->alloc_next = chunk + 1;
 			return chunk_alloc(qp, chunk, size);
 		}
 	}
 	ENSURE(chunk == qp->chunk_max);
-	realloc_chunk_arrays(qp, GROWTH_FACTOR(chunk));
-	return chunk_alloc(qp, chunk, size);
+	/* A clone can reuse holes in the protected prefix without growing. */
+	dns_qpchunk_t newmax = qp->chunk_count < qp->chunk_max
+				       ? qp->chunk_max
+				       : GROWTH_FACTOR(qp->chunk_max);
+	realloc_chunk_arrays(qp, newmax);
+	return alloc_slow(qp, size);
 }
 
 /*
@@ -583,6 +614,10 @@ alloc_twigs(dns_qp_t *qp, dns_qpweight_t size) {
 	dns_qpcell_t cell = physical->used;
 
 	if (cell + size <= physical->capacity) {
+		if (cell == qp->base->free[chunk]) {
+			INSIST(qp->dead_count > 0);
+			qp->dead_count--;
+		}
 		physical->used += size;
 		qp->used_count += size;
 		return make_ref(chunk, cell);
@@ -610,6 +645,11 @@ free_twigs(dns_qp_t *qp, dns_qpref_t twigs, dns_qpweight_t size) {
 	ENSURE(qp->free_count <= qp->used_count);
 	ENSURE(qp->base->free[chunk] <=
 	       chunk_fromnodes(qp->base->ptr[chunk])->used);
+	if (qp->base->free[chunk] ==
+	    chunk_fromnodes(qp->base->ptr[chunk])->used)
+	{
+		qp->dead_count++;
+	}
 
 	if (cells_immutable(qp, twigs)) {
 		qp->hold_count += size;
@@ -655,16 +695,26 @@ chunk_usage(dns_qp_t *qp, dns_qpchunk_t chunk) {
  */
 static void
 chunk_free(dns_qp_t *qp, dns_qpchunk_t chunk) {
-	INSIST(isc_refcount_current(&qp->base->refcount) == 1);
+	INSIST(chunk >= qp->protected);
 	qp_chunk_t *physical = chunk_fromnodes(qp->base->ptr[chunk]);
+	INSIST(physical->used == qp->base->free[chunk]);
+	INSIST(qp->dead_count > 0);
+	qp->dead_count--;
 	INSIST(qp->used_count >= physical->used);
 	INSIST(qp->free_count >= qp->base->free[chunk]);
 	qp->used_count -= physical->used;
 	qp->free_count -= qp->base->free[chunk];
 	chunk_release(qp->base, qp->base->ptr[chunk]);
 	qp->base->ptr[chunk] = NULL;
+	qp->chunk_count--;
 	qp->base->free[chunk] = 0;
 	chunk_set_mutable(qp->base, chunk);
+	qp->alloc_next = ISC_MIN(qp->alloc_next, chunk);
+	while (qp->chunk_limit > qp->protected &&
+	       qp->base->ptr[qp->chunk_limit - 1] == NULL)
+	{
+		qp->chunk_limit--;
+	}
 }
 
 /*
@@ -676,13 +726,17 @@ recycle(dns_qp_t *qp) {
 
 	isc_nanosecs_t start = isc_time_monotonic();
 
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (chunk != qp->bump && qp->base->ptr[chunk] != NULL &&
-		    !chunk_immutable(qp->base, chunk) &&
-		    chunk_usage(qp, chunk) == 0)
-		{
-			chunk_free(qp, chunk);
+	dns_qpchunk_t *link = &qp->mutable_head;
+	while (*link != INVALID_CHUNK) {
+		dns_qpchunk_t index = *link;
+		qp_chunk_t *chunk = chunk_fromnodes(qp->base->ptr[index]);
+		INSIST(!chunk_immutable(qp->base, index));
+		if (index != qp->bump && chunk_usage(qp, index) == 0) {
+			*link = chunk->mutable_next;
+			chunk_free(qp, index);
 			nfree++;
+		} else {
+			link = &chunk->mutable_next;
 		}
 	}
 
@@ -719,20 +773,41 @@ reclaim_chunks_cb(struct rcu_head *arg) {
  * an immutable, entirely dead prefix must also be retired: otherwise a later
  * snapshot would unnecessarily retain its old leaf references.
  */
+static bool
+reclaim_needed(dns_qp_t *qp) {
+	unsigned int empty_bump =
+		chunk_fromnodes(qp->base->ptr[qp->bump])->used == 0 ? 1 : 0;
+	return qp->dead_count > empty_bump;
+}
+
 static void
 reclaim_chunks(dns_qp_t *qp) {
-	if (chunk_fromnodes(qp->base->ptr[qp->bump])->used != 0 &&
-	    chunk_usage(qp, qp->bump) == 0)
-	{
-		alloc_reset(qp);
-	}
-	for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
-		if (chunk != qp->bump && qp->base->ptr[chunk] != NULL &&
-		    chunk_usage(qp, chunk) == 0)
+	if (reclaim_needed(qp)) {
+		if (chunk_fromnodes(qp->base->ptr[qp->bump])->used != 0 &&
+		    chunk_usage(qp, qp->bump) == 0)
 		{
-			chunk_free(qp, chunk);
+			alloc_reset(qp);
+		}
+		/* Unpublished dead mappings need no clone. Unlink them first.
+		 */
+		recycle(qp);
+	}
+	freeze_chunks(qp);
+	if (reclaim_needed(qp)) {
+		/* Previously published mappings require a private base. */
+		if (qp->protected != 0) {
+			base_clone(qp, qp->chunk_max);
+		}
+		for (dns_qpchunk_t chunk = 0; chunk < qp->chunk_max; chunk++) {
+			if (chunk != qp->bump && qp->base->ptr[chunk] != NULL &&
+			    chunk_usage(qp, chunk) == 0)
+			{
+				chunk_free(qp, chunk);
+			}
 		}
 	}
+	INSIST(qp->dead_count ==
+	       (chunk_fromnodes(qp->base->ptr[qp->bump])->used == 0 ? 1 : 0));
 	qp->hold_count = qp->free_count;
 }
 
@@ -1025,9 +1100,6 @@ dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	dns_qp_t *qp = transaction_open(multi, qptp);
 	TRACE("");
 
-	if (qp->base != NULL) {
-		base_clone(qp, qp->chunk_max, true);
-	}
 	if (qp->transaction_mode == QP_WRITE) {
 		qp->fender = chunk_fromnodes(qp->base->ptr[qp->bump])->used;
 	} else {
@@ -1051,8 +1123,8 @@ dns_qpmulti_write(dns_qpmulti_t *multi, dns_qp_t **qptp) {
  * so their allocation watermarks do not need restoring.
  *
  * Set the saved transaction mode to QP_UPDATE so that the next transaction
- * after rollback starts a fresh bump chunk too. It will freeze the old
- * chunks when cloning the saved base, not by changing the saved bitmap.
+ * after rollback starts a fresh bump chunk too. Old chunks were frozen at
+ * their commit; the saved bitmap never needs to change during the update.
  */
 void
 dns_qpmulti_update(dns_qpmulti_t *multi, dns_qp_t **qptp) {
@@ -1074,7 +1146,7 @@ dns_qpmulti_update(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	multi->rollback = rollback;
 
 	if (qp->base != NULL) {
-		base_clone(qp, qp->chunk_max, true);
+		base_clone(qp, qp->chunk_max);
 	}
 	alloc_reset(qp);
 }
@@ -1109,10 +1181,13 @@ dns_qpmulti_commit(dns_qpmulti_t *multi, dns_qp_t **qptp) {
 	reclaim_chunks(qp);
 
 	qp_version_t *version = isc_mem_get(qp->mctx, sizeof(*version));
-	*version = (qp_version_t){ .base = qp->base };
+	*version = (qp_version_t){ .base = qp->base,
+				   .chunk_limit = qp->chunk_limit };
 	dns_qpmulti_attach(multi, &version->multi);
 	isc_refcount_increment(&version->base->refcount);
 	make_reader(version->reader, multi);
+	qp->protected = qp->chunk_limit;
+	qp->alloc_next = qp->chunk_limit;
 
 	dns_qpnode_t *old = rcu_dereference(multi->reader);
 	rcu_assign_pointer(multi->reader, version->reader); /* COMMIT */
@@ -1212,7 +1287,9 @@ dns_qpmulti_snapshot(dns_qpmulti_t *multi, dns_qpsnap_t **qpsp) {
 	INSIST(qps->whence == multi);
 	dns_qpmulti_ref(multi);
 	if (qps->base != NULL) {
-		isc_refcount_increment(&qps->base->refcount);
+		/* A private copy freezes metadata and cannot retain later
+		 * appends. */
+		qps->base = base_copy(qpw, qps->base, qps->base->chunk_max);
 	}
 	ISC_LIST_INITANDAPPEND(multi->snapshots, qps, link);
 
@@ -1258,6 +1335,7 @@ dns_qp_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 
 	dns_qp_t *qp = isc_mem_get(mctx, sizeof(*qp));
 	QP_INIT(qp, methods, uctx);
+	qp->mutable_head = INVALID_CHUNK;
 	isc_mem_attach(mctx, &qp->mctx);
 	alloc_reset(qp);
 	TRACE("");
@@ -1286,6 +1364,7 @@ dns_qpmulti_create(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
 	 */
 	dns_qp_t *qp = &multi->writer;
 	QP_INIT(qp, methods, uctx);
+	qp->mutable_head = INVALID_CHUNK;
 	/* Borrow the multi's context; rollback may overwrite the writer. */
 	qp->mctx = multi->mctx;
 	qp->transaction_mode = QP_UPDATE;
