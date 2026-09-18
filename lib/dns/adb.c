@@ -1777,30 +1777,22 @@ dns_adb_createaddrinfosfind(dns_adb_t *adb, isc_netaddrlist_t *addrs,
 	ISC_LIST_FOREACH(*addrs, addrlink, link) {
 		dns_adbaddrinfo_t *addrinfo = NULL;
 
-		sockaddr.type.sa.sa_family = addrlink->addr.family;
 		switch (addrlink->addr.family) {
 		case AF_INET:
 			if ((options & DNS_ADBFIND_INET) == 0) {
 				continue;
 			}
-			sockaddr.type.sin.sin_addr = addrlink->addr.type.in;
-			sockaddr.type.sin.sin_port = htons(port);
 			break;
 		case AF_INET6:
 			if ((options & DNS_ADBFIND_INET6) == 0) {
 				continue;
 			}
-			/*
-			 * TODO: findaddrinfo() compares the scope, this might
-			 * be a problem...
-			 */
-			sockaddr.type.sin6.sin6_addr = addrlink->addr.type.in6;
-			sockaddr.type.sin6.sin6_port = htons(port);
-
 			break;
 		default:
 			UNREACHABLE();
 		}
+
+		isc_sockaddr_fromnetaddr(&sockaddr, &addrlink->addr, port);
 
 		findaddrinfo(adb, &sockaddr, &addrinfo, now, options);
 		if (addrinfo == NULL) {
