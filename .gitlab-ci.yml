@@ -1542,11 +1542,27 @@ unit:gcc:resolute:amd64:
 
 # Jobs for ASAN builds on Fedora 44 (amd64)
 
+# The ASAN builds run through the build_asan nox session (see noxfile.py),
+# which applies the machine files for the platform it runs on, so that
+# developers get the same build.  The session builds into NOX_ASAN_BUILD_DIR,
+# build here, for the test jobs that take the build directory from the
+# artifacts.
+.build_asan: &build_asan_job
+  <<: *build_job
+  script:
+    - nox -s build_asan
+    - *find_python
+    # Check that embedded sanitizer flags are in sync with the `meson.build` file.
+    - $PYTHON ${CI_PROJECT_DIR}/ci/sanitizer_default_check.py build
+    - build/named -V
+    - *fips_feature_test
+
 gcc:asan:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/asan.ini"
+    NOX_SKIP_BUILD: 0
+    NOX_ASAN_BUILD_DIR: build
   <<: *fedora_44_amd64_image
-  <<: *build_job
+  <<: *build_asan_job
 
 system:gcc:asan:
   variables:
@@ -1566,9 +1582,11 @@ unit:gcc:asan:
 
 clang:asan:
   variables:
-    EXTRA_SETUP_FILES: "--native-file ci/asan.ini --native-file ci/clang-trixie.ini --native-file ci/clang-sanitizer.ini"
+    NOX_SKIP_BUILD: 0
+    NOX_ASAN_BUILD_DIR: build
+    NOX_CC: clang
   <<: *base_image
-  <<: *build_job
+  <<: *build_asan_job
 
 system:clang:asan:
   variables:
