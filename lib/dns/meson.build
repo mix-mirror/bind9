@@ -115,6 +115,7 @@ dns_srcset.add(
         'keystore.c',
         'keytable.c',
         'lib.c',
+	'lmdb-cache.c',
         'master.c',
         'masterdump.c',
         'message.c',
