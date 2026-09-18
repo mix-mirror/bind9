@@ -991,8 +991,8 @@ nmhandle_destroy(isc_nmhandle_t *handle) {
 #endif
 
 #ifdef HAVE_LIBNGTCP2
-	if (sock->type == isc_nm_quicsocket && handle->quic.conn != NULL) {
-		isc_quic_conn_detach(&handle->quic.conn);
+	if (sock->type == isc_nm_quicsocket && handle->quic.stream != NULL) {
+		isc__nmhandle_quic_destroy(handle, 0);
 	}
 #endif
 
@@ -1697,6 +1697,11 @@ isc_nm_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 	case isc_nm_proxyudpsocket:
 		isc__nm_proxyudp_send(handle, region, cb, cbarg);
 		break;
+#ifdef HAVE_LIBNGTCP2
+	case isc_nm_quicsocket:
+		isc__nm_quic_send(handle, region, cb, cbarg);
+		break;
+#endif
 	default:
 		UNREACHABLE();
 	}

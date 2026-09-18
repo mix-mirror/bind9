@@ -237,9 +237,27 @@ accept_read_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 	REQUIRE(eresult == ISC_R_SUCCESS);
 	UNUSED(cbarg);
 
-	isc_nm_read(handle, read_cb, NULL);
+	fprintf(stderr, "%p\n", handle);
+
+	isc_nmhandle_ref(handle);
 
 	return ISC_R_SUCCESS;
+}
+
+static void
+stream_open_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
+	REQUIRE(handle != NULL);
+	REQUIRE(eresult == ISC_R_SUCCESS);
+	UNUSED(cbarg);
+
+	// fprintf(stderr, "Stream Opened %p\n", handle);
+	//
+	// isc_region_t *reply = isc_mem_get(isc_g_mctx, sizeof(isc_region_t) +
+	// 3); reply->length = 3, reply->base = (uint8_t *)reply +
+	// sizeof(isc_region_t); memmove(reply->base, "UwU", 3);
+
+	isc_nmhandle_ref(handle);
+	// isc_nm_send(handle, reply, send_cb, reply);
 }
 
 static void
@@ -295,6 +313,7 @@ run_cb(void *arg ISC_ATTR_UNUSED) {
 		};
 		result = isc_nm_listenquic(ISC_NM_LISTEN_ALL, &sockaddr,
 					   &options, accept_read_cb, NULL,
+					   stream_open_cb, NULL, read_cb, NULL,
 					   &quic_listener);
 		break;
 #endif /* HAVE_LIBNGTCP2 */
