@@ -34,23 +34,24 @@ struct dns_ht_tree {
 };
 
 void
-dns_ht_tree_create(isc_mem_t *mctx, const dns_qpmethods_t *methods,
-		   void *uctx, dns_ht_tree_t **treep);
+dns_ht_tree_init(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
+		 dns_ht_tree_t *tree);
 /*%<
- * Create a new dns_ht_tree, wrapping a freshly created dns_qp_t.
+ * Initialize 'tree', wrapping a freshly created dns_qp_t. The caller
+ * owns the storage for 'tree' (typically embedded in another struct).
  *
  * Requires:
- * \li	'treep != NULL && *treep == NULL'
+ * \li	'tree != NULL'
  */
 
 void
-dns_ht_tree_destroy(dns_ht_tree_t **treep);
+dns_ht_tree_deinit(dns_ht_tree_t *tree);
 /*%<
- * Destroy a dns_ht_tree created by dns_ht_tree_create(), and set
- * '*treep' to NULL.
+ * Release the resources owned by 'tree', which must have been
+ * initialized by dns_ht_tree_init(). Does not free 'tree' itself.
  *
  * Requires:
- * \li	'treep != NULL && *treep != NULL'
+ * \li	'tree != NULL'
  */
 
 isc_result_t
