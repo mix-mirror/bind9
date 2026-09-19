@@ -685,6 +685,7 @@ def test_negative_validation_optout():
     isctest.check.servfail(res2)
 
 
+@pytest.mark.skip(reason="requires rndc dumpdb support for the resolver cache")
 def test_cache(ns4):
     ns4.rndc("dumpdb -cache")
     with isctest.log.WatchLogFromStart("ns4/named_dump.db") as watcher:
@@ -914,6 +915,7 @@ def test_positive_validation_multistage(qname):
     isctest.check.adflag(res2)
 
 
+@pytest.mark.skip(reason="requires rndc dumpdb support for the resolver cache")
 def test_validation_recovery(ns2, ns4):
     # check recovery from spoofed server address.
     # prime cache with spoofed address records...
