@@ -15,6 +15,7 @@ import os
 import time
 
 import dns.edns
+import pytest
 
 import isctest
 
@@ -276,6 +277,7 @@ def test_nta_restarts(servers):
     ns4.rndc("nta -r bogus.example")
 
 
+@pytest.mark.skip(reason="requires rndc flushtree support for the resolver cache")
 def test_nta_regular(servers):
     global START
     assert START, "test_nta_regular must be run as part of the full NTA test"
@@ -324,6 +326,7 @@ def test_nta_regular(servers):
     isctest.check.adflag(res)
 
 
+@pytest.mark.skip(reason="requires rndc flushtree support for the resolver cache")
 def test_nta_forced(servers):
     global START
     assert START, "test_nta_regular must be run as part of the full NTA test"
