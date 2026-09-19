@@ -11021,6 +11021,11 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 
 	REQUIRE(text != NULL);
 
+	/* DROP: rndc dumpdb is temporarily unsupported. */
+	UNUSED(server);
+	UNUSED(lex);
+	return ISC_R_NOTIMPLEMENTED;
+
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
 	if (ptr == NULL) {
@@ -11434,6 +11439,11 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	bool found;
 	isc_result_t result;
 
+	/* DROP: rndc flush is temporarily unsupported. */
+	UNUSED(server);
+	UNUSED(lex);
+	return ISC_R_NOTIMPLEMENTED;
+
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
 	if (ptr == NULL) {
@@ -11636,6 +11646,12 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 	isc_buffer_t b;
 	dns_fixedname_t fixed;
 	dns_name_t *name = NULL;
+
+	/* DROP: rndc flushname/flushtree are temporarily unsupported. */
+	UNUSED(server);
+	UNUSED(lex);
+	UNUSED(tree);
+	return ISC_R_NOTIMPLEMENTED;
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
