@@ -73,10 +73,10 @@ dns_ht_tree_getname(dns_ht_tree_t *tree, const dns_name_t *name,
 
 isc_result_t
 dns_ht_tree_lookup(dns_ht_tree_t *tree, const dns_name_t *name,
-		   dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r);
+		   void **pval_r, uint32_t *ival_r);
 /*%<
  * Equivalent to dns_qp_lookup(), applied to 'tree' in the
- * DNS_DBNAMESPACE_NORMAL namespace, without iterator support.
+ * DNS_DBNAMESPACE_NORMAL namespace, without iterator or chain support.
  */
 
 isc_result_t
