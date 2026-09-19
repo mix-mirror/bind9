@@ -52,11 +52,11 @@ dns_ht_tree_getname(dns_ht_tree_t *tree, const dns_name_t *name,
 
 isc_result_t
 dns_ht_tree_lookup(dns_ht_tree_t *tree, const dns_name_t *name,
-		   dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r) {
+		   void **pval_r, uint32_t *ival_r) {
 	REQUIRE(tree != NULL);
 
 	return dns_qp_lookup(tree->qp, name, DNS_DBNAMESPACE_NORMAL, NULL,
-			     chain, pval_r, ival_r);
+			     NULL, pval_r, ival_r);
 }
 
 isc_result_t

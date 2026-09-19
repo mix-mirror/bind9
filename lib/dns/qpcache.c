@@ -235,7 +235,6 @@ ISC_REFCOUNT_STATIC_DECL(qpcache);
 typedef struct {
 	qpcache_t *qpdb;
 	unsigned int options;
-	dns_qpchain_t chain;
 	dns_qpiter_t iter;
 	qpcnode_t *zonecut;
 	dns_slabheader_t *zonecut_header;
@@ -1322,16 +1321,15 @@ static void
 qpc_search_init(qpc_search_t *search, qpcache_t *db, unsigned int options,
 		isc_stdtime_t now) {
 	/*
-	 * qpc_search_t contains two structures with large buffers (dns_qpiter_t
-	 * and dns_qpchain_t). Those two structures will be initialized later by
-	 * dns_qp_lookup anyway.
+	 * qpc_search_t contains a structure with a large buffer
+	 * (dns_qpiter_t), which will be initialized later by dns_qp_lookup
+	 * anyway.
 	 * To avoid the overhead of zero initialization, we avoid designated
 	 * initializers and initialize all "small" fields manually.
 	 */
 	search->qpdb = (qpcache_t *)db;
 	search->options = options;
 	/*
-	 * qpch->in - Init by dns_qp_lookup
 	 * qpiter - Init by dns_qp_lookup
 	 */
 	search->now = now ? now : isc_stdtime_now();
@@ -1407,34 +1405,45 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 * Search down from the root of the tree.
 	 */
 	result = dns_ht_tree_lookup(&search.qpdb->tree_normal, name,
-				    &search.chain, (void **)&node, NULL);
+				    (void **)&node, NULL);
 	if (result != ISC_R_NOTFOUND && foundname != NULL) {
 		dns_name_copy(&node->name, foundname);
 	}
 
 	/*
-	 * Check the QP chain to see if there's a node above us with an
-	 * active DNAME rdataset.
+	 * Check every ancestor of QNAME, from the root down to (but not
+	 * including) QNAME itself, for an active DNAME rdataset.
 	 *
-	 * We're only interested in nodes above QNAME, so if the result
-	 * was success, then we skip the last item in the chain.
+	 * Each ancestor name is looked up individually, rather than
+	 * collected as a side effect of the single trie descent above
+	 * (as dns_qp_lookup's 'chain' argument would do): a hashmap-backed
+	 * tree has no notion of "the nodes visited on the way down", only
+	 * per-name lookups, so this is written to only rely on that.
 	 */
-	unsigned int len = dns_qpchain_length(&search.chain);
-	if (result == ISC_R_SUCCESS) {
-		len--;
-	}
+	dns_fixedname_t fancestor;
+	dns_name_t *ancestor = dns_fixedname_initname(&fancestor);
+	unsigned int nlabels = dns_name_countlabels(name);
 
-	for (unsigned int i = 0; i < len; i++) {
+	for (unsigned int suffixlabels = 1; suffixlabels < nlabels;
+	     suffixlabels++)
+	{
 		isc_result_t tresult;
 		qpcnode_t *encloser = NULL;
 
-		dns_qpchain_node(&search.chain, i, (void **)&encloser, NULL);
+		dns_name_getlabelsequence(name, nlabels - suffixlabels,
+					  suffixlabels, ancestor);
+
+		tresult = dns_ht_tree_getname(&search.qpdb->tree_normal,
+					      ancestor, (void **)&encloser,
+					      NULL);
+		if (tresult != ISC_R_SUCCESS) {
+			continue;
+		}
 
 		tresult = check_dname(encloser,
 				      (void *)&search DNS__DB_FLARG_PASS);
 		if (tresult != DNS_R_CONTINUE) {
 			result = DNS_R_PARTIALMATCH;
-			search.chain.len = i - 1;
 			node = encloser;
 			if (foundname != NULL) {
 				dns_name_copy(&node->name, foundname);
