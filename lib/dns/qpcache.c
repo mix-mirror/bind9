@@ -2019,6 +2019,13 @@ qpcache_createiterator(dns_db_t *db, unsigned int options ISC_ATTR_UNUSED,
 
 	REQUIRE(VALID_QPDB(qpdb));
 
+	/*
+	 * DROP: iterating the cache (used by rndc dumpdb/flushname/
+	 * flushtree) is temporarily unsupported.
+	 */
+	*iteratorp = NULL;
+	return ISC_R_NOTIMPLEMENTED;
+
 	qpdbiter = isc_mem_get(qpdb->common.mctx, sizeof(*qpdbiter));
 	*qpdbiter = (qpc_dbit_t){
 		.common.methods = &dbiterator_methods,
