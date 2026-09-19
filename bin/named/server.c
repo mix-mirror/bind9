@@ -11021,11 +11021,6 @@ named_server_dumpdb(named_server_t *server, isc_lex_t *lex,
 
 	REQUIRE(text != NULL);
 
-	/* DROP: rndc dumpdb is temporarily unsupported. */
-	UNUSED(server);
-	UNUSED(lex);
-	return ISC_R_NOTIMPLEMENTED;
-
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
 	if (ptr == NULL) {
@@ -11642,11 +11637,15 @@ named_server_flushnode(named_server_t *server, isc_lex_t *lex, bool tree) {
 	dns_fixedname_t fixed;
 	dns_name_t *name = NULL;
 
-	/* DROP: rndc flushname/flushtree are temporarily unsupported. */
-	UNUSED(server);
-	UNUSED(lex);
-	UNUSED(tree);
-	return ISC_R_NOTIMPLEMENTED;
+	/*
+	 * DROP: rndc flushtree is temporarily unsupported (flushname is
+	 * fine, it doesn't use the cache's dbiterator).
+	 */
+	if (tree) {
+		UNUSED(server);
+		UNUSED(lex);
+		return ISC_R_NOTIMPLEMENTED;
+	}
 
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
