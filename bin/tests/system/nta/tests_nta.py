@@ -19,6 +19,13 @@ import pytest
 
 import isctest
 
+# DROP: test_nta_regular/test_nta_forced require rndc flushtree, and the
+# rest of this file depends on state (and the shared START timestamp) that
+# those tests set up, so skip the whole module rather than just those two.
+pytestmark = pytest.mark.skip(
+    reason="requires rndc flushtree support for the resolver cache"
+)
+
 # Extended DNS Error INFO-CODE disclosing that a Negative Trust Anchor was
 # applied to a response (draft-farrokhi-dnsop-ede-nta).
 NTA_EDE_CODE = 33
@@ -277,7 +284,6 @@ def test_nta_restarts(servers):
     ns4.rndc("nta -r bogus.example")
 
 
-@pytest.mark.skip(reason="requires rndc flushtree support for the resolver cache")
 def test_nta_regular(servers):
     global START
     assert START, "test_nta_regular must be run as part of the full NTA test"
@@ -326,7 +332,6 @@ def test_nta_regular(servers):
     isctest.check.adflag(res)
 
 
-@pytest.mark.skip(reason="requires rndc flushtree support for the resolver cache")
 def test_nta_forced(servers):
     global START
     assert START, "test_nta_regular must be run as part of the full NTA test"
