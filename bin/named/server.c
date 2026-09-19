@@ -11439,11 +11439,6 @@ named_server_flushcache(named_server_t *server, isc_lex_t *lex) {
 	bool found;
 	isc_result_t result;
 
-	/* DROP: rndc flush is temporarily unsupported. */
-	UNUSED(server);
-	UNUSED(lex);
-	return ISC_R_NOTIMPLEMENTED;
-
 	/* Skip the command name. */
 	ptr = next_token(lex, NULL);
 	if (ptr == NULL) {
