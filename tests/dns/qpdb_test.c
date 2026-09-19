@@ -118,6 +118,14 @@ cleanup_all_deadnodes(dns_db_t *db) {
 		cleanup_deadnodes(qpdb, locknum);
 	}
 	qpcache_unref(qpdb);
+
+	/*
+	 * NAMESPACE_NORMAL node/entry reclamation is deferred to an RCU
+	 * grace period (see dns_ht_tree_deletename()), so it doesn't show
+	 * up in isc_mem_inuse() immediately. Force it to complete before
+	 * the caller checks memory usage.
+	 */
+	rcu_barrier();
 }
 
 /*
