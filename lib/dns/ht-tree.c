@@ -19,35 +19,25 @@
 #include "ht_tree_p.h"
 
 void
-dns_ht_tree_create(isc_mem_t *mctx, const dns_qpmethods_t *methods,
-		   void *uctx, dns_ht_tree_t **treep) {
-	dns_ht_tree_t *tree = NULL;
+dns_ht_tree_init(isc_mem_t *mctx, const dns_qpmethods_t *methods, void *uctx,
+		 dns_ht_tree_t *tree) {
+	REQUIRE(tree != NULL);
 
-	REQUIRE(treep != NULL && *treep == NULL);
-
-	tree = isc_mem_get(mctx, sizeof(*tree));
 	*tree = (dns_ht_tree_t){ 0 };
 
 	isc_mem_attach(mctx, &tree->mctx);
 	dns_qp_create(mctx, methods, uctx, &tree->qp);
-
-	*treep = tree;
 }
 
 void
-dns_ht_tree_destroy(dns_ht_tree_t **treep) {
-	dns_ht_tree_t *tree = NULL;
+dns_ht_tree_deinit(dns_ht_tree_t *tree) {
 	isc_mem_t *mctx = NULL;
 
-	REQUIRE(treep != NULL && *treep != NULL);
-
-	tree = *treep;
-	*treep = NULL;
+	REQUIRE(tree != NULL);
 
 	dns_qp_destroy(&tree->qp);
 
 	mctx = tree->mctx;
-	isc_mem_put(mctx, tree, sizeof(*tree));
 	isc_mem_detach(&mctx);
 }
 
