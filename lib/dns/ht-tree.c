@@ -43,20 +43,20 @@ dns_ht_tree_deinit(dns_ht_tree_t *tree) {
 
 isc_result_t
 dns_ht_tree_getname(dns_ht_tree_t *tree, const dns_name_t *name,
-		    dns_namespace_t space, void **pval_r, uint32_t *ival_r) {
+		    void **pval_r, uint32_t *ival_r) {
 	REQUIRE(tree != NULL);
 
-	return dns_qp_getname(tree->qp, name, space, pval_r, ival_r);
+	return dns_qp_getname(tree->qp, name, DNS_DBNAMESPACE_NORMAL, pval_r,
+			      ival_r);
 }
 
 isc_result_t
 dns_ht_tree_lookup(dns_ht_tree_t *tree, const dns_name_t *name,
-		   dns_namespace_t space, dns_qpiter_t *iter,
 		   dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r) {
 	REQUIRE(tree != NULL);
 
-	return dns_qp_lookup(tree->qp, name, space, iter, chain, pval_r,
-			     ival_r);
+	return dns_qp_lookup(tree->qp, name, DNS_DBNAMESPACE_NORMAL, NULL,
+			     chain, pval_r, ival_r);
 }
 
 isc_result_t
@@ -68,11 +68,11 @@ dns_ht_tree_insert(dns_ht_tree_t *tree, void *pval, uint32_t ival) {
 
 isc_result_t
 dns_ht_tree_deletename(dns_ht_tree_t *tree, const dns_name_t *name,
-		       dns_namespace_t space, void **pval_r,
-		       uint32_t *ival_r) {
+		       void **pval_r, uint32_t *ival_r) {
 	REQUIRE(tree != NULL);
 
-	return dns_qp_deletename(tree->qp, name, space, pval_r, ival_r);
+	return dns_qp_deletename(tree->qp, name, DNS_DBNAMESPACE_NORMAL,
+				 pval_r, ival_r);
 }
 
 dns_qp_memusage_t
@@ -80,11 +80,4 @@ dns_ht_tree_memusage(dns_ht_tree_t *tree) {
 	REQUIRE(tree != NULL);
 
 	return dns_qp_memusage(tree->qp);
-}
-
-void
-dns_ht_tree_iter_init(dns_ht_tree_t *tree, dns_qpiter_t *iter) {
-	REQUIRE(tree != NULL);
-
-	dns_qpiter_init(tree->qp, iter);
 }

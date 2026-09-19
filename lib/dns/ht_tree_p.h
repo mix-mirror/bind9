@@ -24,6 +24,15 @@
  * hashmap-based implementation without touching qpcache.c again -
  * for now, every operation is a straight passthrough to the
  * corresponding dns_qp_* function.
+ *
+ * A dns_ht_tree only ever holds DNS_DBNAMESPACE_NORMAL keys, so unlike
+ * the dns_qp_* functions it wraps, it does not take a dns_namespace_t
+ * argument - it's always NORMAL.
+ *
+ * There is currently no iterator support (no dns_qpiter_t equivalent):
+ * qpcache's cache-iteration support (used by rndc dumpdb/flushtree) is
+ * disabled for now, so nothing needs it. It will need to be added back
+ * here when that support returns.
  */
 
 typedef struct dns_ht_tree dns_ht_tree_t;
@@ -56,17 +65,18 @@ dns_ht_tree_deinit(dns_ht_tree_t *tree);
 
 isc_result_t
 dns_ht_tree_getname(dns_ht_tree_t *tree, const dns_name_t *name,
-		    dns_namespace_t space, void **pval_r, uint32_t *ival_r);
+		    void **pval_r, uint32_t *ival_r);
 /*%<
- * Equivalent to dns_qp_getname(), applied to 'tree'.
+ * Equivalent to dns_qp_getname(), applied to 'tree' in the
+ * DNS_DBNAMESPACE_NORMAL namespace.
  */
 
 isc_result_t
 dns_ht_tree_lookup(dns_ht_tree_t *tree, const dns_name_t *name,
-		   dns_namespace_t space, dns_qpiter_t *iter,
 		   dns_qpchain_t *chain, void **pval_r, uint32_t *ival_r);
 /*%<
- * Equivalent to dns_qp_lookup(), applied to 'tree'.
+ * Equivalent to dns_qp_lookup(), applied to 'tree' in the
+ * DNS_DBNAMESPACE_NORMAL namespace, without iterator support.
  */
 
 isc_result_t
@@ -77,20 +87,14 @@ dns_ht_tree_insert(dns_ht_tree_t *tree, void *pval, uint32_t ival);
 
 isc_result_t
 dns_ht_tree_deletename(dns_ht_tree_t *tree, const dns_name_t *name,
-		       dns_namespace_t space, void **pval_r,
-		       uint32_t *ival_r);
+		       void **pval_r, uint32_t *ival_r);
 /*%<
- * Equivalent to dns_qp_deletename(), applied to 'tree'.
+ * Equivalent to dns_qp_deletename(), applied to 'tree' in the
+ * DNS_DBNAMESPACE_NORMAL namespace.
  */
 
 dns_qp_memusage_t
 dns_ht_tree_memusage(dns_ht_tree_t *tree);
 /*%<
  * Equivalent to dns_qp_memusage(), applied to 'tree'.
- */
-
-void
-dns_ht_tree_iter_init(dns_ht_tree_t *tree, dns_qpiter_t *iter);
-/*%<
- * Equivalent to dns_qpiter_init(), applied to 'tree'.
  */
