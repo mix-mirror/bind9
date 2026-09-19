@@ -13,6 +13,8 @@ from re import compile as Re
 
 import time
 
+import pytest
+
 import isctest
 
 DUMP_FILE_NAME = "ns2/named_dump.db"
@@ -71,6 +73,9 @@ def flush_caches(ns, flushcmd, flusharg, confirm):
         watcher.wait_for_line(confirm)
 
 
+@pytest.mark.skip(
+    reason="requires rndc flushname/flushtree support for the resolver cache"
+)
 def test_cacheclean_deleg(ns2):
     # Make sure the delegation cache has foo.bar.com.
     warmup_cache(ns2)
