@@ -537,7 +537,7 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 			}
 		}
 		result = dns_ht_tree_deletename(&qpdb->tree_normal, &node->name,
-						node->nspace, NULL, NULL);
+						NULL, NULL);
 		break;
 	case DNS_DBNAMESPACE_NSEC:
 		result = dns_qp_deletename(qpdb->tree_nsec, &node->name,
@@ -1280,8 +1280,7 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	 */
 	node = NULL;
 	RETERR(dns_ht_tree_getname(&search->qpdb->tree_normal, predecessor,
-				   DNS_DBNAMESPACE_NORMAL, (void **)&node,
-				   NULL));
+				   (void **)&node, NULL));
 	dns_name_copy(&node->name, fname);
 
 	nlock = &search->qpdb->buckets[node->locknum].lock;
@@ -1408,7 +1407,6 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 * Search down from the root of the tree.
 	 */
 	result = dns_ht_tree_lookup(&search.qpdb->tree_normal, name,
-				    DNS_DBNAMESPACE_NORMAL, NULL,
 				    &search.chain, (void **)&node, NULL);
 	if (result != ISC_R_NOTFOUND && foundname != NULL) {
 		dns_name_copy(&node->name, foundname);
@@ -1982,8 +1980,8 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	dns_namespace_t nspace = DNS_DBNAMESPACE_NORMAL;
 
 	TREE_RDLOCK(&qpdb->tree_lock, &tlocktype);
-	result = dns_ht_tree_getname(&qpdb->tree_normal, name, nspace,
-				     (void **)&node, NULL);
+	result = dns_ht_tree_getname(&qpdb->tree_normal, name, (void **)&node,
+				     NULL);
 	if (result != ISC_R_SUCCESS) {
 		if (!create) {
 			goto unlock;
@@ -1992,7 +1990,7 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		 * Try to upgrade the lock and if that fails unlock then relock.
 		 */
 		TREE_FORCEUPGRADE(&qpdb->tree_lock, &tlocktype);
-		result = dns_ht_tree_getname(&qpdb->tree_normal, name, nspace,
+		result = dns_ht_tree_getname(&qpdb->tree_normal, name,
 					     (void **)&node, NULL);
 		if (result != ISC_R_SUCCESS) {
 			node = new_qpcnode(qpdb, name, nspace);
@@ -2035,7 +2033,7 @@ qpcache_createiterator(dns_db_t *db, unsigned int options ISC_ATTR_UNUSED,
 
 	qpdbiter->name = dns_fixedname_initname(&qpdbiter->fixed);
 	dns_db_attach(db, &qpdbiter->common.db);
-	dns_ht_tree_iter_init(&qpdb->tree_normal, &qpdbiter->iter);
+	dns_qpiter_init(qpdb->tree_normal.qp, &qpdbiter->iter);
 
 	*iteratorp = (dns_dbiterator_t *)qpdbiter;
 	return ISC_R_SUCCESS;
@@ -2980,9 +2978,9 @@ resume_iteration(qpc_dbit_t *qpdbiter, bool continuing) {
 	 */
 	if (continuing && qpdbiter->node != NULL) {
 		isc_result_t result;
-		result = dns_ht_tree_lookup(&qpdb->tree_normal, qpdbiter->name,
-					    DNS_DBNAMESPACE_NORMAL,
-					    &qpdbiter->iter, NULL, NULL, NULL);
+		result = dns_qp_lookup(qpdb->tree_normal.qp, qpdbiter->name,
+				       DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter,
+				       NULL, NULL, NULL);
 		INSIST(result == ISC_R_SUCCESS);
 	}
 
@@ -3031,7 +3029,7 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	dns_ht_tree_iter_init(&qpdb->tree_normal, &qpdbiter->iter);
+	dns_qpiter_init(qpdb->tree_normal.qp, &qpdbiter->iter);
 	result = dns_qpiter_next(&qpdbiter->iter, (void **)&qpdbiter->node,
 				 NULL);
 
@@ -3084,9 +3082,9 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	result = dns_ht_tree_lookup(&qpdb->tree_normal, name,
-				    DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter,
-				    NULL, (void **)&qpdbiter->node, NULL);
+	result = dns_qp_lookup(qpdb->tree_normal.qp, name,
+			       DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter, NULL,
+			       (void **)&qpdbiter->node, NULL);
 
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		dns_name_copy(&qpdbiter->node->name, qpdbiter->name);
