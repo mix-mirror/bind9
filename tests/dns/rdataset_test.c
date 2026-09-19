@@ -255,9 +255,46 @@ ISC_RUN_TEST_IMPL(noqname) {
 	check_noqname(NULL, 0, dns_rdatatype_nsec, ISC_R_NOTFOUND);
 }
 
+ISC_RUN_TEST_IMPL(allocated) {
+	isc_mem_t *mctx = NULL;
+	dns_rdataset_t source = DNS_RDATASET_INIT;
+	dns_rdataset_t clone = DNS_RDATASET_INIT;
+	dns_rdata_t rdata = DNS_RDATA_INIT;
+	unsigned char bytes[] = {
+		0, 4, 192, 0, 2, 1,
+		0, 4, 192, 0, 2, 2,
+	};
+	isc_region_t raw = { .base = bytes, .length = sizeof(bytes) };
+
+	UNUSED(state);
+	isc_mem_create("allocated-rdataset", &mctx);
+	source.rdclass = dns_rdataclass_in;
+	source.type = dns_rdatatype_a;
+	source.ttl = 300;
+	source.trust = dns_trust_answer;
+	dns_rdataset_makeallocated(&source, mctx, NULL, 2, &raw);
+
+	dns_rdataset_clone(&source, &clone);
+	dns_rdataset_disassociate(&source);
+	assert_int_equal(dns_rdataset_count(&clone), 2);
+	assert_int_equal(dns_rdataset_first(&clone), ISC_R_SUCCESS);
+	dns_rdataset_current(&clone, &rdata);
+	assert_int_equal(rdata.length, 4);
+	assert_memory_equal(rdata.data, bytes + 2, 4);
+	assert_int_equal(dns_rdataset_next(&clone), ISC_R_SUCCESS);
+	dns_rdata_reset(&rdata);
+	dns_rdataset_current(&clone, &rdata);
+	assert_memory_equal(rdata.data, bytes + 8, 4);
+	assert_int_equal(dns_rdataset_next(&clone), ISC_R_NOMORE);
+
+	dns_rdataset_disassociate(&clone);
+	isc_mem_detach(&mctx);
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(trimttl)
 ISC_TEST_ENTRY(noqname)
+ISC_TEST_ENTRY(allocated)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

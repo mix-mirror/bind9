@@ -131,6 +131,7 @@ typedef struct dns_order	    dns_order_t;
 typedef struct dns_peer		    dns_peer_t;
 typedef struct dns_peerlist	    dns_peerlist_t;
 typedef struct dns_slabheader_proof dns_slabheader_proof_t;
+typedef struct dns_allocated_rdata dns_allocated_rdata_t;
 typedef struct dns_rbt		    dns_rbt_t;
 typedef struct dns_rbtdb	    dns_rbtdb_t;
 typedef struct dns_rbtdb_version    dns_rbtdb_version_t;

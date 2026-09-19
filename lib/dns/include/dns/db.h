@@ -81,6 +81,15 @@ typedef struct dns_dbnode_methods {
 	void (*detachnode)(dns_dbnode_t **targetp DNS__DB_FLARG);
 
 	void (*expiredata)(dns_dbnode_t *node, void *data);
+
+	/* Optional callbacks for rdatasets backed by an owned allocation rather
+	 * than a database-resident slab. */
+	void (*settrust)(dns_dbnode_t *node, dns_typepair_t typepair,
+			 dns_trust_t trust);
+	void (*updateraw)(dns_dbnode_t *node, dns_typepair_t typepair,
+			  const isc_region_t *raw);
+	void (*expirerdataset)(dns_dbnode_t *node, dns_typepair_t typepair);
+	void (*clearprefetch)(dns_dbnode_t *node, dns_typepair_t typepair);
 } dns_dbnode_methods_t;
 
 typedef struct dns_db_methods {
@@ -171,6 +180,8 @@ typedef struct dns_db_methods {
 			dns_clientinfo_t *clientinfo);
 	void (*setmaxrrperset)(dns_db_t *db, uint32_t value);
 	void (*setmaxtypepername)(dns_db_t *db, uint32_t value);
+	void (*setcachesize)(dns_db_t *db, size_t value);
+	isc_result_t (*clear)(dns_db_t *db);
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
 } dns_dbmethods_t;
 
@@ -1389,6 +1400,12 @@ dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
  */
 
 isc_result_t
+dns_db_clear(dns_db_t *db);
+/*%<
+ * Remove all data from a cache database in place.
+ */
+
+isc_result_t
 dns_db_getsoaserial(dns_db_t *db, dns_dbversion_t *ver, uint32_t *serialp);
 /*%<
  * Get the current SOA serial number from a zone database.
@@ -1785,6 +1802,9 @@ dns_db_setmaxrrperset(dns_db_t *db, uint32_t value);
 
 void
 dns_db_setmaxtypepername(dns_db_t *db, uint32_t value);
+
+void
+dns_db_setcachesize(dns_db_t *db, size_t value);
 /*%<
  * Set the maximum permissible number of RR types per owner name.
  *

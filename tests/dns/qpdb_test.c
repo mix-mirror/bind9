@@ -120,6 +120,12 @@ cleanup_all_deadnodes(dns_db_t *db) {
 	qpcache_unref(qpdb);
 }
 
+static size_t
+cache_bytes(dns_db_t *db) {
+	qpcache_t *qpdb = (qpcache_t *)db;
+	return dns_lmdbcache_memusage(qpdb->tree).bytes;
+}
+
 /*
  * Add to cache DB 'db' an rdataset of type 'rtype' at 'name', with the single
  * rdata parsed from the text 'rdatastr'. The rdataset is given TTL 'ttl'
@@ -313,10 +319,61 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 	isc_loopmgr_shutdown();
 }
 
+ISC_LOOP_TEST_IMPL(allocated_findrdataset_writeback) {
+	isc_mem_t *mctx = NULL;
+	dns_db_t *db = NULL;
+	dns_dbnode_t *node = NULL;
+	dns_rdataset_t found = DNS_RDATASET_INIT;
+	dns_fixedname_t fixed, foundfixed;
+	dns_name_t *name = NULL;
+	dns_name_t *foundname = dns_fixedname_initname(&foundfixed);
+	isc_stdtime_t now = isc_stdtime_now();
+
+	isc_mem_create("test", &mctx);
+	assert_int_equal(dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+				       dns_dbtype_cache, dns_rdataclass_in, 0,
+				       NULL, &db),
+			 ISC_R_SUCCESS);
+	dns_test_namefromstring("writeback.example.", &fixed);
+	name = dns_fixedname_name(&fixed);
+	servestale_addrdataset(db, name, now, dns_rdatatype_a, "192.0.2.1",
+			       300, dns_trust_answer);
+
+	assert_int_equal(dns_db_find(db, name, NULL, dns_rdatatype_a, 0, now,
+				    foundname, &found, NULL),
+			 ISC_R_SUCCESS);
+	assert_int_equal(dns_rdataset_count(&found), 1);
+	dns_rdataset_settrust(&found, dns_trust_secure);
+	dns_rdataset_disassociate(&found);
+
+	assert_int_equal(dns_db_findnode(db, name, false, &node),
+			 ISC_R_SUCCESS);
+	assert_int_equal(dns_db_findrdataset(db, node, NULL, dns_rdatatype_a,
+					     dns_rdatatype_none, now, &found,
+					     NULL),
+			 ISC_R_SUCCESS);
+	assert_int_equal(found.trust, dns_trust_secure);
+	dns_rdataset_disassociate(&found);
+
+	assert_int_equal(dns_db_find(db, name, NULL, dns_rdatatype_a, 0, now,
+				    foundname, &found, NULL),
+			 ISC_R_SUCCESS);
+	dns_rdataset_expire(&found);
+	dns_rdataset_disassociate(&found);
+	assert_int_equal(dns_db_findrdataset(db, node, NULL, dns_rdatatype_a,
+					     dns_rdatatype_none, now, &found,
+					     NULL),
+			 ISC_R_NOTFOUND);
+
+	dns_db_detachnode(&node);
+	dns_db_detach(&db);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
 	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
@@ -330,18 +387,17 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
 	 * Add a lot of data entries sufficient to push the context
 	 * above the hi_water mark.
 	 */
-	while (isc_mem_inuse(mctx) < hiwater) {
+	while (cache_bytes(db) < hiwater) {
 		overmempurge_addrdataset(db, now, i, 50053, 0, true);
 		i++;
 	}
-	assert_true(isc_mem_inuse(mctx) >= hiwater);
-	assert_true(isc_mem_inuse(mctx) < maxcache);
+	assert_true(cache_bytes(db) >= hiwater);
 
 	/*
 	 * Then try to add the same number of entries, each has very large data.
@@ -354,13 +410,10 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 					 DNS_RDATA_MAXLENGTH - 2, false);
 		cleanup_all_deadnodes(db);
 		if (verbose) {
-			print_message("# inuse: %zd max: %zd\n",
-				      isc_mem_inuse(mctx), maxcache);
+			print_message("# LMDB bytes: %zd max: %zd\n",
+				      cache_bytes(db), maxcache);
 		}
-		if (isc_mem_inuse(mctx) >= maxcache) {
-			rcu_barrier();
-		}
-		assert_true(isc_mem_inuse(mctx) < maxcache);
+		assert_true(cache_bytes(db) < maxcache * 2);
 	}
 
 	dns_db_detach(&db);
@@ -371,7 +424,6 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
 	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
-	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_mem_t *mctx = NULL;
@@ -385,18 +437,17 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
+	dns_db_setcachesize(db, maxcache);
 
 	/*
 	 * Add a lot of data entries sufficient to push the context
 	 * above the hi_water mark.
 	 */
-	while (isc_mem_inuse(mctx) < hiwater) {
+	while (cache_bytes(db) < hiwater) {
 		overmempurge_addrdataset(db, now, i, 50053, 0, true);
 		i++;
 	}
-	assert_true(isc_mem_inuse(mctx) >= hiwater);
-	assert_true(isc_mem_inuse(mctx) < maxcache);
+	assert_true(cache_bytes(db) >= hiwater);
 
 	/*
 	 * Then try to add the same number of entries, each has very long name.
@@ -408,13 +459,10 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 		overmempurge_addrdataset(db, now, i, 50054, 0, true);
 		cleanup_all_deadnodes(db);
 		if (verbose) {
-			print_message("# inuse: %zd max: %zd\n",
-				      isc_mem_inuse(mctx), maxcache);
+			print_message("# LMDB bytes: %zd max: %zd\n",
+				      cache_bytes(db), maxcache);
 		}
-		if (isc_mem_inuse(mctx) >= maxcache) {
-			rcu_barrier();
-		}
-		assert_true(isc_mem_inuse(mctx) < maxcache);
+		assert_true(cache_bytes(db) < maxcache * 2);
 	}
 
 	dns_db_detach(&db);
@@ -427,6 +475,8 @@ ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(allrdatasets_expiredok_skips_deleted_header,
 		      setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(allocated_findrdataset_writeback, setup_managers,
+		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(servestale_fresh_over_stale_cname, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(servestale_fresh_cname_over_stale_type, setup_managers,

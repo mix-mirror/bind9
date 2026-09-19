@@ -718,6 +718,16 @@ dns__db_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 }
 
 isc_result_t
+dns_db_clear(dns_db_t *db) {
+	REQUIRE(DNS_DB_VALID(db));
+
+	if (db->methods->clear != NULL) {
+		return (db->methods->clear)(db);
+	}
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+isc_result_t
 dns_db_getsoaserial(dns_db_t *db, dns_dbversion_t *ver, uint32_t *serialp) {
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
@@ -1092,6 +1102,15 @@ dns_db_setmaxtypepername(dns_db_t *db, uint32_t value) {
 
 	if (db->methods->setmaxtypepername != NULL) {
 		(db->methods->setmaxtypepername)(db, value);
+	}
+}
+
+void
+dns_db_setcachesize(dns_db_t *db, size_t value) {
+	REQUIRE(DNS_DB_VALID(db));
+
+	if (db->methods->setcachesize != NULL) {
+		(db->methods->setcachesize)(db, value);
 	}
 }
 

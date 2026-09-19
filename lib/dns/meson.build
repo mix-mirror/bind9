@@ -140,6 +140,7 @@ dns_srcset.add(
         'rdata.c',
         'rdatalist.c',
         'rdataset.c',
+	'rdataset/allocated.c',
         'rdatasetiter.c',
         'rdataslab.c',
         'rdatavec.c',

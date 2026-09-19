@@ -100,6 +100,9 @@ struct dns_slabheader {
 
 	uint16_t nitems;
 
+	/* Temporary ordering used while reconstructing an LMDB cache node. */
+	uint32_t cache_order;
+
 	/*% Used for SIEVE-LRU (cache) */
 	bool visited;
 	ISC_LINK(struct dns_slabheader) lrulink;

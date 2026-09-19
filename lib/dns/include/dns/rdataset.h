@@ -48,6 +48,7 @@
 #include <stdbool.h>
 
 #include <isc/magic.h>
+#include <isc/region.h>
 #include <isc/stdtime.h>
 
 #include <dns/rdataslab.h>
@@ -224,6 +225,29 @@ struct dns_rdataset {
 		} vec;
 
 		/*
+		 * An allocated rdataset owns a minimal refcounted copy of bare
+		 * rdataslab bytes.  The optional node is only a locator for
+		 * write-through cache operations.
+		 */
+		struct {
+			dns_allocated_rdata_t *data;
+			dns_dbnode_t	      *node;
+			unsigned char	      *raw;
+			uint16_t	       count;
+			uint32_t	       cache_order;
+			uint64_t	       raw_hash;
+			unsigned char	      *iter_pos;
+			unsigned int	       iter_count;
+			unsigned char	      *proof_name;
+			uint16_t	       proof_name_length;
+			dns_rdatatype_t       proof_type;
+			unsigned char	      *proof_raw;
+			uint16_t	       proof_count;
+			unsigned char	      *proof_sig_raw;
+			uint16_t	       proof_sig_count;
+		} allocated;
+
+		/*
 		 * A simple rdatalist, plus an optional dbnode used by
 		 * builtin and sdlz.
 		 */
@@ -242,6 +266,23 @@ struct dns_rdataset {
 		} rdlist;
 	};
 };
+
+void
+dns_rdataset_makeallocated(dns_rdataset_t *rdataset, isc_mem_t *mctx,
+			   dns_dbnode_t *node, uint16_t count,
+			   const isc_region_t *raw);
+/*%<
+ * Associate a pre-initialized rdataset with an owned copy of bare rdataslab
+ * bytes.  The caller sets class, type, TTL, trust, and attributes first.
+ */
+
+void
+dns_rdataset_makeallocatedproof(
+	dns_rdataset_t *rdataset, isc_mem_t *mctx, dns_dbnode_t *node,
+	uint16_t count, const isc_region_t *raw, const isc_region_t *proof_name,
+	dns_rdatatype_t proof_type, uint16_t proof_count,
+	const isc_region_t *proof, uint16_t proof_sig_count,
+	const isc_region_t *proof_sig);
 
 #define DNS_RDATASET_INIT                     \
 	{                                     \
