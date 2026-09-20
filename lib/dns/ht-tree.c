@@ -26,10 +26,10 @@
 
 typedef struct dns_ht_tree_entry {
 	struct cds_lfht_node ht_node;
-	struct rcu_head	     rcu_head;
-	dns_ht_tree_t	    *tree;
-	void		    *pval;
-	uint32_t	     ival;
+	struct rcu_head rcu_head;
+	dns_ht_tree_t *tree;
+	void *pval;
+	uint32_t ival;
 } dns_ht_tree_entry_t;
 
 static uint32_t
@@ -95,8 +95,8 @@ dns_ht_tree_deinit(dns_ht_tree_t *tree) {
 }
 
 isc_result_t
-dns_ht_tree_getname(dns_ht_tree_t *tree, const dns_name_t *name,
-		    void **pval_r, uint32_t *ival_r) {
+dns_ht_tree_getname(dns_ht_tree_t *tree, const dns_name_t *name, void **pval_r,
+		    uint32_t *ival_r) {
 	REQUIRE(tree != NULL);
 
 	uint32_t hashval = ht_hash(name);
@@ -141,8 +141,8 @@ dns_ht_tree_insert(dns_ht_tree_t *tree, void *pval, uint32_t ival,
 		tree->methods->detach(tree->uctx, pval, ival);
 		isc_mem_put(tree->mctx, entry, sizeof(*entry));
 
-		dns_ht_tree_entry_t *existing = caa_container_of(
-			ht_node, dns_ht_tree_entry_t, ht_node);
+		dns_ht_tree_entry_t *existing =
+			caa_container_of(ht_node, dns_ht_tree_entry_t, ht_node);
 		SET_IF_NOT_NULL(pval_r, existing->pval);
 		SET_IF_NOT_NULL(ival_r, existing->ival);
 		return ISC_R_EXISTS;
