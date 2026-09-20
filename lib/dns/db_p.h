@@ -53,34 +53,6 @@
 		};                                               \
 	})
 
-#define TREE_INITLOCK(l)    isc_rwlock_init(l)
-#define TREE_DESTROYLOCK(l) isc_rwlock_destroy(l)
-#define TREE_LOCK(l, t, tp)                                      \
-	{                                                        \
-		STRONG_RWLOCK_CHECK(*tp == isc_rwlocktype_none); \
-		RWLOCK(l, t);                                    \
-		*tp = t;                                         \
-	}
-#define TREE_UNLOCK(l, tp)                                       \
-	{                                                        \
-		STRONG_RWLOCK_CHECK(*tp != isc_rwlocktype_none); \
-		RWUNLOCK(l, *tp);                                \
-		*tp = isc_rwlocktype_none;                       \
-	}
-#define TREE_RDLOCK(l, tp) TREE_LOCK(l, isc_rwlocktype_read, tp);
-#define TREE_WRLOCK(l, tp) TREE_LOCK(l, isc_rwlocktype_write, tp);
-#define TREE_FORCEUPGRADE(l, tp)                                 \
-	({                                                       \
-		STRONG_RWLOCK_CHECK(*tp == isc_rwlocktype_read); \
-		isc_result_t _result = isc_rwlock_tryupgrade(l); \
-		if (_result == ISC_R_SUCCESS) {                  \
-			*tp = isc_rwlocktype_write;              \
-		} else {                                         \
-			TREE_UNLOCK(l, tp);                      \
-			TREE_WRLOCK(l, tp);                      \
-		};                                               \
-	})
-
 #define IS_STUB(db)  (((db)->common.attributes & DNS_DBATTR_STUB) != 0)
 #define IS_CACHE(db) (((db)->common.attributes & DNS_DBATTR_CACHE) != 0)
 

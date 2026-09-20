@@ -111,14 +111,7 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 }
 
 static void
-cleanup_all_deadnodes(dns_db_t *db, isc_mem_t *mctx, size_t maxcache) {
-	qpcache_t *qpdb = (qpcache_t *)db;
-	qpcache_ref(qpdb);
-	for (uint16_t locknum = 0; locknum < qpdb->buckets_count; locknum++) {
-		cleanup_deadnodes(qpdb, locknum);
-	}
-	qpcache_unref(qpdb);
-
+cleanup_all_deadnodes(isc_mem_t *mctx, size_t maxcache) {
 	/*
 	 * NAMESPACE_NORMAL node/entry reclamation is deferred to an RCU
 	 * grace period (see dns_ht_tree_deletename()), so it doesn't show
@@ -369,7 +362,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054,
 					 DNS_RDATA_MAXLENGTH - 2, false);
-		cleanup_all_deadnodes(db, mctx, maxcache);
+		cleanup_all_deadnodes(mctx, maxcache);
 	}
 
 	dns_db_detach(&db);
@@ -415,7 +408,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	 */
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 0, true);
-		cleanup_all_deadnodes(db, mctx, maxcache);
+		cleanup_all_deadnodes(mctx, maxcache);
 	}
 
 	dns_db_detach(&db);
