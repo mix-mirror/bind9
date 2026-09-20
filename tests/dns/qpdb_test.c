@@ -111,7 +111,7 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 }
 
 static void
-cleanup_all_deadnodes(dns_db_t *db) {
+cleanup_all_deadnodes(dns_db_t *db, isc_mem_t *mctx, size_t maxcache) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcache_ref(qpdb);
 	for (uint16_t locknum = 0; locknum < qpdb->buckets_count; locknum++) {
@@ -125,7 +125,16 @@ cleanup_all_deadnodes(dns_db_t *db) {
 	 * up in isc_mem_inuse() immediately. Force it to complete before
 	 * the caller checks memory usage.
 	 */
-	rcu_barrier();
+	size_t inuse = isc_mem_inuse(mctx);
+	if (inuse >= maxcache) {
+		rcu_barrier();
+	}
+
+	inuse = isc_mem_inuse(mctx);
+	if (verbose) {
+		print_message("# inuse: %zd max: %zd\n", inuse, maxcache);
+	}
+	assert_true(isc_mem_inuse(mctx) < maxcache);
 }
 
 /*
@@ -360,12 +369,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054,
 					 DNS_RDATA_MAXLENGTH - 2, false);
-		cleanup_all_deadnodes(db);
-		if (verbose) {
-			print_message("# inuse: %zd max: %zd\n",
-				      isc_mem_inuse(mctx), maxcache);
-		}
-		assert_true(isc_mem_inuse(mctx) < maxcache);
+		cleanup_all_deadnodes(db, mctx, maxcache);
 	}
 
 	dns_db_detach(&db);
@@ -411,12 +415,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	 */
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 0, true);
-		cleanup_all_deadnodes(db);
-		if (verbose) {
-			print_message("# inuse: %zd max: %zd\n",
-				      isc_mem_inuse(mctx), maxcache);
-		}
-		assert_true(isc_mem_inuse(mctx) < maxcache);
+		cleanup_all_deadnodes(db, mctx, maxcache);
 	}
 
 	dns_db_detach(&db);
