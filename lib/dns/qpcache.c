@@ -212,7 +212,9 @@ struct qpcache {
 
 	/* Locked by tree_lock. */
 	dns_ht_tree_t tree_normal;
-	dns_qp_t     *tree_nsec;
+	dns_qp_t *tree_nsec;
+
+	struct rcu_head rcu_head;
 
 	size_t buckets_count;
 	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
@@ -314,8 +316,7 @@ qp_triename(void *uctx ISC_ATTR_UNUSED, char *buf, size_t size) {
 
 /* Hashmap methods, for the NAMESPACE_NORMAL half of the cache. */
 static const dns_name_t *
-ht_name(void *uctx ISC_ATTR_UNUSED, void *pval,
-	uint32_t ival ISC_ATTR_UNUSED) {
+ht_name(void *uctx ISC_ATTR_UNUSED, void *pval, uint32_t ival ISC_ATTR_UNUSED) {
 	qpcnode_t *data = pval;
 	return &data->name;
 }
@@ -1846,26 +1847,13 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data) {
 }
 
 static void
-qpcache__destroy(qpcache_t *qpdb) {
-	unsigned int i;
-	char buf[DNS_NAME_FORMATSIZE];
+qpcache__destroy_rcu(struct rcu_head *rcu_head) {
+	qpcache_t *qpdb = caa_container_of(rcu_head, qpcache_t, rcu_head);
 
 	dns_ht_tree_deinit(&qpdb->tree_normal);
 	dns_qp_destroy(&qpdb->tree_nsec);
 
-	if (dns_name_dynamic(&qpdb->common.origin)) {
-		dns_name_format(&qpdb->common.origin, buf, sizeof(buf));
-	} else {
-		strlcpy(buf, "<UNKNOWN>", sizeof(buf));
-	}
-	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
-		      ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL), "done %s(%s)",
-		      __func__, buf);
-
-	if (dns_name_dynamic(&qpdb->common.origin)) {
-		dns_name_free(&qpdb->common.origin, qpdb->common.mctx);
-	}
-	for (i = 0; i < qpdb->buckets_count; i++) {
+	for (size_t i = 0; i < qpdb->buckets_count; i++) {
 		NODE_DESTROYLOCK(&qpdb->buckets[i].lock);
 
 		INSIST(ISC_SIEVE_EMPTY(qpdb->buckets[i].sieve));
@@ -1880,6 +1868,29 @@ qpcache__destroy(qpcache_t *qpdb) {
 		isc_stats_detach(&qpdb->cachestats);
 	}
 
+	isc_mem_putanddetach(&qpdb->common.mctx, qpdb,
+			     sizeof(*qpdb) + qpdb->buckets_count *
+						     sizeof(qpdb->buckets[0]));
+}
+
+static void
+qpcache__destroy(qpcache_t *qpdb) {
+	if (isc_log_wouldlog(ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL))) {
+		char buf[DNS_NAME_FORMATSIZE];
+		if (dns_name_dynamic(&qpdb->common.origin)) {
+			dns_name_format(&qpdb->common.origin, buf, sizeof(buf));
+		} else {
+			strlcpy(buf, "<UNKNOWN>", sizeof(buf));
+		}
+		isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
+			      ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL),
+			      "done %s(%s)", __func__, buf);
+	}
+
+	if (dns_name_dynamic(&qpdb->common.origin)) {
+		dns_name_free(&qpdb->common.origin, qpdb->common.mctx);
+	}
+
 	TREE_DESTROYLOCK(&qpdb->tree_lock);
 	isc_refcount_destroy(&qpdb->references);
 	isc_refcount_destroy(&qpdb->common.references);
@@ -1888,9 +1899,7 @@ qpcache__destroy(qpcache_t *qpdb) {
 	qpdb->common.magic = 0;
 	qpdb->common.impmagic = 0;
 
-	isc_mem_putanddetach(&qpdb->common.mctx, qpdb,
-			     sizeof(*qpdb) + qpdb->buckets_count *
-						     sizeof(qpdb->buckets[0]));
+	call_rcu(&qpdb->rcu_head, qpcache__destroy_rcu);
 }
 
 static void
