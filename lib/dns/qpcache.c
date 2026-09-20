@@ -230,11 +230,12 @@ struct qpcache {
 
 	/*
 	 * The trie is compacted in bounded steps between the callbacks of
-	 * the loop that created the database, so that no query has to
-	 * wait for it. The database must therefore be created on a loop.
+	 * every loop, so that no query has to wait for it, and so that the
+	 * collector has as many threads behind it as the queries that make
+	 * the garbage. One job per loop, indexed by tid. The database must
+	 * be created on a loop.
 	 */
-	isc_loop_t *quiescent_loop;
-	isc_job_t quiescent_job;
+	isc_job_t *quiescent_jobs;
 
 	struct rcu_head rcu_head;
 
@@ -1871,6 +1872,10 @@ qpcache__destroy_rcu(struct rcu_head *rcu_head) {
 	isc_refcount_destroy(&qpdb->common.references);
 
 	isc_rwlock_destroy(&qpdb->lock);
+
+	isc_mem_cput(qpdb->common.mctx, qpdb->quiescent_jobs,
+		     qpdb->buckets_count, sizeof(qpdb->quiescent_jobs[0]));
+
 	qpdb->common.magic = 0;
 	qpdb->common.impmagic = 0;
 
@@ -1887,11 +1892,11 @@ qpcache__destroy(qpcache_t *qpdb) {
 }
 
 static void
-qpcache_destroy_async(void *arg) {
+qpcache_compact_stop(void *arg) {
 	qpcache_t *qpdb = (qpcache_t *)arg;
 
-	isc_loop_quiescent_stop(isc_loop(), &qpdb->quiescent_job);
-	isc_loop_detach(&qpdb->quiescent_loop);
+	isc_loop_quiescent_stop(isc_loop(), &qpdb->quiescent_jobs[isc_tid()]);
+	isc_loop_unref(isc_loop_get(isc_tid()));
 
 	qpcache_detach(&qpdb);
 }
@@ -1900,7 +1905,17 @@ static void
 qpcache_destroy(dns_db_t *arg) {
 	qpcache_t *qpdb = (qpcache_t *)arg;
 
-	isc_async_run(qpdb->quiescent_loop, qpcache_destroy_async, arg);
+	/*
+	 * Each loop stops its own collector, because a quiescent job may
+	 * only be started and stopped from the loop that runs it. The last
+	 * one to get there releases the database.
+	 */
+	for (size_t i = 0; i < qpdb->buckets_count; i++) {
+		qpcache_ref(qpdb);
+		isc_async_run(isc_loop_get(i), qpcache_compact_stop, qpdb);
+	}
+
+	qpcache_detach(&qpdb);
 }
 
 /*%
@@ -1910,18 +1925,13 @@ qpcache_destroy(dns_db_t *arg) {
  * to open a write transaction.
  */
 static void
-cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
+prune_deadnodes(qpcache_t *qpdb, uint16_t locknum, dns_qp_t *qp) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = &qpdb->buckets[locknum].lock;
 	qpcnode_t *qpnode = NULL, *qpnext = NULL;
 	isc_queue_t deadnodes;
-	dns_qp_t *qp = NULL;
-
-	INSIST(locknum < qpdb->buckets_count);
 
 	isc_queue_init(&deadnodes);
-
-	dns_qpmulti_write(qpdb->tree, &qp);
 
 	NODE_WRLOCK(nlock, &nlocktype);
 
@@ -1932,7 +1942,40 @@ cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
 	}
 
 	NODE_UNLOCK(nlock, &nlocktype);
+}
 
+/*%
+ * Get rid of this loop's dead nodes inside a write transaction the caller
+ * already holds, so that they do not need a transaction of their own. A
+ * transaction is by far the most expensive part of deleting a node: it
+ * copies every trie cell between the root and the leaf.
+ */
+static void
+prune_deadnodes_locally(qpcache_t *qpdb, dns_qp_t *qp) {
+	isc_tid_t tid = isc_tid();
+
+	if (tid != ISC_TID_UNKNOWN && (size_t)tid < qpdb->buckets_count) {
+		prune_deadnodes(qpdb, tid, qp);
+	}
+}
+
+static void
+cleanup_deadnodes(qpcache_t *qpdb, uint16_t locknum) {
+	dns_qp_t *qp = NULL;
+
+	INSIST(locknum < qpdb->buckets_count);
+
+	/*
+	 * Another loop may have emptied this bucket already, by pruning it
+	 * from a transaction of its own. Opening one here just to find
+	 * nothing to do would publish a new version of the trie for free.
+	 */
+	if (isc_queue_empty(&qpdb->buckets[locknum].deadnodes)) {
+		return;
+	}
+
+	dns_qpmulti_write(qpdb->tree, &qp);
+	prune_deadnodes(qpdb, locknum, qp);
 	dns_qpmulti_commit(qpdb->tree, &qp);
 }
 
@@ -2040,6 +2083,7 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	RUNTIME_CHECK(reactivate_node(qpdb, node DNS__DB_FLARG_PASS) ==
 		      ISC_R_SUCCESS);
 	*nodep = (dns_dbnode_t *)node;
+	prune_deadnodes_locally(qpdb, qp);
 	dns_qpmulti_commit(qpdb->tree, &qp);
 	return ISC_R_SUCCESS;
 }
@@ -2810,6 +2854,14 @@ qpcache_compact(void *arg) {
 	}
 }
 
+static void
+qpcache_compact_start(void *arg) {
+	qpcache_t *qpdb = arg;
+
+	isc_loop_quiescent_start(isc_loop(), &qpdb->quiescent_jobs[isc_tid()],
+				 qpcache_compact, qpdb);
+}
+
 isc_result_t
 dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		    dns_dbtype_t type, dns_rdataclass_t rdclass,
@@ -2836,7 +2888,8 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 		.common.references = 1,
 		.references = 1,
 		.buckets_count = nloops,
-		.quiescent_loop = isc_loop_ref(loop),
+		.quiescent_jobs = isc_mem_cget(mctx, nloops,
+					       sizeof(qpdb->quiescent_jobs[0])),
 	};
 
 	isc_rwlock_init(&qpdb->lock);
@@ -2869,8 +2922,28 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	 */
 	dns_qpmulti_create(mctx, &qpmethods, qpdb, &qpdb->tree);
 
-	isc_loop_quiescent_start(loop, &qpdb->quiescent_job, qpcache_compact,
-				 qpdb);
+	/*
+	 * A quiescent job may only be started from the loop that runs it,
+	 * so every loop but this one starts its own. Each of those runs
+	 * before that loop's qpcache_compact_stop(), which is posted to the
+	 * same queue, so none of them can outlive the database.
+	 */
+	for (size_t tid = 0; tid < nloops; tid++) {
+		/*
+		 * Hold the loop so that it is still there to be posted to
+		 * when the database is destroyed, which may happen after
+		 * the loop manager has begun shutting down.
+		 */
+		(void)isc_loop_ref(isc_loop_get(tid));
+
+		if (tid == (size_t)isc_tid()) {
+			isc_loop_quiescent_start(loop,
+						 &qpdb->quiescent_jobs[tid],
+						 qpcache_compact, qpdb);
+			continue;
+		}
+		isc_async_run(isc_loop_get(tid), qpcache_compact_start, qpdb);
+	}
 
 	qpdb->common.magic = DNS_DB_MAGIC;
 	qpdb->common.impmagic = QPDB_MAGIC;
