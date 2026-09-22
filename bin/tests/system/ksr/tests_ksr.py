@@ -222,7 +222,10 @@ def check_keys(
             goal = "omnipresent"
             pubdelay = published + pubtime
             sigdelay = (
-                active + config["max-zone-ttl"] + config["zone-propagation-delay"]
+                active
+                + sign_delay(config)
+                + config["max-zone-ttl"]
+                + config["zone-propagation-delay"]
             )
 
             if between(now, published, pubdelay):
