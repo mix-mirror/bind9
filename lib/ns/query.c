@@ -3055,6 +3055,12 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 	dns_clientinfo_t ci;
 	bool found_a = false;
 
+	/*
+	 * RRSIG queries are refused before any RPZ processing, see
+	 * ns_query_start().
+	 */
+	REQUIRE(!dns_rdatatype_issig(qtype));
+
 	CTRACE(ISC_LOG_DEBUG(3), "rpz_find_p");
 
 	REQUIRE(foundname != NULL);
@@ -3139,14 +3145,9 @@ rpz_find_p(ns_client_t *client, dns_name_t *self_name, dns_rdatatype_t qtype,
 			 */
 			dns_rdataset_cleanup(*rdatasetp);
 
-			if (dns_rdatatype_issig(qtype)) {
-				result = DNS_R_NXRRSET;
-			} else {
-				result = dns_db_findext(
-					*dbp, p_name, *versionp, qtype, 0,
-					client->inner.now, found, &cm, &ci,
-					*rdatasetp, NULL);
-			}
+			result = dns_db_findext(*dbp, p_name, *versionp, qtype,
+						0, client->inner.now, found,
+						&cm, &ci, *rdatasetp, NULL);
 		}
 	}
 	switch (result) {
@@ -8238,6 +8239,21 @@ query_zone_delegation(query_ctx_t *qctx) {
 		}
 	}
 
+	/*
+	 * An ANY query for a name delegated from this zone could only be
+	 * answered from the cache or by recursing, and neither is done
+	 * for ANY queries (see ns__query_start()): refuse it, rather than
+	 * answering with the referral, when recursion was requested.
+	 */
+	if (qctx->qtype == dns_rdatatype_any && qctx->client->query.cacheok &&
+	    qctx->client->query.recursionok)
+	{
+		dns_ede_add(&qctx->client->edectx, DNS_EDE_NOTSUPPORTED,
+			    "ANY queries are not supported");
+		QUERY_ERROR(qctx, DNS_R_REFUSED);
+		return ns_query_done(qctx);
+	}
+
 	if (qctx->client->query.cacheok &&
 	    (qctx->client->query.recursionok ||
 	     (qctx->zone != NULL &&
@@ -9386,6 +9402,12 @@ query_coveringnsec(query_ctx_t *qctx) {
 	unsigned int dboptions = qctx->client->query.dboptions;
 	unsigned int labels;
 
+	/*
+	 * ANY queries are never answered from the cache, see
+	 * ns__query_start() and query_zone_delegation().
+	 */
+	REQUIRE(qctx->type != dns_rdatatype_any);
+
 	CCTRACE(ISC_LOG_DEBUG(3), "query_coveringnsec");
 
 	/*
@@ -9459,9 +9481,6 @@ query_coveringnsec(query_ctx_t *qctx) {
 			goto cleanup;
 		}
 
-		if (qctx->type == dns_rdatatype_any) { /* XXX not yet */
-			goto cleanup;
-		}
 		if (!ISC_LIST_EMPTY(qctx->view->dns64) &&
 		    dns_rdatatype_isaddr(qctx->type)) /* XXX not yet */
 		{
@@ -9515,15 +9534,11 @@ query_coveringnsec(query_ctx_t *qctx) {
 	/*
 	 * Zero TTL handling of wildcard record.
 	 *
-	 * We don't yet have code to handle synthesis and type ANY or dns64
-	 * processing so we abort the synthesis here if there would be a
-	 * interaction.
+	 * We don't yet have code to handle synthesis and dns64 processing
+	 * so we abort the synthesis here if there would be a interaction.
 	 */
 	switch (result) {
 	case ISC_R_SUCCESS:
-		if (qctx->type == dns_rdatatype_any) { /* XXX not yet */
-			goto cleanup;
-		}
 		if (!ISC_LIST_EMPTY(qctx->view->dns64) &&
 		    dns_rdatatype_isaddr(qctx->type)) /* XXX not yet */
 		{
