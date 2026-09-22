@@ -2508,6 +2508,13 @@ cleanup:
 	return result;
 }
 
+void *
+isc_quic_conn_get_callback_arg(const isc_quic_conn_t *conn) {
+	REQUIRE(VALID_CONNECTION(conn));
+
+	return conn->cbarg;
+}
+
 isc_result_t
 isc_quic_conn_shutdown(isc_quic_conn_t *conn) {
 #if NGTCP2_VERSION_NUM >= 0x011600 /* 1.22.0 */
