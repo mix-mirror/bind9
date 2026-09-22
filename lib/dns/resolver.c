@@ -1007,9 +1007,6 @@ static void
 rctx_authority_positive(respctx_t *rctx);
 
 static isc_result_t
-rctx_answer_any(respctx_t *rctx);
-
-static isc_result_t
 rctx_answer_match(respctx_t *rctx);
 
 static isc_result_t
@@ -4609,9 +4606,7 @@ resume_qmin(void *arg) {
 		 */
 		if ((result == DNS_R_CNAME || result == DNS_R_DNAME) &&
 		    fctx->qmin_labels == dns_name_countlabels(fctx->name) &&
-		    fctx->type != dns_rdatatype_nsec &&
-		    fctx->type != dns_rdatatype_any &&
-		    fctx->type != dns_rdatatype_rrsig)
+		    fctx->type != dns_rdatatype_nsec)
 		{
 			pull_from_resp(resp, fctx);
 
@@ -4941,6 +4936,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	 * Caller must be holding the lock for 'bucket'
 	 */
 	REQUIRE(fctxp != NULL && *fctxp == NULL);
+	REQUIRE(!dns_rdatatype_ismeta(type) && !dns_rdatatype_issig(type));
 
 	fctx = isc_mem_get(mctx, sizeof(*fctx));
 	*fctx = (fetchctx_t){ .type = type,
@@ -8287,13 +8283,11 @@ rctx_answer_init(respctx_t *rctx) {
 	}
 
 	/*
-	 * There can be multiple RRSIG records at a name so
-	 * we treat these types as a subset of ANY.
+	 * Fetches for meta types (ANY included) and for RRSIG are never
+	 * created, see fctx__create(), so there is no answer of type ANY
+	 * to deal with here.
 	 */
 	rctx->type = fctx->type;
-	if (dns_rdatatype_issig(fctx->type)) {
-		rctx->type = dns_rdatatype_any;
-	}
 
 	/*
 	 * Bigger than any valid DNAME label count.
@@ -8732,15 +8726,10 @@ rctx_answer_positive(respctx_t *rctx) {
 
 	/*
 	 * Determine which type of positive answer this is:
-	 * type ANY, CNAME, DNAME, or an answer matching QNAME/QTYPE.
+	 * CNAME, DNAME, or an answer matching QNAME/QTYPE.
 	 * Call the appropriate routine to handle the answer type.
 	 */
-	if (rctx->aname != NULL && rctx->type == dns_rdatatype_any) {
-		result = rctx_answer_any(rctx);
-		if (result == ISC_R_COMPLETE) {
-			return rctx->result;
-		}
-	} else if (rctx->aname != NULL) {
+	if (rctx->aname != NULL) {
 		result = rctx_answer_match(rctx);
 		if (result == ISC_R_COMPLETE) {
 			return rctx->result;
@@ -8823,13 +8812,9 @@ rctx_answer_scan(respctx_t *rctx) {
 		switch (namereln) {
 		case dns_namereln_equal:
 			ISC_LIST_FOREACH(name->list, rdataset, link) {
-				if (rdataset->type == rctx->type ||
-				    rctx->type == dns_rdatatype_any)
-				{
+				if (rdataset->type == rctx->type) {
 					rctx->aname = name;
-					if (rctx->type != dns_rdatatype_any) {
-						rctx->ardataset = rdataset;
-					}
+					rctx->ardataset = rdataset;
 					break;
 				}
 				if (rdataset->type == dns_rdatatype_cname) {
@@ -8898,71 +8883,6 @@ rctx_answer_scan(respctx_t *rctx) {
 }
 
 /*
- * rctx_answer_any():
- * Handle responses to queries of type ANY. Scan the answer section,
- * and as long as each RRset is of a type that is valid in the answer
- * section, and the rdata isn't filtered, cache it.
- */
-static isc_result_t
-rctx_answer_any(respctx_t *rctx) {
-	fetchctx_t *fctx = rctx->fctx;
-
-	ISC_LIST_FOREACH(rctx->aname->list, rdataset, link) {
-		if (!validinanswer(rdataset, fctx)) {
-			rctx->result = DNS_R_FORMERR;
-			return ISC_R_COMPLETE;
-		}
-
-		if (dns_rdatatype_issig(fctx->type) &&
-		    rdataset->type != fctx->type)
-		{
-			continue;
-		}
-
-		if (dns_rdatatype_isaddr(rdataset->type) &&
-		    !is_answeraddress_allowed(fctx->res->view, rctx->aname,
-					      rdataset))
-		{
-			rctx->result = DNS_R_SERVFAIL;
-			return ISC_R_COMPLETE;
-		}
-
-		if (dns_rdatatype_isalias(rdataset->type) &&
-		    !is_answertarget_allowed(fctx, fctx->name, rctx->aname,
-					     rdataset, NULL))
-		{
-			rctx->result = DNS_R_SERVFAIL;
-			return ISC_R_COMPLETE;
-		}
-
-		rctx->aname->attributes.cache = true;
-		rctx->aname->attributes.answer = true;
-		if (dns_rdatatype_issig(rdataset->type)) {
-			rdataset->attributes.answersig = true;
-		} else {
-			rdataset->attributes.answer = true;
-		}
-		rdataset->attributes.cache = true;
-		rdataset->trust = rctx->trust;
-	}
-
-	/*
-	 * An RRSIG query is handled as a subset of ANY; if every record in
-	 * the answer was filtered out above, nothing was marked cacheable,
-	 * so there is nothing to cache, validate, or chase.  Treat that as a
-	 * broken answer instead of returning success with no answer, which
-	 * would leave the fetch waiting for a validator that is never
-	 * started.
-	 */
-	if (!rctx->aname->attributes.cache) {
-		rctx->result = DNS_R_FORMERR;
-		return ISC_R_COMPLETE;
-	}
-
-	return ISC_R_SUCCESS;
-}
-
-/*
  * rctx_answer_match():
  * Handle responses that match the QNAME/QTYPE of the resolver query.
  * If QTYPE is valid in the answer section and the rdata isn't filtered,
@@ -8987,7 +8907,6 @@ rctx_answer_match(respctx_t *rctx) {
 	}
 	if (dns_rdatatype_isalias(rctx->ardataset->type) &&
 	    rctx->type != rctx->ardataset->type &&
-	    rctx->type != dns_rdatatype_any &&
 	    !is_answertarget_allowed(fctx, fctx->name, rctx->aname,
 				     rctx->ardataset, NULL))
 	{

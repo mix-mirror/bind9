@@ -114,3 +114,25 @@ def test_resolver_any_refused(ns1):
     isctest.check.refused(res)
     isctest.check.empty_answer(res)
     isctest.check.ede(res, EDECode.NOT_SUPPORTED)
+
+
+def test_resolver_any_refused_below_delegation():
+    # ns7 is authoritative for sub.tld1, which delegates bar.sub.tld1
+    # elsewhere; an ANY query for a name below that delegation could
+    # only be answered by recursing, so it is refused when recursion
+    # is requested...
+    msg = isctest.query.create("foo.bar.sub.tld1.", "ANY")
+    res = isctest.query.udp(msg, "10.53.0.7", expected_rcode=dns.rcode.REFUSED)
+    isctest.check.refused(res)
+    isctest.check.empty_answer(res)
+    isctest.check.ede(res, EDECode.NOT_SUPPORTED)
+
+    # ...and answered with the referral when it is not
+    msg = isctest.query.create("foo.bar.sub.tld1.", "ANY", rd=False)
+    res = isctest.query.udp(msg, "10.53.0.7")
+    isctest.check.noerror(res)
+    isctest.check.empty_answer(res)
+    assert any(
+        rrset.rdtype == dns.rdatatype.NS and str(rrset.name) == "bar.sub.tld1."
+        for rrset in res.authority
+    ), f"expected a referral for bar.sub.tld1: {res}"
