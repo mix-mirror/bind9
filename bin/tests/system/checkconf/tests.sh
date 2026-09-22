@@ -702,7 +702,7 @@ if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 n=$((n + 1))
-echo_i "checking named-checkconf kasp deprecated algorithms, digests, salt ($n)"
+echo_i "checking named-checkconf kasp deprecated algorithms, digests, and salt ($n)"
 ret=0
 if [ $RSASHA1_SUPPORTED = 0 ]; then
   $CHECKCONF kasp-deprecated-fips.conf >checkconf.out$n 2>&1 || ret=1
