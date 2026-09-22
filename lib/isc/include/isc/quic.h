@@ -535,6 +535,10 @@ isc_quic_conn_pull_packet(isc_quic_conn_t *conn, isc_region_t out,
  * \brief
  * Consume a packet produced by the state machine if there is any.
  *
+ *
+ * Upon failure, the connection should be closed via `isc_quic_conn_shutdown`
+ * and the a packet should be pulled again for the shutdown.
+ *
  * \retval ISC_R_SUCCESS on success
  * \retval ISC_R_TERMINATED if the connection has been terminated
  */
