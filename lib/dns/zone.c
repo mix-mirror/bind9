@@ -5165,7 +5165,7 @@ findzonekeys(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver,
 					 algbuf, dst_key_id(pubkey));
 			}
 
-			if (KSK(pubkey) && !offlineksk) {
+			if (!offlineksk || !KSK(pubkey)) {
 				isc_log_write(
 					DNS_LOGCATEGORY_GENERAL,
 					DNS_LOGMODULE_DNSSEC, ISC_LOG_WARNING,
