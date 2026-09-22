@@ -29,6 +29,12 @@
 
 #include "quic_p.h" /* IWYU pragma: keep */
 
+/**
+ *
+ * Specified in RFC9001, Section 5.2.
+ */
+#define QUIC_INITIAL_SECRET_LENGTH 32
+
 #define VALID_CONNECTION(c) ISC_MAGIC_VALID(c, conn_magic)
 
 #ifdef ISC_QUIC_STATE_CHECK
@@ -729,7 +735,7 @@ setup_initial_key(ngtcp2_conn *ngconn, const ngtcp2_cid *dcid) {
 	uint32_t version;
 	bool is_server;
 
-	uint8_t initial_secret[32];
+	uint8_t initial_secret[QUIC_INITIAL_SECRET_LENGTH];
 
 #if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
 	version = ngtcp2_conn_get_client_chosen_version2(ngconn);
@@ -1369,8 +1375,12 @@ get_new_connection_id_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED, ngtcp2_cid *ngcid,
 		if (result == ISC_R_SUCCESS) {
 			isc_quic_router_stateless_reset_from_cid(conn->router,
 								 cid, token);
-			isc_quic_router_add_stateless_reset(conn->router, token,
-							    isc_tid(), conn);
+			result = isc_quic_router_add_stateless_reset(
+				conn->router, token, isc_tid(), conn);
+			/*
+			 * Failure probability is $2^{-128}$
+			 */
+			INSIST(result == ISC_R_SUCCESS);
 			ngcid->datalen = cidlen;
 			memmove(ngcid->data, buffer, cidlen);
 			return 0;
@@ -1629,8 +1639,12 @@ get_new_connection_id2_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED,
 		if (result == ISC_R_SUCCESS) {
 			isc_quic_router_stateless_reset_from_cid(
 				conn->router, cid, token->data);
-			isc_quic_router_add_stateless_reset(
+			result = isc_quic_router_add_stateless_reset(
 				conn->router, token->data, isc_tid(), conn);
+			/*
+			 * Failure probability is $2^{-128}$
+			 */
+			INSIST(result == ISC_R_SUCCESS);
 			ngcid->datalen = cidlen;
 			memmove(ngcid->data, buffer, cidlen);
 			return 0;
