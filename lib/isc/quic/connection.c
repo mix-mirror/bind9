@@ -35,6 +35,8 @@
  */
 #define QUIC_INITIAL_SECRET_LENGTH 32
 
+#define QUIC_AES128_KEY_LENGTH 16
+
 #define VALID_CONNECTION(c) ISC_MAGIC_VALID(c, conn_magic)
 
 #ifdef ISC_QUIC_STATE_CHECK
@@ -725,8 +727,14 @@ derive_traffic_update(isc_region_t next_secret, uint32_t version,
  */
 static isc_result_t
 setup_initial_key(ngtcp2_conn *ngconn, const ngtcp2_cid *dcid) {
-	uint8_t self_secret[32], self_key[16], self_iv[12], self_hp[16];
-	uint8_t peer_secret[32], peer_key[16], peer_iv[12], peer_hp[16];
+	uint8_t self_secret[QUIC_INITIAL_SECRET_LENGTH],
+		self_key[QUIC_AES128_KEY_LENGTH],
+		self_iv[ISC_CRYPTO_AEAD_MAX_NONCE_LENGTH],
+		self_hp[QUIC_AES128_KEY_LENGTH];
+	uint8_t peer_secret[QUIC_INITIAL_SECRET_LENGTH],
+		peer_key[QUIC_AES128_KEY_LENGTH],
+		peer_iv[ISC_CRYPTO_AEAD_MAX_NONCE_LENGTH],
+		peer_hp[QUIC_AES128_KEY_LENGTH];
 	ngtcp2_crypto_aead_ctx self_aead_ctx = { 0 }, peer_aead_ctx = { 0 };
 	ngtcp2_crypto_cipher_ctx self_hp_ctx = { 0 }, peer_hp_ctx = { 0 };
 	isc_crypto_quic_hp_protect_t *hp = NULL;
@@ -1411,7 +1419,8 @@ update_key_cb(ngtcp2_conn *ngconn, uint8_t *rx_secret, uint8_t *tx_secret,
 	      const uint8_t *current_rx_secret,
 	      const uint8_t *current_tx_secret, size_t len,
 	      void *user_data ISC_ATTR_UNUSED) {
-	uint8_t rx_key[32], tx_key[32];
+	uint8_t rx_key[ISC_CRYPTO_AEAD_MAX_KEY_LENGTH],
+		tx_key[ISC_CRYPTO_AEAD_MAX_KEY_LENGTH];
 	const ngtcp2_crypto_ctx *ctx;
 	isc_crypto_aead_algorithm_t aead_algorithm;
 	isc_crypto_aead_t *aead = NULL;
@@ -1521,9 +1530,15 @@ static int
 version_negotiation_cb(ngtcp2_conn *ngconn, uint32_t ngversion,
 		       const ngtcp2_cid *client_dcid,
 		       void *user_data ISC_ATTR_UNUSED) {
-	uint8_t self_secret[32], self_key[16], self_iv[12], self_hp[16];
-	uint8_t peer_secret[32], peer_key[16], peer_iv[12], peer_hp[16];
-	uint8_t initial_secret[32];
+	uint8_t self_secret[ISC_CRYPTO_AEAD_MAX_KEY_LENGTH],
+		self_key[QUIC_AES128_KEY_LENGTH],
+		self_iv[ISC_CRYPTO_AEAD_MAX_NONCE_LENGTH],
+		self_hp[QUIC_AES128_KEY_LENGTH];
+	uint8_t peer_secret[ISC_CRYPTO_AEAD_MAX_KEY_LENGTH],
+		peer_key[QUIC_AES128_KEY_LENGTH],
+		peer_iv[ISC_CRYPTO_AEAD_MAX_NONCE_LENGTH],
+		peer_hp[QUIC_AES128_KEY_LENGTH];
+	uint8_t initial_secret[QUIC_INITIAL_SECRET_LENGTH];
 
 	ngtcp2_crypto_aead_ctx self_aead_ctx = { 0 }, peer_aead_ctx = { 0 };
 	ngtcp2_crypto_cipher_ctx self_hp_ctx = { 0 }, peer_hp_ctx = { 0 };
@@ -1836,7 +1851,6 @@ isc_result_t
 isc__quic_setup_read_key(isc_quic_conn_t *conn, bool is_server,
 			 ngtcp2_encryption_level nglevel,
 			 isc_constregion_t secret) {
-	uint8_t key_buffer[32], nonce_buffer[32], hp_buffer[32];
 	isc_crypto_quic_hp_protect_algorithm_t hp_algorithm;
 	isc_crypto_quic_hp_protect_t *hp = NULL;
 	isc_crypto_aead_algorithm_t aead_algorithm;
@@ -1850,6 +1864,9 @@ isc__quic_setup_read_key(isc_quic_conn_t *conn, bool is_server,
 	isc_tls_t *tls;
 	uint32_t version;
 	size_t key_len, nonce_len;
+	uint8_t key_buffer[ISC_CRYPTO_AEAD_MAX_KEY_LENGTH],
+		nonce_buffer[ISC_CRYPTO_AEAD_MAX_NONCE_LENGTH],
+		hp_buffer[ISC_CRYPTO_AEAD_MAX_KEY_LENGTH];
 
 #if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
 	tls = ngtcp2_conn_get_tls_native_handle2(conn->inner);
@@ -2054,7 +2071,6 @@ isc_result_t
 isc__quic_setup_write_key(isc_quic_conn_t *conn, bool is_server,
 			  ngtcp2_encryption_level nglevel,
 			  isc_constregion_t secret) {
-	uint8_t key_buffer[32], nonce_buffer[32], hp_buffer[32];
 	isc_crypto_quic_hp_protect_algorithm_t hp_algorithm;
 	isc_crypto_aead_algorithm_t aead_algorithm;
 	isc_crypto_quic_hp_protect_t *hp = NULL;
@@ -2068,6 +2084,9 @@ isc__quic_setup_write_key(isc_quic_conn_t *conn, bool is_server,
 	isc_tls_t *tls;
 	uint32_t version;
 	size_t key_len, nonce_len;
+	uint8_t key_buffer[ISC_CRYPTO_AEAD_MAX_KEY_LENGTH],
+		nonce_buffer[ISC_CRYPTO_AEAD_MAX_NONCE_LENGTH],
+		hp_buffer[ISC_CRYPTO_AEAD_MAX_KEY_LENGTH];
 
 #if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
 	tls = ngtcp2_conn_get_tls_native_handle2(conn->inner);
