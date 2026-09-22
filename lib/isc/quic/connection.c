@@ -2404,6 +2404,16 @@ cleanup:
 	return result;
 }
 
+/*
+ * original scid: SCID of the client
+ *
+ * initial dcid : DCID of the initia
+ *
+ * scid : Generated SCID of the *server*
+ *
+ * dcid : The destination CID from the **server's** perspective which is the
+ * initial_scid.
+ */
 isc_result_t
 isc_quic_conn_server_create(
 	isc_mem_t *mctx, isc_quic_router_t *router,
@@ -2438,11 +2448,31 @@ isc_quic_conn_server_create(
 		.remote = { (ngtcp2_sockaddr *)&peer->type.sa, peer->length },
 	};
 
+	/*
+	 * When confused, remember that from a connection side, itself is always
+	 * the SCID and the peer is always using the DCID.
+	 *
+	 * So, a clients SCID is the server's DCID and vice versa.
+	 */
+
+	/*
+	 * Generate a new source CID from **our** perspective.
+	 */
 	scid.datalen = ISC_QUIC_CID_MAX_LENGTH;
 	isc_random_buf(scid.data, scid.datalen);
+
+	/*
+	 * Destination CID to be used for now is the source CID of the
+	 * **client** in the initial packet.
+	 */
 	ngtcp2_cid_init(&dcid, initial_scid.base, initial_scid.length);
 
 	common_transport_params(&transport_params);
+
+	/*
+	 * original_dcid is what the client used as the destination CID from its
+	 * own perspective.
+	 */
 	ngtcp2_cid_init(&transport_params.original_dcid, initial_dcid.base,
 			initial_dcid.length);
 	transport_params.max_idle_timeout = options->idle_timeout;
