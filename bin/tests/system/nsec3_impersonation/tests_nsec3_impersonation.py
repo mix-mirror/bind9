@@ -11,13 +11,6 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-from pathlib import Path
-
-import json
-
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-
 import dns.dnssec
 import dns.flags
 import dns.name
@@ -27,6 +20,8 @@ import pytest
 
 import isctest
 import isctest.mark
+import isctest.template
+import isctest.zone
 
 APEX_HASH = "1B40241KFORIOG780N4IKSCRLVETPCTQ"
 ATTACKER = f"{APEX_HASH.lower()}.tld.test."
@@ -38,40 +33,26 @@ pytestmark = [
     isctest.mark.with_ecdsa_deterministic,
     pytest.mark.extra_artifacts(
         [
-            "ans*/keys.json",
+            "ans*/dsset-*",
         ]
     ),
 ]
 
 
-def _make_key(zone):
-    private_key = ec.generate_private_key(ec.SECP256R1())
-    dnskey = dns.dnssec.make_dnskey(
-        private_key.public_key(),
-        algorithm="ECDSAP256SHA256",
-        flags=257,
-    )
-    ds = dns.dnssec.make_ds(dns.name.from_text(zone), dnskey, "SHA256")
-    private_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    ).decode("ascii")
-    return {
-        "private_pem": private_pem,
-        "dnskey": dnskey.to_text(),
-        "ds": ds.to_text(),
-    }
-
-
 def bootstrap():
-    zones = ["tld.test.", ATTACKER]
-    keys = {zone: _make_key(zone) for zone in zones}
+    parent_origin = "tld.test"
+    parent_nsec3_hash = dns.dnssec.nsec3_hash(parent_origin, None, 0, 1)
 
-    Path("ans1/keys.json").write_text(json.dumps(keys, indent=2), encoding="ascii")
+    child_origin = f"{parent_nsec3_hash}.{parent_origin}"
 
-    tld_dnskey = "".join(keys["tld.test."]["dnskey"].split()[3:])
-    return {"TLD_DNSKEY": tld_dnskey}
+    child = isctest.zone.Zone(child_origin, isctest.template.ANS1, signed=True)
+    child.configure(csk=True)
+
+    parent = isctest.zone.Zone(parent_origin, isctest.template.ANS1, signed=True)
+    parent.delegations = [child]
+    parent.configure(csk=True, sign_params="-3 -")
+
+    return {"trust_anchors": parent.trust_anchors()}
 
 
 def check_dnskey_response(zone):
