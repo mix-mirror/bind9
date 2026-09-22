@@ -304,10 +304,6 @@ is_insecure_referral(dns_validator_t *val, dns_name_t *name,
 		if (result != ISC_R_SUCCESS) {
 			return false;
 		}
-		if (set.trust < dns_trust_secure) {
-			dns_rdataset_cleanup(&set);
-			goto trynsec3;
-		}
 	}
 
 	INSIST(set.type == dns_rdatatype_nsec);
@@ -337,9 +333,6 @@ trynsec3:
 		dns_ncache_current(rdataset, &nsec3name, &set);
 		if (set.type != dns_rdatatype_nsec3) {
 			dns_rdataset_disassociate(&set);
-			continue;
-		}
-		if (set.trust < dns_trust_secure) {
 			continue;
 		}
 
@@ -1033,9 +1026,6 @@ validator_callback_nsec(void *arg) {
 		val->authfail++;
 		FALLTHROUGH;
 	default:
-		if (val->nxset != NULL) {
-			val->nxset->attributes.ncache = false;
-		}
 		result = validate_nx(val, true);
 		break;
 	}
