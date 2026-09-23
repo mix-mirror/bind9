@@ -97,7 +97,7 @@ def test_nxdomain_redirect_dns64_authoritative_positive(ns7):
     msg = isctest.query.create("excl.", "AAAA", dnssec=False)
     response = isctest.query.tcp(msg, ns7.ip)
     isctest.check.noerror(response)
-    assert _aaaa_addresses(response, "excl.") == {"acdc::acdc"}
+    assert _aaaa_addresses(response, "excl.") == {"64:ff9b::cb00:7102"}
     _alive(ns7)
 
 
