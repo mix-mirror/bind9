@@ -12,9 +12,9 @@
 """
 Check that the test network interfaces are up.
 
-Try to bind a UDP socket on each of the given addresses (IPv4 or IPv6),
-or, when none are given, on the 10.53.0.* test addresses; a bind failure
-means the interface is not configured or the port is already taken.
+Try to bind() a UDP socket on each of the given addresses (IPv4 or IPv6).
+
+When no address is specified, check the 10.53.0.* test addresses.
 """
 
 from pathlib import Path
