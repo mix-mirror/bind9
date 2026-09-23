@@ -35,9 +35,12 @@ IFCONFIG_SCRIPT = Path(__file__).resolve().parents[2] / "ifconfig.sh.in"
 def check_addr(address: str, port: int = 0) -> None:
     """
     Try to bind a UDP socket to the given address and port; raise
-    OSError on failure.
+    OSError on failure and ValueError for a malformed address.
     """
-    family = dns.inet.af_for_address(address)
+    try:
+        family = dns.inet.af_for_address(address)
+    except ValueError:
+        raise ValueError(f"{address}: not an IPv4 or IPv6 address") from None
     with socket.socket(family, socket.SOCK_DGRAM) as sock:
         try:
             sock.bind((address, port))
