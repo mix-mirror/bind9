@@ -9,6 +9,9 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+import dns.name
+import dns.rdataclass
+import dns.rdatatype
 import pytest
 
 import isctest
@@ -65,12 +68,36 @@ def _alive(server):
     isctest.check.noerror(response)
 
 
+def _aaaa_addresses(response, owner):
+    rrset = response.get_rrset(
+        response.answer,
+        dns.name.from_text(owner),
+        dns.rdataclass.IN,
+        dns.rdatatype.AAAA,
+    )
+    assert rrset is not None, response
+    return {rdata.to_text() for rdata in rrset}
+
+
 def test_nxdomain_redirect_dns64_authoritative(ns7):
     # Direct AAAA to a server that is authoritative for both '.' (NXDOMAIN)
     # and the redirect zone (wildcard A only). Reproduces the
     # INSIST(!qctx->is_zone) abort in query_notfound() entered via
     # authoritative NXDOMAIN.
     _no_crash(ns7, "no-exist.")
+    _alive(ns7)
+
+
+def test_nxdomain_redirect_dns64_authoritative_positive(ns7):
+    msg = isctest.query.create("excl.redirect.", "AAAA", dnssec=False)
+    response = isctest.query.tcp(msg, ns7.ip)
+    isctest.check.noerror(response)
+    assert _aaaa_addresses(response, "excl.redirect.") == {"64:ff9b::cb00:7102"}
+
+    msg = isctest.query.create("excl.", "AAAA", dnssec=False)
+    response = isctest.query.tcp(msg, ns7.ip)
+    isctest.check.noerror(response)
+    assert _aaaa_addresses(response, "excl.") == {"acdc::acdc"}
     _alive(ns7)
 
 
