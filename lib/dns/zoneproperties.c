@@ -32,8 +32,6 @@ static void
 default_journal(dns_zone_t *zone);
 static void
 zone_namerd_tostr(dns_zone_t *zone, char *buf, size_t length);
-static void
-zone_name_tostr(dns_zone_t *zone, char *buf, size_t length);
 
 static void
 free_rad_rcu(struct rcu_head *rcu_head) {
@@ -1255,11 +1253,22 @@ zone_namerd_tostr(dns_zone_t *zone, char *buf, size_t length) {
 	buf[isc_buffer_usedlength(&buffer)] = '\0';
 }
 
-static void
-zone_name_tostr(dns_zone_t *zone, char *buf, size_t length) {
+void
+dns_zone_name(dns_zone_t *zone, char *buf, size_t length) {
+	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(buf != NULL);
+
+	LOCK_ZONE(zone);
+	zone_namerd_tostr(zone, buf, length);
+	UNLOCK_ZONE(zone);
+}
+
+void
+dns_zone_nameonly(dns_zone_t *zone, char *buf, size_t length) {
 	isc_result_t result = ISC_R_FAILURE;
 	isc_buffer_t buffer;
 
+	REQUIRE(DNS_ZONE_VALID(zone));
 	REQUIRE(buf != NULL);
 	REQUIRE(length > 1U);
 
@@ -1278,23 +1287,6 @@ zone_name_tostr(dns_zone_t *zone, char *buf, size_t length) {
 	}
 
 	buf[isc_buffer_usedlength(&buffer)] = '\0';
-}
-
-void
-dns_zone_name(dns_zone_t *zone, char *buf, size_t length) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-	REQUIRE(buf != NULL);
-
-	LOCK_ZONE(zone);
-	zone_namerd_tostr(zone, buf, length);
-	UNLOCK_ZONE(zone);
-}
-
-void
-dns_zone_nameonly(dns_zone_t *zone, char *buf, size_t length) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-	REQUIRE(buf != NULL);
-	zone_name_tostr(zone, buf, length);
 }
 
 void
@@ -1685,7 +1677,7 @@ dns_zone_setnotifydefer(dns_zone_t *zone, dns_rdatatype_t type,
 		zone->notifysoa.notifydefer = defer;
 		break;
 	case dns_rdatatype_cds:
-		/* not applicable to NOTIFY(CDS), unused */
+		/* Not applicable to NOTIFY(CDS), unused. */
 		zone->notifycds.notifydefer = defer;
 		break;
 	default:
@@ -1705,7 +1697,7 @@ dns_zone_setnotifydelay(dns_zone_t *zone, dns_rdatatype_t type,
 		zone->notifysoa.notifydelay = delay;
 		break;
 	case dns_rdatatype_cds:
-		/* not applicable to NOTIFY(CDS), unused */
+		/* Not applicable to NOTIFY(CDS), unused. */
 		zone->notifycds.notifydelay = delay;
 		break;
 	default:
