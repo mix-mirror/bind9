@@ -19,6 +19,9 @@
 #include <isc/ossl_wrap.h>
 #include <isc/util.h>
 
+STATIC_ASSERT(ISC_TYPES_COMPATIBLE(isc_crypto_xof_t, EVP_MD_CTX),
+	      "isc_crypto_xof_t is not compatible with EVP_MD_CTX");
+
 EVP_MD *isc__crypto_md[] = {
 	[ISC_MD_UNKNOWN] = NULL, [ISC_MD_MD5] = NULL,	 [ISC_MD_SHA1] = NULL,
 	[ISC_MD_SHA224] = NULL,	 [ISC_MD_SHA256] = NULL, [ISC_MD_SHA384] = NULL,
