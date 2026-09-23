@@ -24,6 +24,8 @@ import re
 import socket
 import sys
 
+import dns.inet
+
 # ifconfig.sh.in sets the test interfaces up; its max= setting is the
 # authoritative count of the 10.53.0.* addresses.
 IFCONFIG_SCRIPT = Path(__file__).resolve().parents[2] / "ifconfig.sh.in"
@@ -34,7 +36,7 @@ def check_addr(address: str, port: int = 0) -> None:
     Try to bind a UDP socket to the given address and port; raise
     OSError on failure.
     """
-    family = socket.AF_INET6 if ":" in address else socket.AF_INET
+    family = dns.inet.af_for_address(address)
     with socket.socket(family, socket.SOCK_DGRAM) as sock:
         try:
             sock.bind((address, port))
@@ -86,7 +88,7 @@ def main() -> None:
                 check_addr(address, args.port)
         else:
             check_interfaces(args.port, args.id)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         sys.exit(f"testsock: {exc}")
 
 
