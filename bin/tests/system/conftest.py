@@ -587,7 +587,7 @@ def system_test(
 
     def check_net_interfaces():
         try:
-            isctest.tools.testsock.check_interfaces(int(os.environ["PORT"]))
+            isctest.tools.testsock.check_ipv4_interfaces(int(os.environ["PORT"]))
         except OSError as exc:
             isctest.log.error("testsock: %s", exc)
             pytest.skip("Network interface aliases not set up.")

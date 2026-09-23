@@ -59,7 +59,7 @@ def interface_ids() -> range:
     return range(1, int(matches[-1]) + 1)
 
 
-def check_interfaces(port: int = 0, server_id: int | None = None) -> None:
+def check_ipv4_interfaces(port: int = 0, server_id: int | None = None) -> None:
     """
     Check that the 10.53.0.* test interfaces (or just 10.53.0.<server_id>)
     are up and the given port can be bound on them; raise OSError on
@@ -87,7 +87,7 @@ def main() -> None:
             for address in args.address:
                 check_addr(address, args.port)
         else:
-            check_interfaces(args.port, args.id)
+            check_ipv4_interfaces(args.port, args.id)
     except (OSError, ValueError) as exc:
         sys.exit(f"testsock: {exc}")
 
