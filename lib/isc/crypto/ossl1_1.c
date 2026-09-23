@@ -1036,6 +1036,190 @@ cleanup:
 
 #endif /* HAVE_OPENSSL_HKDF_H */
 
+#ifdef HAVE_EVP_DIGESTSQUEEZE
+
+isc_result_t
+isc_crypto_xof(isc_crypto_xof_algorithm_t algorithm, const uint8_t *data,
+	       size_t datalen, uint8_t *out, size_t outlen) {
+	isc_result_t result;
+	const EVP_MD *type;
+	EVP_MD_CTX *ctx;
+
+	switch (algorithm) {
+	case ISC_CRYPTO_XOF_ALGORITHM_SHAKE128:
+		type = EVP_shake128();
+		break;
+	case ISC_CRYPTO_XOF_ALGORITHM_SHAKE256:
+		type = EVP_shake256();
+		break;
+	case ISC_CRYPTO_XOF_ALGORITHM_INVALID:
+	case ISC_CRYPTO_XOF_ALGORITHM_MAX:
+		UNREACHABLE();
+	}
+
+	if (type == NULL) {
+		return ISC_R_NOTIMPLEMENTED;
+	}
+
+	ERR_set_mark();
+
+	ctx = EVP_MD_CTX_new();
+	if (ctx == NULL) {
+		CLEANUP(ISC_R_CRYPTOFAILURE);
+	}
+
+	if (EVP_DigestInit_ex(ctx, type, NULL) != 1) {
+		CLEANUP(ISC_R_CRYPTOFAILURE);
+	}
+
+	if (EVP_DigestUpdate(ctx, data, datalen) != 1) {
+		CLEANUP(ISC_R_CRYPTOFAILURE);
+	}
+
+	if (EVP_DigestFinalXOF(ctx, out, outlen) != 1) {
+		CLEANUP(ISC_R_CRYPTOFAILURE);
+	}
+
+	result = ISC_R_SUCCESS;
+
+cleanup:
+	EVP_MD_CTX_free(ctx);
+	ERR_pop_to_mark();
+	return result;
+}
+
+/*
+ * Implemented again instead of using the isc_crypto_xof_ streaming API for less
+ * OpenSSL error queue operations.
+ */
+isc_result_t
+isc_crypto_xof_create(isc_crypto_xof_algorithm_t algorithm,
+		      isc_crypto_xof_t **xofp) {
+	isc_result_t result;
+	const EVP_MD *type = NULL;
+	EVP_MD_CTX *ctx;
+
+	REQUIRE(algorithm != ISC_CRYPTO_XOF_ALGORITHM_INVALID &&
+		algorithm < ISC_CRYPTO_XOF_ALGORITHM_MAX);
+	REQUIRE(xofp != NULL && *xofp == NULL);
+
+	switch (algorithm) {
+	case ISC_CRYPTO_XOF_ALGORITHM_SHAKE128:
+		type = EVP_shake128();
+		break;
+	case ISC_CRYPTO_XOF_ALGORITHM_SHAKE256:
+		type = EVP_shake256();
+		break;
+	case ISC_CRYPTO_XOF_ALGORITHM_INVALID:
+	case ISC_CRYPTO_XOF_ALGORITHM_MAX:
+		UNREACHABLE();
+	}
+
+	if (type == NULL) {
+		return ISC_R_NOTIMPLEMENTED;
+	}
+
+	ERR_set_mark();
+
+	ctx = EVP_MD_CTX_new();
+	if (ctx == NULL) {
+		CLEANUP(ISC_R_CRYPTOFAILURE);
+	}
+
+	if (EVP_DigestInit_ex(ctx, type, NULL) != 1) {
+		CLEANUP(ISC_R_CRYPTOFAILURE);
+	}
+
+	*xofp = MOVE_OWNERSHIP(ctx);
+
+	result = ISC_R_SUCCESS;
+
+cleanup:
+	if (ctx != NULL) {
+		EVP_MD_CTX_free(ctx);
+	}
+	ERR_pop_to_mark();
+	return result;
+}
+
+void
+isc_crypto_xof_destroy(isc_crypto_xof_t **xofp) {
+	REQUIRE(xofp != NULL && *xofp != NULL);
+
+	EVP_MD_CTX_free(*xofp);
+	*xofp = NULL;
+}
+
+isc_result_t
+isc_crypto_xof_absorb(isc_crypto_xof_t *xof, const uint8_t *data, size_t len) {
+	isc_result_t result;
+
+	REQUIRE(xof != NULL && data != NULL && len != 0);
+
+	ERR_set_mark();
+	result = EVP_DigestUpdate(xof, data, len) == 1 ? ISC_R_SUCCESS
+						       : ISC_R_CRYPTOFAILURE;
+	ERR_pop_to_mark();
+
+	return result;
+}
+
+isc_result_t
+isc_crypto_xof_squeeze(isc_crypto_xof_t *xof, uint8_t *out, size_t len) {
+	isc_result_t result;
+
+	REQUIRE(xof != NULL && out != NULL && len != 0);
+
+	ERR_set_mark();
+	result = EVP_DigestSqueeze(xof, out, len) == 1 ? ISC_R_SUCCESS
+						       : ISC_R_CRYPTOFAILURE;
+	ERR_pop_to_mark();
+
+	return result;
+}
+
+#else /* HAVE_EVP_DIGESTSQUEEZE */
+
+isc_result_t
+isc_crypto_xof(isc_crypto_xof_algorithm_t algorithm,
+	       const uint8_t *data ISC_ATTR_UNUSED,
+	       size_t datalen ISC_ATTR_UNUSED, uint8_t *out ISC_ATTR_UNUSED,
+	       size_t outlen ISC_ATTR_UNUSED) {
+	REQUIRE(algorithm != ISC_CRYPTO_XOF_ALGORITHM_INVALID &&
+		algorithm < ISC_CRYPTO_XOF_ALGORITHM_MAX);
+	REQUIRE(data != NULL && out != NULL);
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+isc_result_t
+isc_crypto_xof_create(isc_crypto_xof_algorithm_t algorithm,
+		      isc_crypto_xof_t **xofp) {
+	REQUIRE(algorithm != ISC_CRYPTO_XOF_ALGORITHM_INVALID &&
+		algorithm < ISC_CRYPTO_XOF_ALGORITHM_MAX);
+	REQUIRE(xofp != NULL && *xofp == NULL);
+
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+void
+isc_crypto_xof_destroy(isc_crypto_xof_t **xofp ISC_ATTR_UNUSED) {
+	UNREACHABLE();
+}
+
+isc_result_t
+isc_crypto_xof_absorb(isc_crypto_xof_t *xof, const uint8_t *data, size_t len) {
+	REQUIRE(xof != NULL && data != NULL && len != 0);
+	UNREACHABLE();
+}
+
+isc_result_t
+isc_crypto_xof_squeeze(isc_crypto_xof_t *xof, uint8_t *out, size_t len) {
+	REQUIRE(xof != NULL && out != NULL && len != 0);
+	UNREACHABLE();
+}
+
+#endif /* HAVE_EVP_DIGESTSQUEEZE */
+
 void
 isc_crypto_quic_hp_protect_destroy(isc_crypto_quic_hp_protect_t **protp) {
 	isc_crypto_quic_hp_protect_t *prot;

@@ -25,6 +25,13 @@
  * [1]: https://github.com/C2SP/wycheproof/issues/52#issuecomment-394413920
  */
 
+/*
+ * The XOF test vectors are taking from NIST's CAVP test vectors.
+ *
+ * These test vectors do not require a license notice since NIST's work is in
+ * public domain.
+ */
+
 #include <inttypes.h>
 #include <sched.h>  /* IWYU pragma: keep */
 #include <setjmp.h> /* IWYU pragma: keep */
@@ -43,6 +50,7 @@
 
 #include <tests/isc.h>
 
+typedef struct xof_testcase xof_testcase_t;
 typedef struct aead_testcase aead_testcase_t;
 typedef struct quic_hp_testcase quic_hp_testcase_t;
 
@@ -53,6 +61,13 @@ struct aead_testcase {
 	const uint8_t plaintext[20];
 	const uint8_t ciphertext[36];
 	const uint8_t additional_data[8];
+};
+
+struct xof_testcase {
+	size_t datalen;
+	size_t outlen;
+	const uint8_t data[32];
+	const uint8_t out[32];
 };
 
 struct quic_hp_testcase {
@@ -291,6 +306,153 @@ ISC_RUN_TEST_IMPL(hkdf_expand_label) {
 	assert_memory_equal(expected, actual, 32);
 }
 
+ISC_RUN_TEST_IMPL(xof_shake128) {
+	isc_crypto_xof_t *xof = NULL;
+	isc_result_t result;
+	uint8_t out[32];
+	size_t i, off;
+
+	static const xof_testcase_t testcases[] = {
+		{
+			16,
+			16,
+			{ 0x84, 0xe9, 0x50, 0x05, 0x18, 0x76, 0x05, 0x0d, 0xc8,
+			  0x51, 0xfb, 0xd9, 0x9e, 0x62, 0x47, 0xb8 },
+			{ 0x85, 0x99, 0xbd, 0x89, 0xf6, 0x3a, 0x84, 0x8c, 0x49,
+			  0xca, 0x59, 0x3e, 0xc3, 0x7a, 0x12, 0xc6 },
+		},
+		{
+			16,
+			18,
+			{ 0x70, 0xbe, 0xe1, 0x86, 0xdf, 0xac, 0xac, 0xa7, 0x37,
+			  0xb2, 0xb0, 0x99, 0xa4, 0xde, 0x13, 0xf9 },
+			{ 0x0c, 0x5e, 0x65, 0x30, 0xa4, 0x1b, 0x3f, 0xba, 0x4b,
+			  0x8b, 0xbc, 0x4c, 0xef, 0x2c, 0x75, 0x68, 0xc2,
+			  0x90 },
+		},
+		{
+			16,
+			32,
+			{ 0xa3, 0x5e, 0xe6, 0x13, 0x6d, 0x2e, 0x32, 0x3f, 0xfc,
+			  0x85, 0x5c, 0x70, 0x9c, 0x54, 0x26, 0xb3 },
+			{ 0x10, 0x05, 0xe8, 0xb4, 0x40, 0x95, 0xc7, 0x0b,
+			  0x7f, 0xe2, 0x2b, 0xf2, 0xeb, 0x0b, 0xe4, 0xb4,
+			  0x6e, 0xa0, 0x9c, 0xa7, 0x5f, 0xf8, 0xce, 0xb0,
+			  0x16, 0x7b, 0x86, 0xe4, 0xe7, 0xbc, 0x01, 0xe8 },
+		},
+
+	};
+
+	for (i = 0; i < ARRAY_SIZE(testcases); i++) {
+		result = isc_crypto_xof_create(
+			ISC_CRYPTO_XOF_ALGORITHM_SHAKE128, &xof);
+		if (result == ISC_R_NOTIMPLEMENTED) {
+			assert_null(xof);
+			skip();
+		}
+
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_non_null(xof);
+
+		result = isc_crypto_xof_absorb(xof, testcases[i].data, 1);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		result = isc_crypto_xof_absorb(xof, testcases[i].data + 1,
+					       testcases[i].datalen - 1);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		off = testcases[i].outlen >> 1;
+
+		result = isc_crypto_xof_squeeze(xof, out, off);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_memory_equal(out, testcases[i].out, off);
+
+		result = isc_crypto_xof_squeeze(xof, out + off, off);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_memory_equal(out, testcases[i].out, testcases[i].outlen);
+
+		isc_crypto_xof_destroy(&xof);
+
+		result = isc_crypto_xof(ISC_CRYPTO_XOF_ALGORITHM_SHAKE128,
+					testcases[i].data, testcases[i].datalen,
+					out, testcases[i].outlen);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_memory_equal(out, testcases[i].out, testcases[i].outlen);
+	}
+}
+
+ISC_RUN_TEST_IMPL(xof_shake256) {
+	isc_crypto_xof_t *xof = NULL;
+	isc_result_t result;
+	uint8_t out[32];
+	size_t i, off;
+
+	static const xof_testcase_t testcases[] = {
+		{
+			32,
+			2,
+			{ 0xc6, 0x1a, 0x91, 0x88, 0x81, 0x2a, 0xe7, 0x39,
+			  0x94, 0xbc, 0x0d, 0x6d, 0x40, 0x21, 0xe3, 0x1b,
+			  0xf1, 0x24, 0xdc, 0x72, 0x66, 0x97, 0x49, 0x11,
+			  0x12, 0x32, 0xda, 0x7a, 0xc2, 0x9e, 0x61, 0xc4 },
+			{ 0x23, 0xce },
+		},
+		{
+			32,
+			22,
+			{
+
+				0xdc, 0x88, 0x6d, 0xf3, 0xf6, 0x9c, 0x49, 0x51,
+				0x3d, 0xe3, 0x62, 0x7e, 0x94, 0x81, 0xdb, 0x58,
+				0x71, 0xe8, 0xee, 0x88, 0xeb, 0x9f, 0x99, 0x61,
+				0x15, 0x41, 0x93, 0x0a, 0x8b, 0xc8, 0x85, 0xe0 },
+			{
+				0x00, 0x64, 0x8a, 0xfb, 0xc5, 0xe6, 0x51, 0x64,
+				0x9d, 0xb1, 0xfd, 0x82, 0x93, 0x6b, 0x00, 0xdb,
+				0xbc, 0x12, 0x2f, 0xb4, 0xc8, 0x77,
+			},
+		},
+
+	};
+
+	for (i = 0; i < ARRAY_SIZE(testcases); i++) {
+		result = isc_crypto_xof_create(
+			ISC_CRYPTO_XOF_ALGORITHM_SHAKE256, &xof);
+		if (result == ISC_R_NOTIMPLEMENTED) {
+			assert_null(xof);
+			skip();
+		}
+
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_non_null(xof);
+
+		result = isc_crypto_xof_absorb(xof, testcases[i].data, 1);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		result = isc_crypto_xof_absorb(xof, testcases[i].data + 1,
+					       testcases[i].datalen - 1);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		off = testcases[i].outlen >> 1;
+
+		result = isc_crypto_xof_squeeze(xof, out, off);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_memory_equal(out, testcases[i].out, off);
+
+		result = isc_crypto_xof_squeeze(xof, out + off, off);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_memory_equal(out, testcases[i].out, testcases[i].outlen);
+
+		isc_crypto_xof_destroy(&xof);
+
+		result = isc_crypto_xof(ISC_CRYPTO_XOF_ALGORITHM_SHAKE256,
+					testcases[i].data, testcases[i].datalen,
+					out, testcases[i].outlen);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_memory_equal(out, testcases[i].out, testcases[i].outlen);
+	}
+}
+
 ISC_RUN_TEST_IMPL(quic_hp_protect) {
 	isc_crypto_quic_hp_protect_t *prot = NULL;
 	isc_constregion_t key;
@@ -372,6 +534,8 @@ ISC_TEST_LIST_START
 ISC_TEST_ENTRY(aead)
 ISC_TEST_ENTRY(hkdf)
 ISC_TEST_ENTRY(hkdf_expand_label)
+ISC_TEST_ENTRY(xof_shake128)
+ISC_TEST_ENTRY(xof_shake256)
 ISC_TEST_ENTRY(quic_hp_protect)
 ISC_TEST_LIST_END
 

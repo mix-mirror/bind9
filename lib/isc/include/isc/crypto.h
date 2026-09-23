@@ -37,6 +37,20 @@ typedef struct evp_cipher_ctx_st isc_crypto_aead_t;
 
 /**
  * \brief
+ * Context to a XOF (Extendable-output function)
+ *
+ * \warning
+ * Do not rely on the fact that this typedef is an `EVP_MD_CTX`.
+ * It _can_ and **will** change without any announcement.
+ */
+#if __has_include(<openssl/is_awslc.h>) || __has_include(<openssl/is_boringssl.h>)
+typedef struct env_md_ctx_st isc_crypto_xof_t;
+#else
+typedef struct evp_md_ctx_st isc_crypto_xof_t;
+#endif
+
+/**
+ * \brief
  * Context to a mask generator to protect QUIC packet headers as specified by
  * RFC 9001, Section 5.4. [1]
  *
@@ -58,6 +72,13 @@ typedef enum isc_crypto_aead_direction {
 	ISC_CRYPTO_AEAD_DIRECTION_OPEN = 2,
 	ISC_CRYPTO_AEAD_DIRECTION_MAX = 3,
 } isc_crypto_aead_direction_t;
+
+typedef enum isc_crypto_xof_algorithm {
+	ISC_CRYPTO_XOF_ALGORITHM_INVALID = 0,
+	ISC_CRYPTO_XOF_ALGORITHM_SHAKE128 = 1,
+	ISC_CRYPTO_XOF_ALGORITHM_SHAKE256 = 2,
+	ISC_CRYPTO_XOF_ALGORITHM_MAX = 3,
+} isc_crypto_xof_algorithm_t;
 
 typedef enum isc_crypto_quic_hp_protect_algorithm {
 	ISC_CRYPTO_QUIC_HP_PROTECT_ALGORITHM_INVALID = 0,
@@ -229,6 +250,83 @@ isc_crypto_hkdf(isc_region_t out, isc_md_type_t md, isc_constregion_t secret,
  * \retval ISC_R_SUCCESS on success
  * \retval ISC_R_NOTIMPLEMENTED if the hash function is not supported
  * \retval ISC_R_CRYPTOFAILURE on libcrypto failure
+ */
+
+isc_result_t
+isc_crypto_xof(isc_crypto_xof_algorithm_t algorithm, const uint8_t *data,
+	       size_t datalen, uint8_t *out, size_t outlen)
+	ISC_ATTR_ACCESS(read_only, 2, 3) ISC_ATTR_ACCESS(write_only, 4, 5);
+/**<
+ * \brief
+ * Compute a XOF on `data`
+ *
+ * \par Requires
+ * \li `algorithm != ISC_CRYPTO_XOF_ALGORITHM_INVALID`
+ * \li `algorithm != ISC_CRYPTO_XOF_ALGORITHM_MAX`
+ * \li `data != NULL` and points to `datalen` bytes of well-defined memory
+ * \li `out != NULL` and points to `outlen` bytes of writable memory
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_NOTIMPLEMENTED if the algorithm is not supported
+ * \retval ISC_R_CRYPTOFAILURE on opaque cryptographic failure
+ */
+
+isc_result_t
+isc_crypto_xof_create(isc_crypto_xof_algorithm_t algorithm,
+		      isc_crypto_xof_t	       **xofp);
+/**<
+ * \brief
+ * Create a new XOF.
+ *
+ * \par Requires
+ * \li `algorithm != ISC_CRYPTO_XOF_ALGORITHM_INVALID`
+ * \li `algorithm != ISC_CRYPTO_XOF_ALGORITHM_MAX`
+ * \li `xofp != NULL` and `*xofp == NULL`
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_NOTIMPLEMENTED if the algorithm is not supported
+ * \retval ISC_R_CRYPTOFAILURE on opaque cryptographic failure
+ */
+
+void
+isc_crypto_xof_destroy(isc_crypto_xof_t **xofp);
+/**<
+ * \brief
+ * Destroy the XOF.
+ *
+ * \par Requires
+ * \li `xofp != NULL` and `*xof` is a valid `isc_crypto_xof_t`
+ */
+
+isc_result_t
+isc_crypto_xof_absorb(isc_crypto_xof_t *xof, const uint8_t *data, size_t len)
+	ISC_ATTR_ACCESS(read_only, 2, 3);
+/**<
+ * \brief
+ * Absorb bytes into the XOF.
+ *
+ * \warning
+ * Do not call this function after calling `isc_crypto_xof_squeeze`.
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_CRYPTOFAILURE on opaque cryptographic failure
+ */
+
+isc_result_t
+isc_crypto_xof_squeeze(isc_crypto_xof_t *xof, uint8_t *out, size_t len)
+	ISC_ATTR_ACCESS(write_only, 2, 3);
+/**<
+ * \brief
+ * Squeeze bytes from the XOF.
+ *
+ * Per the nature of XOFs, this function can be called repeatedly without a
+ * limit.
+ *
+ * \warning
+ * Do not call `isc_crypto_xof_absorb` after calling this function.
+ *
+ * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_CRYPTOFAILURE on opaque cryptographic failure
  */
 
 void

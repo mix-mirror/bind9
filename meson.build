@@ -691,6 +691,15 @@ else
     endif
 
     config.set(
+        'HAVE_EVP_DIGESTSQUEEZE',
+        cc.has_function(
+            'EVP_DigestSqueeze',
+            prefix: '#include <openssl/digest.h>',
+            dependencies: openssl_dep,
+        ),
+    )
+
+    config.set(
         'HAVE_FIPS_MODE',
         cc.has_function(
             'FIPS_mode',
