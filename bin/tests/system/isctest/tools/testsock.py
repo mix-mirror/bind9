@@ -17,6 +17,7 @@ Try to bind() a UDP socket on each of the given addresses (IPv4 or IPv6).
 When no address is specified, check the 10.53.0.* test addresses.
 """
 
+from collections.abc import Iterable
 from pathlib import Path
 
 import argparse
@@ -67,7 +68,11 @@ def check_ipv4_interfaces(port: int = 0, server_id: int | None = None) -> None:
     are up and the given port can be bound on them; raise OSError on
     failure.
     """
-    ids = [server_id] if server_id is not None else interface_ids()
+    ids: Iterable[int]
+    if server_id is not None:
+        ids = [server_id]
+    else:
+        ids = interface_ids()
     for interface_id in ids:
         check_addr(f"10.53.0.{interface_id}", port)
 
