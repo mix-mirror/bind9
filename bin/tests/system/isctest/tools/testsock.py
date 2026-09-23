@@ -41,7 +41,9 @@ def check_addr(address: str, port: int = 0) -> None:
         try:
             sock.bind((address, port))
         except OSError as exc:
-            raise OSError(f"bind({address}, {port}): {exc}") from exc
+            raise OSError(
+                exc.errno, f"bind({address}, {port}): {exc.strerror}"
+            ) from exc
 
 
 def interface_ids() -> range:

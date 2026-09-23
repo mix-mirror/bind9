@@ -12,6 +12,7 @@
 from pathlib import Path
 from re import compile as Re
 
+import errno
 import filecmp
 import os
 import shutil
@@ -586,10 +587,14 @@ def system_test(
     """
 
     def check_net_interfaces():
+        port = int(os.environ["PORT"])
         try:
-            isctest.tools.testsock.check_ipv4_interfaces(int(os.environ["PORT"]))
+            for check_port in range(port, port + isctest.vars.ports.PORTS_PER_TEST):
+                isctest.tools.testsock.check_ipv4_interfaces(check_port)
         except OSError as exc:
             isctest.log.error("testsock: %s", exc)
+            if exc.errno == errno.EADDRINUSE:
+                raise RuntimeError(f"test port range is in use: {exc}") from exc
             pytest.skip("Network interface aliases not set up.")
 
     def setup_test():
