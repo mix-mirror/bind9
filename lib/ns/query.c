@@ -7764,6 +7764,44 @@ query_respond(query_ctx_t *qctx) {
 		return query_lookup(qctx);
 	}
 
+	if (qctx->redirected && qctx->qtype == dns_rdatatype_aaaa &&
+	    qctx->client->message->rdclass == dns_rdataclass_in &&
+	    !ISC_LIST_EMPTY(qctx->view->dns64) &&
+	    !dns64_aaaaok(qctx->client, qctx->rdataset, qctx->sigrdataset))
+	{
+		/*
+		 * We got redirected with an excluded AAAA address. We need to
+		 * replace it using the dns64 address prefix and the A address
+		 * of the foundname.
+		 *
+		 * TODO: this is a WIP... Also doing this is probably wrong
+		 * because it would entirely bypass RPZ with the newly generated
+		 * name (which might be okay though, but I'm not sure some
+		 * RPZ/DNS64 interactions might be skipped here). Perhaps it
+		 * make sense to have a re-rentrant query_lookup() flow after
+		 * all, but with the right DB (actually, that one is already
+		 * right) and the right name (which was the problem, if we call
+		 * query_lookup() again here).
+		 *
+		 * (Oh, and passing the same name as both lookup name _and_
+		 * foundname might be dodgy...)
+		 */
+		dns_rdataset_cleanup(qctx->rdataset);
+		dns_rdataset_cleanup(qctx->sigrdataset);
+
+		qctx->dns64_exclude = qctx->dns64 = true;
+		qctx->type = qctx->qtype = dns_rdatatype_a;
+		result = dns_db_findext(
+			qctx->db, dns_fixedname_name(&qctx->foundname),
+			qctx->version, qctx->type,
+			qctx->client->query.dboptions, qctx->client->inner.now,
+			dns_fixedname_name(&qctx->foundname), NULL, NULL,
+			qctx->rdataset, qctx->sigrdataset);
+
+		REQUIRE(result == ISC_R_SUCCESS);
+		REQUIRE(qctx->rdataset->type == dns_rdatatype_a);
+	}
+
 	/*
 	 * XXX: This hook is meant to be at the top of this function,
 	 * but is postponed until after DNS64 in order to avoid an
