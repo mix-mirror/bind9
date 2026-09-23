@@ -10,4 +10,3 @@
 # information regarding copyright ownership.
 
 token_init_and_cleanup  # unused function (keyfromlabel/tests_keyfromlabel.py:43)
-DNSSEC_PY_MARK  # unused variable (dnssec_py/common.py:14)
