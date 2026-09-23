@@ -5567,7 +5567,17 @@ query_lookup(query_ctx_t *qctx) {
 	/*
 	 * Now look for an answer in the database.
 	 */
-	if (qctx->dns64 && qctx->rpz) {
+	if (qctx->redirected && qctx->dns64 && qctx->dns64_exclude) {
+		/*
+		 * We are being redirected and have found an excluded DNS64
+		 * address in the redirection target zone. Let's use the
+		 * foundname (redirection target) to get an A name and use the
+		 * DNS64 prefix to convert it in an allowed DNS64 address.
+		 */
+		dns_name_copy(dns_fixedname_name(&qctx->foundname),
+			      qctx->fname);
+		rpzqname = qctx->fname;
+	} else if (qctx->dns64 && qctx->rpz) {
 		rpzqname = qctx->client->query.rpz_st->p_name;
 	} else {
 		rpzqname = qctx->client->query.qname;
@@ -5614,7 +5624,9 @@ query_lookup(query_ctx_t *qctx) {
 	 * qctx->foundname keeps the actual database owner for later
 	 * node resolution, such as ANY/RRSIG iteration.
 	 */
-	if (qctx->dns64 && qctx->rpz) {
+	if (qctx->dns64 &&
+	    ((qctx->redirected && qctx->dns64_exclude) || qctx->rpz))
+	{
 		dns_name_copy(qctx->client->query.qname, qctx->fname);
 		qctx->fname->attributes.wildcard = false;
 		dns_rdataset_cleanup(qctx->sigrdataset);
@@ -8973,6 +8985,7 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 			  qctx->type);
 	switch (result) {
 	case ISC_R_SUCCESS:
+		qctx->redirected = true;
 		inc_stats(qctx->client, ns_statscounter_nxdomainredirect);
 		return query_prepresponse(qctx);
 	case DNS_R_NXRRSET:
@@ -8992,6 +9005,7 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 			   qctx->type, &qctx->is_zone);
 	switch (result) {
 	case ISC_R_SUCCESS:
+		qctx->redirected = true;
 		inc_stats(qctx->client, ns_statscounter_nxdomainredirect);
 		return query_prepresponse(qctx);
 	case DNS_R_CONTINUE:
