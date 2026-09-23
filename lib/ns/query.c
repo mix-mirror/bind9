@@ -7747,7 +7747,7 @@ query_respond(query_ctx_t *qctx) {
 	if (qctx->qtype == dns_rdatatype_aaaa &&
 	    qctx->client->message->rdclass == dns_rdataclass_in &&
 	    !ISC_LIST_EMPTY(qctx->view->dns64) && !qctx->dns64_exclude &&
-	    qctx->client->query.dns64_aaaa == NULL &&
+	    !qctx->redirected && qctx->client->query.dns64_aaaa == NULL &&
 	    !dns64_aaaaok(qctx->client, qctx->rdataset, qctx->sigrdataset))
 	{
 		/*
@@ -8982,6 +8982,7 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 			  qctx->type);
 	switch (result) {
 	case ISC_R_SUCCESS:
+		qctx->redirected = true;
 		inc_stats(qctx->client, ns_statscounter_nxdomainredirect);
 		return query_prepresponse(qctx);
 	case DNS_R_NXRRSET:
@@ -9001,6 +9002,7 @@ query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
 			   qctx->type, &qctx->is_zone);
 	switch (result) {
 	case ISC_R_SUCCESS:
+		qctx->redirected = true;
 		inc_stats(qctx->client, ns_statscounter_nxdomainredirect);
 		return query_prepresponse(qctx);
 	case DNS_R_CONTINUE:
