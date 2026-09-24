@@ -4292,6 +4292,7 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 
 	fprintf(fp, "++ Per Zone Query Statistics ++\n");
 	zone = NULL;
+	dns_zonemgr_lock(server->zonemgr, isc_rwlocktype_read);
 	for (result = dns_zonemgr_first_zone(server->zonemgr, &zone);
 	     result == ISC_R_SUCCESS; next = NULL,
 	    result = dns_zonemgr_next_zone(zone, &next), zone = next)
@@ -4323,7 +4324,9 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 					 nsstat_values, 0);
 		}
 	}
+	dns_zonemgr_unlock(server->zonemgr, isc_rwlocktype_read);
 
+	dns_zonemgr_lock(server->zonemgr, isc_rwlocktype_read);
 	fprintf(fp, "++ Per Zone Glue Cache Statistics ++\n");
 	zone = NULL;
 	for (result = dns_zonemgr_first_zone(server->zonemgr, &zone);
@@ -4358,6 +4361,7 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 					 gluecachestats_values, 0);
 		}
 	}
+	dns_zonemgr_unlock(server->zonemgr, isc_rwlocktype_read);
 
 	fprintf(fp, "--- Statistics Dump --- (%lu)\n", (unsigned long)now);
 
