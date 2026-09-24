@@ -101,12 +101,6 @@ dns_zonemgr_create(isc_mem_t *mctx, dns_zonemgr_t **zmgrp) {
 		isc_mem_create("zonemgr-mctxpool", &zmgr->mctxpool[i]);
 	}
 
-	zmgr->loadq = isc_mem_cget(zmgr->mctx, zmgr->workers,
-				   sizeof(zmgr->loadq[0]));
-	for (size_t i = 0; i < zmgr->workers; i++) {
-		ISC_LIST_INIT(zmgr->loadq[i].pending);
-	}
-
 	/* Default to 20 refresh queries / notifies / checkds per second. */
 	setrl(zmgr->checkdsrl, &zmgr->checkdsrate, 20);
 	setrl(zmgr->notifyrl, &zmgr->notifyrate, 20);
@@ -287,13 +281,6 @@ zonemgr_free(dns_zonemgr_t *zmgr) {
 
 	isc_mem_cput(zmgr->mctx, zmgr->mctxpool, zmgr->workers,
 		     sizeof(zmgr->mctxpool[0]));
-
-	for (size_t i = 0; i < zmgr->workers; i++) {
-		INSIST(ISC_LIST_EMPTY(zmgr->loadq[i].pending));
-		INSIST(zmgr->loadq[i].running == 0);
-	}
-	isc_mem_cput(zmgr->mctx, zmgr->loadq, zmgr->workers,
-		     sizeof(zmgr->loadq[0]));
 
 	isc_rwlock_destroy(&zmgr->rwlock);
 	isc_rwlock_destroy(&zmgr->tlsctx_cache_rwlock);

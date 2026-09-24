@@ -324,16 +324,6 @@ typedef struct zone_settimer {
 } zone_settimer_t;
 
 /*%
- * Asynchronous zone loads waiting to start on one event loop, and the
- * number of them in flight there.  Only ever touched from that loop's
- * own thread, so no locking is needed.  See zone_asyncload().
- */
-typedef struct dns_zoneloadq {
-	ISC_LIST(struct dns_asyncload) pending;
-	unsigned int running;
-} dns_zoneloadq_t;
-
-/*%
  * Zone manager structure.
  */
 struct dns_zonemgr {
@@ -342,7 +332,6 @@ struct dns_zonemgr {
 	isc_refcount_t refs;
 	uint32_t workers;
 	isc_mem_t **mctxpool;
-	dns_zoneloadq_t *loadq; /* one per loop */
 	isc_ratelimiter_t *checkdsrl;
 	isc_ratelimiter_t *notifyrl;
 	isc_ratelimiter_t *refreshrl;

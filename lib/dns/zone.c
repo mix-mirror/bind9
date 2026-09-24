@@ -22,7 +22,6 @@
 #include <isc/file.h>
 #include <isc/hash.h>
 #include <isc/hex.h>
-#include <isc/job.h>
 #include <isc/list.h>
 #include <isc/log.h>
 #include <isc/loop.h>
@@ -199,24 +198,10 @@ struct dns_load {
  */
 struct dns_asyncload {
 	dns_zone_t *zone;
-	dns_zonemgr_t *zmgr;
-	dns_zoneloadq_t *loadq;
 	unsigned int flags;
 	dns_loaddonefunc_t loaded;
 	void *loaded_arg;
-	isc_job_t job;
-	ISC_LINK(dns_asyncload_t) link;
 };
-
-/*%
- * How many asynchronous zone loads may be in flight on one event loop
- * at a time: one being parsed on the loop's worker thread while the
- * next is set up (or the previous one finished) on the loop itself.
- * The rest wait in the loop's queue, so that loading a large number
- * of zones at once does not hold a master file, a lexer and a load
- * context open for every one of them.
- */
-#define ZONE_ASYNCLOADS_PER_LOOP 2
 
 /*
  * These can be overridden by the -T mkeytimers option on the command
@@ -1512,49 +1497,7 @@ dns_zone_load(dns_zone_t *zone, bool newonly) {
 }
 
 static void
-asyncload_run(void *arg);
-
-/*
- * Start the next asynchronous load waiting on this loop, if any.
- */
-static void
-asyncload_next(dns_zoneloadq_t *loadq) {
-	dns_asyncload_t *asl = ISC_LIST_HEAD(loadq->pending);
-
-	if (asl == NULL) {
-		return;
-	}
-	ISC_LIST_UNLINK(loadq->pending, asl, link);
-	loadq->running++;
-	isc_job_run(isc_loop(), &asl->job, asyncload_run, asl);
-}
-
-/*
- * Finish an asynchronous load: let the next one waiting on this loop
- * start, inform the caller, and release the request.  Runs on the
- * zone's loop.
- */
-static void
-asyncload_finish(dns_asyncload_t *asl, isc_result_t result) {
-	dns_zone_t *zone = asl->zone;
-	dns_zonemgr_t *zmgr = asl->zmgr;
-	dns_zoneloadq_t *loadq = asl->loadq;
-
-	INSIST(loadq->running > 0);
-	loadq->running--;
-	asyncload_next(loadq);
-
-	if (asl->loaded != NULL) {
-		asl->loaded(asl->loaded_arg, result);
-	}
-
-	isc_mem_put(zone->mctx, asl, sizeof(*asl));
-	dns_zone_idetach(&zone);
-	dns_zonemgr_detach(&zmgr);
-}
-
-static void
-asyncload_run(void *arg) {
+zone_asyncload(void *arg) {
 	dns_asyncload_t *asl = arg;
 	dns_zone_t *zone = asl->zone;
 	isc_result_t result;
@@ -1567,9 +1510,9 @@ asyncload_run(void *arg) {
 		if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_LOADING)) {
 			/*
 			 * This zone's own load is proceeding
-			 * asynchronously; keep the request around so
-			 * that zone_loaddone() can finish it when the
-			 * load has actually completed.
+			 * asynchronously; keep the callback around so
+			 * that zone_loaddone() can inform the caller
+			 * when the load has actually finished.
 			 */
 			INSIST(zone->asyncload == NULL);
 			zone->asyncload = asl;
@@ -1588,25 +1531,13 @@ asyncload_run(void *arg) {
 	}
 	UNLOCK_ZONE(zone);
 
-	asyncload_finish(asl, result);
-}
-
-/*
- * Entry point of dns_zone_asyncload() on the zone's loop: run the load
- * now if the loop has room for another one, otherwise queue it until
- * one of the loads in flight finishes.
- */
-static void
-zone_asyncload(void *arg) {
-	dns_asyncload_t *asl = arg;
-	dns_zoneloadq_t *loadq = asl->loadq;
-
-	if (loadq->running >= ZONE_ASYNCLOADS_PER_LOOP) {
-		ISC_LIST_APPEND(loadq->pending, asl, link);
-		return;
+	/* Inform the caller that the load has finished */
+	if (asl->loaded != NULL) {
+		asl->loaded(asl->loaded_arg, result);
 	}
-	loadq->running++;
-	asyncload_run(asl);
+
+	isc_mem_put(zone->mctx, asl, sizeof(*asl));
+	dns_zone_idetach(&zone);
 }
 
 void
@@ -1627,30 +1558,26 @@ dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_loaddonefunc_t done,
 
 	REQUIRE(DNS_ZONE_VALID(zone));
 
-	LOCK_ZONE(zone);
 	if (zone->zmgr == NULL) {
-		UNLOCK_ZONE(zone);
 		return ISC_R_FAILURE;
 	}
 
 	/* If we already have a load pending, stop now */
+	LOCK_ZONE(zone);
 	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_LOADPENDING)) {
 		UNLOCK_ZONE(zone);
 		return ISC_R_ALREADYRUNNING;
 	}
 
 	asl = isc_mem_get(zone->mctx, sizeof(*asl));
-	*asl = (dns_asyncload_t){
-		.loadq = &zone->zmgr->loadq[zone->tid],
-		.flags = DNS_ZONELOADFLAG_ASYNC |
-			 (newonly ? DNS_ZONELOADFLAG_NOSTAT : 0),
-		.loaded = done,
-		.loaded_arg = arg,
-		.link = ISC_LINK_INITIALIZER,
-	};
+
+	asl->zone = NULL;
+	asl->flags = DNS_ZONELOADFLAG_ASYNC |
+		     (newonly ? DNS_ZONELOADFLAG_NOSTAT : 0);
+	asl->loaded = done;
+	asl->loaded_arg = arg;
 
 	zone_iattach(zone, &asl->zone);
-	dns_zonemgr_attach(zone->zmgr, &asl->zmgr);
 	DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_LOADPENDING);
 	isc_async_run(zone->loop, zone_asyncload, asl);
 	UNLOCK_ZONE(zone);
@@ -15946,7 +15873,14 @@ again:
 	isc_mem_put(zone->mctx, load, sizeof(*load));
 
 	if (asl != NULL) {
-		asyncload_finish(asl, postload_result);
+		/* Inform the caller that the load has finished */
+		dns_zone_t *aszone = asl->zone;
+
+		if (asl->loaded != NULL) {
+			asl->loaded(asl->loaded_arg, postload_result);
+		}
+		isc_mem_put(aszone->mctx, asl, sizeof(*asl));
+		dns_zone_idetach(&aszone);
 	}
 
 	dns_zone_idetach(&zone);
