@@ -9166,9 +9166,7 @@ query_synthwildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 static isc_result_t
 query_synthcnamewildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 			 dns_rdataset_t *sigrdataset) {
-	dns_fixedname_t *fixed_pool_tname = NULL;
 	isc_result_t result;
-	dns_name_t *tname = NULL;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_rdata_cname_t cname;
 
@@ -9180,15 +9178,7 @@ query_synthcnamewildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 	 * Reset qname to be the target name of the CNAME and restart
 	 * the query.
 	 */
-	fixed_pool_tname = NULL;
-	dns_message_gettempfixedname(qctx->client->message, &fixed_pool_tname);
-	tname = dns_fixedname_name(fixed_pool_tname);
-
-	result = dns_rdataset_first(rdataset);
-	if (result != ISC_R_SUCCESS) {
-		dns_message_puttempname(qctx->client->message, &tname);
-		return result;
-	}
+	RETERR(dns_rdataset_first(rdataset));
 
 	dns_rdataset_current(rdataset, &rdata);
 	result = dns_rdata_tostruct(&rdata, &cname, NULL);
@@ -9196,15 +9186,16 @@ query_synthcnamewildcard(query_ctx_t *qctx, dns_rdataset_t *rdataset,
 	dns_rdata_reset(&rdata);
 
 	if (dns_name_equal(qctx->client->query.qname, &cname.cname)) {
-		dns_message_puttempname(qctx->client->message, &tname);
 		dns_rdata_freestruct(&cname);
 		return ISC_R_SUCCESS;
 	}
 
-	dns_fixedname_copy(&cname.cname, fixed_pool_tname);
+	dns_fixedname_t *tname = NULL;
+	dns_message_gettempfixedname(qctx->client->message, &tname);
+	dns_fixedname_copy(&cname.cname, tname);
 
 	dns_rdata_freestruct(&cname);
-	ns_client_qnamereplace(qctx->client, tname);
+	ns_client_qnamereplace(qctx->client, dns_fixedname_name(tname));
 	qctx->want_restart = true;
 	if (!qctx->client->query.wantrecursion) {
 		qctx->options.nolog = true;
@@ -9738,9 +9729,7 @@ cleanup:
  */
 static isc_result_t
 query_cname(query_ctx_t *qctx) {
-	dns_fixedname_t *fixed_pool_tname = NULL;
 	isc_result_t result = ISC_R_UNSET;
-	dns_name_t *tname = NULL;
 	dns_rdataset_t *trdataset = NULL;
 	dns_rdataset_t **sigrdatasetp = NULL;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
@@ -9803,13 +9792,8 @@ query_cname(query_ctx_t *qctx) {
 	 * Reset qname to be the target name of the CNAME and restart
 	 * the query.
 	 */
-	fixed_pool_tname = NULL;
-	dns_message_gettempfixedname(qctx->client->message, &fixed_pool_tname);
-	tname = dns_fixedname_name(fixed_pool_tname);
-
 	result = dns_rdataset_first(trdataset);
 	if (result != ISC_R_SUCCESS) {
-		dns_message_puttempname(qctx->client->message, &tname);
 		(void)ns_query_done(qctx);
 		goto cleanup;
 	}
@@ -9819,11 +9803,13 @@ query_cname(query_ctx_t *qctx) {
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 	dns_rdata_reset(&rdata);
 
-	dns_fixedname_copy(&cname.cname, fixed_pool_tname);
+	dns_fixedname_t *tname = NULL;
+	dns_message_gettempfixedname(qctx->client->message, &tname);
+	dns_fixedname_copy(&cname.cname, tname);
 
 	dns_rdata_freestruct(&cname);
 
-	ns_client_qnamereplace(qctx->client, tname);
+	ns_client_qnamereplace(qctx->client, dns_fixedname_name(tname));
 	qctx->want_restart = true;
 	if (!qctx->client->query.wantrecursion) {
 		qctx->options.nolog = true;
@@ -9840,8 +9826,7 @@ cleanup:
 
 static isc_result_t
 query_dname(query_ctx_t *qctx) {
-	dns_fixedname_t *fixed_pool_tname = NULL;
-	dns_name_t *tname, *prefix;
+	dns_name_t *prefix;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	dns_rdata_dname_t dname;
 	dns_fixedname_t fixed;
@@ -9905,14 +9890,8 @@ query_dname(query_ctx_t *qctx) {
 	/*
 	 * Get the target name of the DNAME.
 	 */
-	tname = NULL;
-	fixed_pool_tname = NULL;
-	dns_message_gettempfixedname(qctx->client->message, &fixed_pool_tname);
-	tname = dns_fixedname_name(fixed_pool_tname);
-
 	result = dns_rdataset_first(trdataset);
 	if (result != ISC_R_SUCCESS) {
-		dns_message_puttempname(qctx->client->message, &tname);
 		(void)ns_query_done(qctx);
 		goto cleanup;
 	}
@@ -9922,7 +9901,9 @@ query_dname(query_ctx_t *qctx) {
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 	dns_rdata_reset(&rdata);
 
-	dns_fixedname_copy(&dname.dname, fixed_pool_tname);
+	dns_fixedname_t *tname = NULL;
+	dns_message_gettempfixedname(qctx->client->message, &tname);
+	dns_fixedname_copy(&dname.dname, tname);
 	dns_rdata_freestruct(&dname);
 
 	/*
@@ -9933,8 +9914,9 @@ query_dname(query_ctx_t *qctx) {
 	dns_name_split(qctx->client->query.qname, nlabels, prefix, NULL);
 	INSIST(dns_fixedname_name(qctx->fname) == NULL);
 	qctx->fname = ns_client_newfixedname(qctx->client);
-	result = dns_fixedname_concatenate(prefix, tname, qctx->fname);
-	dns_message_puttempname(qctx->client->message, &tname);
+	result = dns_fixedname_concatenate(prefix, dns_fixedname_name(tname),
+					   qctx->fname);
+	dns_message_puttempfixedname(qctx->client->message, &tname);
 
 	/*
 	 * RFC2672, section 4.1, subsection 3c says
