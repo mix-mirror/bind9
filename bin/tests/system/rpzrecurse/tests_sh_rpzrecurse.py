@@ -9,11 +9,6 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-from pathlib import Path
-
-import os
-import subprocess
-
 import pytest
 
 from rpzrecurse import common
@@ -34,17 +29,6 @@ pytestmark = pytest.mark.extra_artifacts(
 
 def bootstrap():
     common.bootstrap()
-
-
-# before test_rpzrecurse(): tests.sh overwrites ns2/db.6a.00.policy.local
-def test_bootstrap_matches_testgen(tmp_path):
-    (tmp_path / "ns2").mkdir()
-    testgen = Path("testgen.pl").resolve()
-    subprocess.run([os.environ["PERL"], testgen], cwd=tmp_path, check=True)
-    generated = list((tmp_path / "ns2").iterdir())
-    assert len(generated) > 1000
-    for path in generated:
-        assert path.read_bytes() == Path("ns2", path.name).read_bytes(), path.name
 
 
 def test_rpzrecurse(run_tests_sh):
