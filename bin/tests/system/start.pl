@@ -323,7 +323,12 @@ sub construct_ans_command {
 		die "unable to parse server number from name \"$server\"\n";
 	}
 
-	if (-e "$testdir/$server/ans.py") {
+	if (-e "$testdir/$server/ans.py" && $ENV{'builddir'}) {
+		# The pytest runner sets builddir; tests written for it expect
+		# their servers to be run as modules, like newer branches do.
+		$ENV{'PYTHONPATH'} = $testdir . ":" . $ENV{'builddir'} . ":" . $ENV{'srcdir'};
+		$command = "$PYTHON -u -m $test.$server.ans 10.53.0.$n $queryport";
+	} elsif (-e "$testdir/$server/ans.py") {
 		$command = "$PYTHON -u ans.py 10.53.0.$n $queryport";
 	} elsif (-e "$testdir/$server/ans.pl") {
 		$command = "$PERL ans.pl";
