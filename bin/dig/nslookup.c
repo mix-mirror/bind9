@@ -154,26 +154,15 @@ printsoa(dns_rdata_t *rdata) {
 }
 
 static void
-printaddr(dns_rdata_t *rdata) {
-	isc_result_t result;
-	char text[sizeof("ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255")];
-	isc_buffer_t b;
-
-	isc_buffer_init(&b, text, sizeof(text));
-	result = dns_rdata_totext(rdata, NULL, &b);
-	check_result(result, "dns_rdata_totext");
-	printf("Address: %.*s\n", (int)isc_buffer_usedlength(&b),
-	       (char *)isc_buffer_base(&b));
-}
-
-static void
-printrdata(dns_rdata_t *rdata) {
+printrdata(dns_rdata_t *rdata, bool addr) {
 	isc_result_t result;
 	isc_buffer_t *b = NULL;
 	unsigned int size = 1024;
 	bool done = false;
 
-	if (rdata->type < N_KNOWN_RRTYPES) {
+	if (addr) {
+		printf("Address: ");
+	} else if (rdata->type < N_KNOWN_RRTYPES) {
 		printf("%s", rtypetext[rdata->type]);
 	} else {
 		printf("rdata_%d = ", rdata->type);
@@ -219,7 +208,7 @@ printsection(dig_query_t *query, dns_message_t *msg, bool headers,
 					dns_name_format(name, namebuf,
 							sizeof(namebuf));
 					printf("Name:\t%s\n", namebuf);
-					printaddr(&rdata);
+					printrdata(&rdata, true);
 					break;
 				case dns_rdatatype_soa:
 					dns_name_format(name, namebuf,
@@ -232,7 +221,7 @@ printsection(dig_query_t *query, dns_message_t *msg, bool headers,
 					dns_name_format(name, namebuf,
 							sizeof(namebuf));
 					printf("%s\t", namebuf);
-					printrdata(&rdata);
+					printrdata(&rdata, false);
 					break;
 				}
 			}
@@ -294,7 +283,7 @@ detailsection(dig_query_t *query, dns_message_t *msg, bool headers,
 					break;
 				default:
 					printf("\t");
-					printrdata(&rdata);
+					printrdata(&rdata, false);
 				}
 				printf("\tttl = %u\n", rdataset->ttl);
 			}
