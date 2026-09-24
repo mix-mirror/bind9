@@ -232,7 +232,7 @@ dns_zonemgr_next_zone(dns_zone_t *zone, dns_zone_t **next);
  * Requires:
  *\li	'zone' to be valid
  *\li	The zone manager for the indicated zone MUST be locked
- *	by the caller.  This is not checked.
+ *	by the caller.
  *\li	'next' be non-NULL, and '*next' be NULL.
  *
  * Ensures:
@@ -246,12 +246,21 @@ dns_zonemgr_first_zone(dns_zonemgr_t *zmgr, dns_zone_t **first);
  * Find the first zone in the list of managed zones.
  *
  * Requires:
- *\li	'zonemgr' to be valid
+ *\li	'zmgr' to be valid
  *\li	The zone manager for the indicated zone MUST be locked
- *	by the caller.  This is not checked.
+ *	by the caller.
  *\li	'first' be non-NULL, and '*first' be NULL
  *
  * Ensures:
  *\li	'first' points to a valid zone (result ISC_R_SUCCESS) or to NULL
  *	(result ISC_R_NOMORE).
+ */
+
+
+void
+dns_zonemgr_lock(dns_zonemgr_t *zmgr, isc_rwlocktype_t locktype);
+void
+dns_zonemgr_unlock(dns_zonemgr_t *zmgr, isc_rwlocktype_t locktype);
+/*%<
+ * Lock or unlock 'zmgr'.
  */
