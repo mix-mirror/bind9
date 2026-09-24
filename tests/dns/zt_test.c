@@ -124,7 +124,7 @@ load_done_new_only(void *uap, isc_result_t loadresult ISC_ATTR_UNUSED) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_db_detach(&db);
 
-	dns_zone_asyncload(zone, true, load_done_last, zone);
+	dns_zone_asyncload(zone, DNS_ZONELOAD_NEWONLY, load_done_last, zone);
 }
 
 static void
@@ -147,7 +147,8 @@ load_done_first(void *uap, isc_result_t loadresult) {
 	fflush(zonefile);
 	fclose(zonefile);
 
-	dns_zone_asyncload(zone, true, load_done_new_only, zone);
+	dns_zone_asyncload(zone, DNS_ZONELOAD_NEWONLY, load_done_new_only,
+			   zone);
 }
 
 /* asynchronous zone load */
@@ -184,7 +185,7 @@ ISC_LOOP_TEST_IMPL(asyncload_zone) {
 	dns_zone_setfile(zone, "./zone.data", NULL, dns_masterformat_text,
 			 &dns_master_style_default);
 
-	dns_zone_asyncload(zone, false, load_done_first, zone);
+	dns_zone_asyncload(zone, 0, load_done_first, zone);
 }
 
 dns_zone_t *zone1 = NULL, *zone2 = NULL, *zone3 = NULL;

@@ -682,7 +682,7 @@ load_zone(isc_mem_t *mctx, const char *zonename, const char *filename,
 	CHECK(dns_zonemgr_managezone(zmgr, zone));
 
 	dns_zone_attach(zone, zonep);
-	result = dns_zone_asyncload(zone, false, done, done_arg);
+	result = dns_zone_asyncload(zone, DNS_ZONELOAD_ASYNC, done, done_arg);
 	if (result != ISC_R_SUCCESS) {
 		dns_zone_detach(zonep);
 		dns_zonemgr_releasezone(zmgr, zone);

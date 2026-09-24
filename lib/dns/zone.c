@@ -1552,8 +1552,8 @@ dns_zone_cancelload(dns_zone_t *zone) {
 }
 
 isc_result_t
-dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_loaddonefunc_t done,
-		   void *arg) {
+dns_zone_asyncload(dns_zone_t *zone, unsigned int options,
+		   dns_loaddonefunc_t done, void *arg) {
 	dns_asyncload_t *asl = NULL;
 
 	REQUIRE(DNS_ZONE_VALID(zone));
@@ -1572,8 +1572,13 @@ dns_zone_asyncload(dns_zone_t *zone, bool newonly, dns_loaddonefunc_t done,
 	asl = isc_mem_get(zone->mctx, sizeof(*asl));
 
 	asl->zone = NULL;
-	asl->flags = DNS_ZONELOADFLAG_ASYNC |
-		     (newonly ? DNS_ZONELOADFLAG_NOSTAT : 0);
+	asl->flags = 0;
+	if ((options & DNS_ZONELOAD_NEWONLY) != 0) {
+		asl->flags |= DNS_ZONELOADFLAG_NOSTAT;
+	}
+	if ((options & DNS_ZONELOAD_ASYNC) != 0) {
+		asl->flags |= DNS_ZONELOADFLAG_ASYNC;
+	}
 	asl->loaded = done;
 	asl->loaded_arg = arg;
 

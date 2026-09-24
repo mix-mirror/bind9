@@ -329,7 +329,9 @@ asyncload(dns_zone_t *zone, void *uap) {
 	isc_refcount_increment(&zt->references);
 	isc_refcount_increment(&zt->loads_pending);
 
-	result = dns_zone_asyncload(zone, params->newonly, loaded_one, params);
+	result = dns_zone_asyncload(zone,
+				    params->newonly ? DNS_ZONELOAD_NEWONLY : 0,
+				    loaded_one, params);
 	if (result != ISC_R_SUCCESS) {
 		/*
 		 * Caller is holding a reference to zt->loads_pending
