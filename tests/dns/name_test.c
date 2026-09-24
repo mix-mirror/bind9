@@ -658,7 +658,6 @@ ISC_RUN_TEST_IMPL(fixedname_storage) {
 
 	dns_fixedname_reset(&fixed);
 	assert_true(dns_name_empty(&fixed.name));
-	assert_int_equal(isc_buffer_usedlength(&fixed.buffer), 0);
 	assert_int_equal(dns_fixedname_fromstring(&fixed, "next.example.",
 						  dns_rootname, 0),
 			 ISC_R_SUCCESS);

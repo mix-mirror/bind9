@@ -44,6 +44,9 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	dns_decompress_t dctx = DNS_DECOMPRESS_PERMITTED;
 	isc_buffer_t new_buf;
 	isc_buffer_t old_buf;
+	isc_buffer_t new_target, old_target;
+	isc_buffer_init(&new_target, new_fixed.data, sizeof(new_fixed.data));
+	isc_buffer_init(&old_target, old_fixed.data, sizeof(old_fixed.data));
 
 	/*
 	 * Output buffers may be partially used or undersized.
@@ -51,8 +54,8 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	if (size > 0) {
 		uint8_t add = *data++;
 		size--;
-		isc_buffer_add(&new_fixed.buffer, add);
-		isc_buffer_add(&old_fixed.buffer, add);
+		isc_buffer_add(&new_target, add);
+		isc_buffer_add(&old_target, add);
 	}
 
 	/*
@@ -69,22 +72,22 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	isc_buffer_add(&new_buf, size);
 	isc_buffer_setactive(&new_buf, size);
 	isc_buffer_forward(&new_buf, size / 2);
-	new_result = dns_fixedname_fromwire(&new_fixed, &new_buf, dctx);
+	new_result = dns_name_fromwire(new_name, &new_buf, dctx, &new_target);
 
 	isc_buffer_constinit(&old_buf, data, size);
 	isc_buffer_add(&old_buf, size);
 	isc_buffer_setactive(&old_buf, size);
 	isc_buffer_forward(&old_buf, size / 2);
 	old_result = old_name_fromwire(old_name, &old_buf, dctx, 0,
-				       &old_fixed.buffer);
+				       &old_target);
 
 	REQUIRE(new_result == old_result);
 	REQUIRE(dns_name_equal(new_name, old_name));
 
-	REQUIRE(new_fixed.buffer.current == old_fixed.buffer.current);
-	REQUIRE(new_fixed.buffer.active == old_fixed.buffer.active);
-	REQUIRE(new_fixed.buffer.used == old_fixed.buffer.used);
-	REQUIRE(new_fixed.buffer.length == old_fixed.buffer.length);
+	REQUIRE(new_target.current == old_target.current);
+	REQUIRE(new_target.active == old_target.active);
+	REQUIRE(new_target.used == old_target.used);
+	REQUIRE(new_target.length == old_target.length);
 
 	REQUIRE(new_buf.base == old_buf.base);
 	REQUIRE(new_buf.current == old_buf.current);

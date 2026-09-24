@@ -24,7 +24,6 @@
 dns_fixedname_t *
 dns_fixedname_init(dns_fixedname_t *fixed) {
 	dns_name_init(&fixed->name);
-	isc_buffer_init(&fixed->buffer, fixed->data, DNS_NAME_MAXWIRE);
 	return fixed;
 }
 
@@ -54,34 +53,26 @@ dns_fixedname_fromregion(dns_fixedname_t *fixed, const isc_region_t *region) {
 isc_result_t
 dns_fixedname_fromwire(dns_fixedname_t *fixed, isc_buffer_t *source,
 		       dns_decompress_t dctx) {
-	isc_buffer_clear(&fixed->buffer);
-	return dns_name_fromwire(&fixed->name, source, dctx, &fixed->buffer);
+	isc_buffer_t target;
+	isc_buffer_init(&target, fixed->data, sizeof(fixed->data));
+	return dns_name_fromwire(&fixed->name, source, dctx, &target);
 }
 
 void
 dns_fixedname_reset(dns_fixedname_t *fixed) {
 	dns_name_reset(&fixed->name);
-	isc_buffer_clear(&fixed->buffer);
 }
 
 void
 dns_fixedname_copy(const dns_name_t *source, dns_fixedname_t *fixed) {
 	dns_name_t *dest = &fixed->name;
-	isc_buffer_t *target = NULL;
-	unsigned char *ndata = NULL;
+	unsigned char *ndata = fixed->data;
 
 	REQUIRE(DNS_NAME_VALID(source));
 	REQUIRE(DNS_NAME_VALID(dest));
 	REQUIRE(DNS_NAME_BINDABLE(dest));
 
-	target = &fixed->buffer;
-
-	REQUIRE(target != NULL);
-	REQUIRE(target->length >= source->length);
-
-	isc_buffer_clear(target);
-
-	ndata = (unsigned char *)target->base;
+	REQUIRE(sizeof(fixed->data) >= source->length);
 
 	if (source->length != 0) {
 		memmove(ndata, source->ndata, source->length);
@@ -90,20 +81,17 @@ dns_fixedname_copy(const dns_name_t *source, dns_fixedname_t *fixed) {
 	dest->ndata = ndata;
 	dest->length = source->length;
 	dest->attributes.absolute = source->attributes.absolute;
-
-	isc_buffer_add(target, dest->length);
 }
 
 isc_result_t
 dns_fixedname_concatenate(const dns_name_t *prefix, const dns_name_t *suffix,
 			  dns_fixedname_t *fixed) {
 	dns_name_t *name = &fixed->name;
-	unsigned char *ndata = NULL;
-	unsigned int nrem, prefix_length, length;
+	unsigned char *ndata = fixed->data;
+	unsigned int prefix_length, length;
 	bool copy_prefix = true;
 	bool copy_suffix = true;
 	bool absolute = false;
-	isc_buffer_t *target = NULL;
 
 	/*
 	 * Concatenate 'prefix' and 'suffix'.
@@ -124,17 +112,6 @@ dns_fixedname_concatenate(const dns_name_t *prefix, const dns_name_t *suffix,
 		absolute = true;
 		REQUIRE(!copy_suffix);
 	}
-	target = &fixed->buffer;
-	isc_buffer_clear(target);
-
-	/*
-	 * Set up.
-	 */
-	nrem = target->length - target->used;
-	ndata = (unsigned char *)target->base + target->used;
-	if (nrem > DNS_NAME_MAXWIRE) {
-		nrem = DNS_NAME_MAXWIRE;
-	}
 	length = 0;
 	prefix_length = 0;
 	if (copy_prefix) {
@@ -146,9 +123,6 @@ dns_fixedname_concatenate(const dns_name_t *prefix, const dns_name_t *suffix,
 	}
 	if (length > DNS_NAME_MAXWIRE) {
 		return DNS_R_NAMETOOLONG;
-	}
-	if (length > nrem) {
-		return ISC_R_NOSPACE;
 	}
 
 	unsigned char data[DNS_NAME_MAXWIRE];
@@ -164,8 +138,6 @@ dns_fixedname_concatenate(const dns_name_t *prefix, const dns_name_t *suffix,
 	name->ndata = ndata;
 	name->length = length;
 	name->attributes.absolute = absolute;
-
-	isc_buffer_add(target, name->length);
 
 	return ISC_R_SUCCESS;
 }

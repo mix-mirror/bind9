@@ -21,8 +21,8 @@
  * \brief
  * Fixed-size Names
  *
- * dns_fixedname_t is a convenience type containing a name and a dedicated
- * buffer big enough for the longest possible name. This is typically used for
+ * dns_fixedname_t is a convenience type containing a name and a byte array big
+ * enough for the longest possible name. This is typically used for
  * stack-allocated names.
  *
  * MP:
@@ -34,8 +34,7 @@
  * Resources:
  *\li	Per dns_fixedname_t:
  *\code
- *		sizeof(dns_name_t) +
- *		sizeof(isc_buffer_t) + 255 bytes + structure padding
+ *		sizeof(dns_name_t) + 255 bytes + structure padding
  *\endcode
  *
  * Security:
@@ -59,7 +58,6 @@
 
 struct dns_fixedname {
 	dns_name_t    name;
-	isc_buffer_t  buffer;
 	unsigned char data[DNS_NAME_MAXWIRE];
 };
 
@@ -84,7 +82,7 @@ dns_fixedname_initname(dns_fixedname_t *fixed);
 void
 dns_fixedname_reset(dns_fixedname_t *fixed);
 /*%<
- * Reset the name and its storage, retaining non-absolute attributes. */
+ * Reset the name, retaining non-absolute attributes. */
 
 void
 dns_fixedname_copy(const dns_name_t *source, dns_fixedname_t *fixed);

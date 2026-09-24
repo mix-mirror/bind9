@@ -918,9 +918,9 @@ dns_name_wirefromtext(isc_buffer_t *source, const dns_name_t *origin,
 isc_result_t
 dns_fixedname_fromtext(dns_fixedname_t *fixed, isc_buffer_t *source,
 		       const dns_name_t *origin, unsigned int options) {
-	isc_buffer_clear(&fixed->buffer);
-	return convert_text(source, origin, options, &fixed->name,
-			    &fixed->buffer);
+	isc_buffer_t target;
+	isc_buffer_init(&target, fixed->data, sizeof(fixed->data));
+	return convert_text(source, origin, options, &fixed->name, &target);
 }
 
 isc_result_t
