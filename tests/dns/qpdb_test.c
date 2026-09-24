@@ -294,6 +294,134 @@ ISC_LOOP_TEST_IMPL(servestale_fresh_cname_over_stale_type) {
  * reference counting INSIST in bindrdataset(). The ancient header must
  * be skipped and the negative entry cached.
  */
+static const char *
+precedence_rdata(dns_rdatatype_t type) {
+	switch (type) {
+	case dns_rdatatype_cname:
+		return "target.example.com.";
+	case dns_rdatatype_a:
+		return "10.53.0.1";
+	case dns_rdatatype_ns:
+		return "ns.example.com.";
+	case dns_rdatatype_ds:
+		return "12345 13 2 "
+		       "E2D3C916F6DEEAC73294E8268FB5885044A833FC5459588F4A9184C"
+		       "F"
+		       "C41A5766";
+	default:
+		UNREACHABLE();
+	}
+}
+
+/* 'age' is measured from insertion; dns_rdatatype_none skips an RRset. */
+static void
+check_cname_precedence(isc_mem_t *dbmctx, dns_rdatatype_t type1,
+		       isc_stdtime_t age1, dns_rdatatype_t type2,
+		       isc_stdtime_t age2, dns_rdatatype_t qtype,
+		       isc_result_t expected, dns_rdatatype_t expected_type,
+		       bool expected_stale) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	dns_fixedname_t fname, ffound;
+	dns_name_t *name = NULL, *foundname = NULL;
+	dns_rdataset_t rdataset;
+
+	db = servestale_setup(dbmctx, &fname, &name);
+
+	if (type1 != dns_rdatatype_none) {
+		servestale_addrdataset(db, name, now - age1, type1,
+				       precedence_rdata(type1), 3600,
+				       dns_trust_answer);
+	}
+	if (type2 != dns_rdatatype_none) {
+		servestale_addrdataset(db, name, now - age2, type2,
+				       precedence_rdata(type2), 3600,
+				       dns_trust_answer);
+	}
+
+	foundname = dns_fixedname_initname(&ffound);
+	dns_rdataset_init(&rdataset);
+	result = dns_db_find(db, name, NULL, qtype, DNS_DBFIND_STALEOK, now,
+			     NULL, foundname, &rdataset, NULL);
+
+	assert_int_equal(result, expected);
+	if (dns_rdataset_isassociated(&rdataset)) {
+		bool stale = (rdataset.attributes & DNS_RDATASETATTR_STALE) !=
+			     0;
+		assert_int_equal(rdataset.type, expected_type);
+		assert_true(stale == expected_stale);
+		dns_rdataset_disassociate(&rdataset);
+	} else {
+		assert_int_equal(expected_type, dns_rdatatype_none);
+	}
+
+	dns_db_detach(&db);
+}
+
+/* Check CNAME precedence for both insertion orders. */
+ISC_LOOP_TEST_IMPL(cname_precedence) {
+	isc_mem_t *dbmctx = NULL;
+	const dns_rdatatype_t cname = dns_rdatatype_cname;
+	const dns_rdatatype_t a = dns_rdatatype_a;
+	const dns_rdatatype_t ns = dns_rdatatype_ns;
+	const dns_rdatatype_t ds = dns_rdatatype_ds;
+	const dns_rdatatype_t none = dns_rdatatype_none;
+	const isc_stdtime_t fresh = 0;
+	const isc_stdtime_t stale = 7200; /* expired an hour ago */
+
+	isc_mem_create(&dbmctx);
+
+	/* Both fresh: the requested type wins over the alias. */
+	check_cname_precedence(dbmctx, cname, fresh, a, fresh, a, ISC_R_SUCCESS,
+			       a, false);
+	check_cname_precedence(dbmctx, a, fresh, cname, fresh, a, ISC_R_SUCCESS,
+			       a, false);
+
+	/* Fresh beats stale, in both directions and either order. */
+	check_cname_precedence(dbmctx, cname, stale, a, fresh, a, ISC_R_SUCCESS,
+			       a, false);
+	check_cname_precedence(dbmctx, a, fresh, cname, stale, a, ISC_R_SUCCESS,
+			       a, false);
+	check_cname_precedence(dbmctx, cname, fresh, a, stale, a, DNS_R_CNAME,
+			       cname, false);
+	check_cname_precedence(dbmctx, a, stale, cname, fresh, a, DNS_R_CNAME,
+			       cname, false);
+
+	/* Both stale: the requested type wins. */
+	check_cname_precedence(dbmctx, cname, stale, a, stale, a, ISC_R_SUCCESS,
+			       a, true);
+	check_cname_precedence(dbmctx, a, stale, cname, stale, a, ISC_R_SUCCESS,
+			       a, true);
+
+	/* A lone CNAME answers ordinary types, including NS, but not DS. */
+	check_cname_precedence(dbmctx, cname, fresh, none, 0, a, DNS_R_CNAME,
+			       cname, false);
+	check_cname_precedence(dbmctx, cname, fresh, none, 0, ns, DNS_R_CNAME,
+			       cname, false);
+	check_cname_precedence(dbmctx, cname, fresh, none, 0, ds,
+			       ISC_R_NOTFOUND, none, false);
+
+	/* Delegation data beside a CNAME is found by its own type. */
+	check_cname_precedence(dbmctx, cname, fresh, ds, fresh, ds,
+			       ISC_R_SUCCESS, ds, false);
+	check_cname_precedence(dbmctx, ds, fresh, cname, fresh, ds,
+			       ISC_R_SUCCESS, ds, false);
+	check_cname_precedence(dbmctx, cname, fresh, ns, fresh, ns,
+			       ISC_R_SUCCESS, ns, false);
+	check_cname_precedence(dbmctx, ns, fresh, cname, fresh, ns,
+			       ISC_R_SUCCESS, ns, false);
+
+	/* DS does not hide a CNAME from ordinary queries. */
+	check_cname_precedence(dbmctx, cname, fresh, ds, fresh, a, DNS_R_CNAME,
+			       cname, false);
+	check_cname_precedence(dbmctx, ds, fresh, cname, fresh, a, DNS_R_CNAME,
+			       cname, false);
+
+	isc_mem_detach(&dbmctx);
+	isc_loopmgr_shutdown(loopmgr);
+}
+
 ISC_LOOP_TEST_IMPL(ncache_add_over_ancient_secure) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
@@ -594,6 +722,7 @@ ISC_TEST_ENTRY_CUSTOM(ncache_add_over_ancient_secure, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(proof_rdataset_keeps_slabheader, setup_managers,
 		      teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(cname_precedence, setup_managers, teardown_managers)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

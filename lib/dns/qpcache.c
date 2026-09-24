@@ -1661,6 +1661,48 @@ qpc_search_deinit(qpc_search_t *search DNS__DB_FLARG) {
 	}
 }
 
+typedef enum answer_rank {
+	ANSWER_MISSING,
+	ANSWER_STALE,
+	ANSWER_OK,
+} answer_rank_t;
+
+static inline bool
+missing_answer(dns_slabheader_t *found, unsigned int options) {
+	if (found == NULL) {
+		return true;
+	}
+
+	dns_trust_t trust = header_trust(found);
+	return (DNS_TRUST_ADDITIONAL(trust) &&
+		(options & DNS_DBFIND_ADDITIONALOK) == 0) ||
+	       (trust == dns_trust_glue &&
+		(options & DNS_DBFIND_GLUEOK) == 0) ||
+	       (DNS_TRUST_PENDING(trust) &&
+		(options & DNS_DBFIND_PENDINGOK) == 0);
+}
+
+static inline answer_rank_t
+answer_rank(dns_slabheader_t *header, unsigned int options) {
+	if (missing_answer(header, options)) {
+		return ANSWER_MISSING;
+	}
+
+	if (STALE(header)) {
+		return ANSWER_STALE;
+	}
+
+	return ANSWER_OK;
+}
+
+/* Keep unusable candidates distinguishable from absent data. */
+static inline bool
+better_answer(dns_slabheader_t *header, dns_slabheader_t *current,
+	      unsigned int options) {
+	return current == NULL ||
+	       answer_rank(header, options) > answer_rank(current, options);
+}
+
 static isc_result_t
 find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
      dns_rdatatype_t type, unsigned int options, isc_stdtime_t now,
@@ -1679,7 +1721,8 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	dns_slabheader_t *header = NULL;
 	dns_slabheader_t *header_prev = NULL, *header_next = NULL;
 	dns_slabheader_t *found = NULL, *nsheader = NULL;
-	dns_slabheader_t *foundsig = NULL, *nssig = NULL, *cnamesig = NULL;
+	dns_slabheader_t *foundsig = NULL, *nssig = NULL;
+	dns_slabheader_t *cname = NULL, *cnamesig = NULL;
 	dns_slabheader_t *update = NULL, *updatesig = NULL;
 	dns_slabheader_t *nsecheader = NULL, *nsecsig = NULL;
 	dns_typepair_t sigtype, negtype;
@@ -1771,13 +1814,17 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	}
 
 	/*
-	 * Certain DNSSEC types are not subject to CNAME matching
-	 * (RFC4035, section 2.5 and RFC3007).
+	 * KEY (RFC 3007) and NSEC can coexist with CNAME (RFC 4035,
+	 * section 2.5).  At-parent data also shares the cache node with a
+	 * child's apex CNAME but belongs to the parent zone and must be
+	 * looked up independently.
 	 *
 	 * We don't check for RRSIG, because we don't store RRSIG records
 	 * directly.
 	 */
-	if (type == dns_rdatatype_key || type == dns_rdatatype_nsec) {
+	if (type == dns_rdatatype_key || type == dns_rdatatype_nsec ||
+	    dns_rdatatype_atparent(type) || type == dns_rdatatype_any)
+	{
 		cname_ok = false;
 	}
 
@@ -1794,13 +1841,14 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	 */
 	found = NULL;
 	foundsig = NULL;
+	cname = NULL;
+	cnamesig = NULL;
 	sigtype = DNS_SIGTYPE(type);
 	negtype = DNS_TYPEPAIR_VALUE(0, type);
 	nsheader = NULL;
 	nsecheader = NULL;
 	nssig = NULL;
 	nsecsig = NULL;
-	cnamesig = NULL;
 	empty_node = true;
 	header_prev = NULL;
 	for (header = node->data; header != NULL; header = header_next) {
@@ -1825,31 +1873,24 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			}
 
 			/*
-			 * If we found a type we were looking for, remember
-			 * it.
+			 * Collect the type we are looking for (or a negative
+			 * cache entry covering it) and, separately, a CNAME at
+			 * the node; the choice between them is made after the
+			 * loop so that it does not depend on the order of the
+			 * headers.
 			 */
 			if (header->type == type ||
-			    (type == dns_rdatatype_any &&
-			     DNS_TYPEPAIR_TYPE(header->type) != 0) ||
-			    (cname_ok && header->type == dns_rdatatype_cname))
+			    header->type == RDATATYPE_NCACHEANY ||
+			    header->type == negtype)
 			{
-				/*
-				 * We've found the answer.
-				 */
 				found = header;
-				if (header->type == dns_rdatatype_cname &&
-				    cname_ok)
-				{
-					/*
-					 * If we've already got the
-					 * CNAME RRSIG, use it.
-					 */
-					if (cnamesig != NULL) {
-						foundsig = cnamesig;
-					} else {
-						sigtype = DNS_SIGTYPE(
-							dns_rdatatype_cname);
-					}
+			} else if (type == dns_rdatatype_any &&
+				   DNS_TYPEPAIR_TYPE(header->type) != 0)
+			{
+				if (better_answer(header, found, options)) {
+					/* QTYPE==ANY, so any answer will do */
+					found = header;
+					foundsig = NULL;
 				}
 			} else if (header->type == sigtype) {
 				/*
@@ -1857,13 +1898,10 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 				 * target type.  Remember it.
 				 */
 				foundsig = header;
-			} else if (header->type == RDATATYPE_NCACHEANY ||
-				   header->type == negtype)
+			} else if (cname_ok &&
+				   header->type == dns_rdatatype_cname)
 			{
-				/*
-				 * We've found a negative cache entry.
-				 */
-				found = header;
+				cname = header;
 			} else if (header->type == dns_rdatatype_ns) {
 				/*
 				 * Remember a NS rdataset even if we're
@@ -1899,6 +1937,12 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		} else {
 			header_prev = header;
 		}
+	}
+
+	/* At equal rank, prefer the requested type. */
+	if (cname != NULL && better_answer(cname, found, options)) {
+		found = cname;
+		foundsig = cnamesig;
 	}
 
 	if (empty_node) {
