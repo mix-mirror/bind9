@@ -25,4 +25,5 @@ activate = 1
 pkcs11-module-load-behavior = early
 pkcs11-module-path = @pkcs11_module_path@
 pkcs11-module-token-pin = file:@pin_path@
+pkcs11-module-cache-keys = false
 activate = 1
