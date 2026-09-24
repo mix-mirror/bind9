@@ -32,6 +32,7 @@
 #include <dns/cache.h>
 #include <dns/callbacks.h>
 #include <dns/db.h>
+#include <dns/fixedname.h>
 #include <dns/lib.h>
 #include <dns/master.h>
 #include <dns/masterdump.h>
@@ -100,7 +101,7 @@ setup_master(void (*warn)(struct dns_rdatacallbacks *, const char *, ...),
 	isc_buffer_setactive(&source, len);
 	dns_master_initrawheader(&header);
 
-	RETERR(dns_name_fromtext(dns_origin, &source, dns_rootname, 0));
+	RETERR(dns_fixedname_fromtext(&dns_fixed, &source, dns_rootname, 0));
 
 	dns_rdatacallbacks_init_stdio(&callbacks);
 	callbacks.update = add_callback;

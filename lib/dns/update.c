@@ -377,8 +377,7 @@ rrset_visible(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 
 	dns_fixedname_init(&fixed);
 	result = dns_db_find(db, name, ver, type, DNS_DBFIND_NOWILD,
-			     (isc_stdtime_t)0, dns_fixedname_name(&fixed), NULL,
-			     NULL);
+			     (isc_stdtime_t)0, &fixed, NULL, NULL);
 	switch (result) {
 	case ISC_R_SUCCESS:
 		*visible = true;
@@ -574,7 +573,7 @@ namelist_append_subdomain(dns_db_t *db, dns_name_t *name,
 	     result = dns_dbiterator_next(dbit))
 	{
 		dns_dbnode_t *node = NULL;
-		CHECK(dns_dbiterator_current(dbit, &node, child));
+		CHECK(dns_dbiterator_current(dbit, &node, &fixedname));
 		dns_db_detachnode(&node);
 		if (!dns_name_issubdomain(child, name)) {
 			break;
@@ -661,8 +660,7 @@ is_active(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, bool *flag,
 	dns_fixedname_init(&foundname);
 	result = dns_db_find(db, name, ver, dns_rdatatype_any,
 			     DNS_DBFIND_GLUEOK | DNS_DBFIND_NOWILD,
-			     (isc_stdtime_t)0, dns_fixedname_name(&foundname),
-			     NULL, NULL);
+			     (isc_stdtime_t)0, &foundname, NULL, NULL);
 	if (result == ISC_R_SUCCESS || result == DNS_R_EMPTYNAME) {
 		*flag = true;
 		*cut = false;
@@ -677,8 +675,7 @@ is_active(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, bool *flag,
 			 * is a DS RRset.
 			 */
 			if (dns_db_find(db, name, ver, dns_rdatatype_ds, 0,
-					(isc_stdtime_t)0,
-					dns_fixedname_name(&foundname), NULL,
+					(isc_stdtime_t)0, &foundname, NULL,
 					NULL) == DNS_R_NXRRSET)
 			{
 				*unsecure = true;
@@ -713,8 +710,9 @@ is_active(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name, bool *flag,
  */
 static isc_result_t
 next_active(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
-	    dns_dbversion_t *ver, dns_name_t *oldname, dns_name_t *newname,
-	    bool forward) {
+	    dns_dbversion_t *ver, dns_name_t *oldname,
+	    dns_fixedname_t *fixed_newname, bool forward) {
+	dns_name_t *newname = dns_fixedname_name(fixed_newname);
 	isc_result_t result;
 	dns_dbiterator_t *dbit = NULL;
 	bool has_nsec = false;
@@ -748,7 +746,7 @@ next_active(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 				CLEANUP(DNS_R_BADZONE);
 			}
 		}
-		CHECK(dns_dbiterator_current(dbit, &node, newname));
+		CHECK(dns_dbiterator_current(dbit, &node, fixed_newname));
 		dns_db_detachnode(&node);
 
 		/*
@@ -767,7 +765,7 @@ next_active(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 			found = dns_fixedname_initname(&ffound);
 			result = dns_db_find(
 				db, newname, ver, dns_rdatatype_soa,
-				DNS_DBFIND_NOWILD, 0, found, NULL, NULL);
+				DNS_DBFIND_NOWILD, 0, &ffound, NULL, NULL);
 			if (result == ISC_R_SUCCESS ||
 			    result == DNS_R_EMPTYNAME ||
 			    result == DNS_R_NXRRSET || result == DNS_R_CNAME ||
@@ -810,7 +808,7 @@ add_nsec(dns_update_log_t *log, dns_zone_t *zone, dns_db_t *db,
 	/*
 	 * Find the successor name, aka NSEC target.
 	 */
-	CHECK(next_active(log, zone, db, ver, name, target, true));
+	CHECK(next_active(log, zone, db, ver, name, &fixedname, true));
 
 	/*
 	 * Create the NSEC RDATA.
@@ -1590,7 +1588,7 @@ next_state:
 			 * "affected" list in any case.
 			 */
 			CHECK(next_active(log, zone, db, newver, &t->name,
-					  prevname, false));
+					  &fixedname, false));
 			namelist_append_name(&state->affected, prevname);
 		}
 

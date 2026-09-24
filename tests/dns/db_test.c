@@ -26,6 +26,7 @@
 
 #include <dns/db.h>
 #include <dns/dbiterator.h>
+#include <dns/fixedname.h>
 #include <dns/journal.h>
 #include <dns/lib.h>
 #include <dns/name.h>
@@ -100,7 +101,7 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 	dns_fixedname_t example_fixed;
 	dns_fixedname_t found_fixed;
 	dns_name_t *example;
-	dns_name_t *found;
+
 	dns_rdatalist_t rdatalist;
 	dns_rdataset_t rdataset;
 	int count;
@@ -114,9 +115,10 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	example = dns_fixedname_initname(&example_fixed);
-	found = dns_fixedname_initname(&found_fixed);
+	dns_fixedname_init(&found_fixed);
 
-	result = dns_name_fromstring(example, "example", dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(&example_fixed, "example",
+					  dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/*
@@ -169,7 +171,7 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 		dns_rdataset_disassociate(&rdataset);
 
 		result = dns_db_find(db, example, NULL, dns_rdatatype_a, 0, 0,
-				     found, &rdataset, NULL);
+				     &found_fixed, &rdataset, NULL);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		/*
@@ -186,7 +188,8 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 			usleep(100000); /* 100 ms */
 
 			result = dns_db_find(db, example, NULL, dns_rdatatype_a,
-					     0, 0, found, &rdataset, NULL);
+					     0, 0, &found_fixed, &rdataset,
+					     NULL);
 		} while (result == ISC_R_SUCCESS);
 
 		assert_int_equal(result, ISC_R_NOTFOUND);
@@ -195,8 +198,8 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 		 * Check whether we can get stale data.
 		 */
 		result = dns_db_find(db, example, NULL, dns_rdatatype_a,
-				     DNS_DBFIND_STALEOK, 0, found, &rdataset,
-				     NULL);
+				     DNS_DBFIND_STALEOK, 0, &found_fixed,
+				     &rdataset, NULL);
 		switch (pass) {
 		case 0:
 			assert_int_equal(result, ISC_R_NOTFOUND);
@@ -218,10 +221,10 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 
 				usleep(100000); /* 100 ms */
 
-				result = dns_db_find(db, example, NULL,
-						     dns_rdatatype_a,
-						     DNS_DBFIND_STALEOK, 0,
-						     found, &rdataset, NULL);
+				result = dns_db_find(
+					db, example, NULL, dns_rdatatype_a,
+					DNS_DBFIND_STALEOK, 0, &found_fixed,
+					&rdataset, NULL);
 			} while (result == ISC_R_SUCCESS);
 			/*
 			 * usleep(100000) can be slightly less than 10ms so
@@ -308,7 +311,7 @@ ISC_LOOP_TEST_IMPL(version) {
 	name = dns_fixedname_name(&fname);
 	foundname = dns_fixedname_initname(&ffound);
 	dns_rdataset_init(&rdataset);
-	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, foundname,
+	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, &ffound,
 			     &rdataset, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_rdataset_disassociate(&rdataset);
@@ -320,7 +323,7 @@ ISC_LOOP_TEST_IMPL(version) {
 	name = dns_fixedname_name(&fname);
 	foundname = dns_fixedname_initname(&ffound);
 	dns_rdataset_init(&rdataset);
-	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, foundname,
+	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, &ffound,
 			     &rdataset, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = dns_db_findnode(db, foundname, false, &node);
@@ -337,14 +340,14 @@ ISC_LOOP_TEST_IMPL(version) {
 	dns_db_detachnode(&node);
 
 	/* This should fail now */
-	result = dns_db_find(db, name, new, dns_rdatatype_a, 0, 0, foundname,
+	result = dns_db_find(db, name, new, dns_rdatatype_a, 0, 0, &ffound,
 			     &rdataset, NULL);
 	assert_int_equal(result, DNS_R_NXDOMAIN);
 
 	dns_db_closeversion(db, &new, true);
 
 	/* But this should still succeed */
-	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, foundname,
+	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, &ffound,
 			     &rdataset, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
@@ -362,7 +365,7 @@ ISC_LOOP_TEST_IMPL(version) {
 	/* look up the ENT; it should be empty */
 	dns_test_namefromstring("ent.name.test.test.", &fname);
 	dns_db_detachnode(&node);
-	result = dns_db_find(db, name, new, dns_rdatatype_a, 0, 0, foundname,
+	result = dns_db_find(db, name, new, dns_rdatatype_a, 0, 0, &ffound,
 			     &rdataset, NULL);
 	assert_int_equal(result, DNS_R_EMPTYNAME);
 
@@ -371,7 +374,7 @@ ISC_LOOP_TEST_IMPL(version) {
 
 	/* ... and the ENT should be NXDOMAIN now */
 	dns_test_namefromstring("ent.name.test.test.", &fname);
-	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, foundname,
+	result = dns_db_find(db, name, ver, dns_rdatatype_a, 0, 0, &ffound,
 			     &rdataset, NULL);
 	assert_int_equal(result, DNS_R_NXDOMAIN);
 

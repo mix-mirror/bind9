@@ -86,7 +86,7 @@ list_add(dns_transport_list_t *list, const dns_name_t *name,
 	INSIST(hm != NULL);
 
 	transport->name = dns_fixedname_initname(&transport->fn);
-	dns_name_copy(name, transport->name);
+	dns_fixedname_copy(name, &transport->fn);
 	result = isc_hashmap_add(hm, dns_name_hash(name), transport_match, name,
 				 transport, NULL);
 	RWUNLOCK(&list->lock, isc_rwlocktype_write);

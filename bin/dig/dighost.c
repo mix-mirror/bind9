@@ -330,7 +330,7 @@ get_reverse(char *reverse, size_t len, char *value, bool strict) {
 		dns_name_t *name;
 
 		name = dns_fixedname_initname(&fname);
-		RETERR(dns_byaddr_createptrname(&addr, name));
+		RETERR(dns_byaddr_createptrname(&addr, &fname));
 		dns_name_format(name, reverse, (unsigned int)len);
 		return ISC_R_SUCCESS;
 	} else {
@@ -797,8 +797,8 @@ clone_lookup(dig_lookup_t *lookold, bool servers) {
 			sizeof(*looknew->ecs_addr));
 	}
 
-	dns_name_copy(dns_fixedname_name(&lookold->fdomain),
-		      dns_fixedname_name(&looknew->fdomain));
+	dns_fixedname_copy(dns_fixedname_name(&lookold->fdomain),
+			   &looknew->fdomain);
 
 	if (servers) {
 		if (lookold->tls_ctx_cache != NULL) {
@@ -870,7 +870,7 @@ setup_text_key(void) {
 		CLEANUP(DST_R_UNSUPPORTEDALG);
 	}
 
-	CHECK(dns_name_fromtext(keyname, namebuf, dns_rootname, 0));
+	CHECK(dns_fixedname_fromtext(&fkey, namebuf, dns_rootname, 0));
 
 	result = dns_tsigkey_create(keyname, hmac_alg, secretstore,
 				    (int)secretsize, isc_g_mctx, &tsigkey);
@@ -1875,7 +1875,7 @@ followup_lookup(dns_message_t *msg, dig_query_t *query, dns_section_t section) {
 					lookup->recurse = false;
 				}
 				domain = dns_fixedname_name(&lookup->fdomain);
-				dns_name_copy(name, domain);
+				dns_fixedname_copy(name, &lookup->fdomain);
 				lookup->edns = lookup->original_edns;
 			}
 			debug("adding server %s", namestr);
@@ -1966,7 +1966,7 @@ next_origin(dig_lookup_t *oldlookup) {
 	 * Check for a absolute name or ndots being met.
 	 */
 	name = dns_fixedname_initname(&fixed);
-	result = dns_name_fromstring(name, oldlookup->textname, NULL, 0, NULL);
+	result = dns_fixedname_fromstring(&fixed, oldlookup->textname, NULL, 0);
 	if (result == ISC_R_SUCCESS &&
 	    (dns_name_isabsolute(name) ||
 	     (int)dns_name_countlabels(name) > ndots))
@@ -2002,6 +2002,7 @@ next_origin(dig_lookup_t *oldlookup) {
  */
 static void
 insert_soa(dig_lookup_t *lookup) {
+	dns_fixedname_t *fixed_pool_soaname = NULL;
 	isc_result_t result;
 	dns_rdata_soa_t soa;
 	dns_rdata_t *rdata = NULL;
@@ -2043,7 +2044,9 @@ insert_soa(dig_lookup_t *lookup) {
 
 	dns_rdatalist_tordataset(rdatalist, rdataset);
 
-	dns_message_gettempname(lookup->sendmsg, &soaname);
+	fixed_pool_soaname = NULL;
+	dns_message_gettempfixedname(lookup->sendmsg, &fixed_pool_soaname);
+	soaname = dns_fixedname_name(fixed_pool_soaname);
 	dns_name_clone(lookup->name, soaname);
 	ISC_LIST_INIT(soaname->list);
 	ISC_LIST_APPEND(soaname->list, rdataset, link);
@@ -2106,6 +2109,8 @@ _new_query(dig_lookup_t *lookup, char *servname, char *userarg,
  */
 bool
 setup_lookup(dig_lookup_t *lookup) {
+	dns_fixedname_t *fixed_pool_lookup_name = NULL;
+	dns_fixedname_t *fixed_pool_lookup_oname = NULL;
 	isc_result_t result;
 	unsigned int len;
 	isc_buffer_t b;
@@ -2138,7 +2143,9 @@ setup_lookup(dig_lookup_t *lookup) {
 		debug("cloning server list");
 		clone_server_list(server_list, &lookup->my_server_list);
 	}
-	dns_message_gettempname(lookup->sendmsg, &lookup->name);
+	fixed_pool_lookup_name = NULL;
+	dns_message_gettempfixedname(lookup->sendmsg, &fixed_pool_lookup_name);
+	lookup->name = dns_fixedname_name(fixed_pool_lookup_name);
 
 	/*
 	 * We cannot convert `textname' and `origin' separately.
@@ -2174,7 +2181,10 @@ setup_lookup(dig_lookup_t *lookup) {
 
 	if (lookup->origin != NULL) {
 		debug("trying origin %s", lookup->origin->origin);
-		dns_message_gettempname(lookup->sendmsg, &lookup->oname);
+		fixed_pool_lookup_oname = NULL;
+		dns_message_gettempfixedname(lookup->sendmsg,
+					     &fixed_pool_lookup_oname);
+		lookup->oname = dns_fixedname_name(fixed_pool_lookup_oname);
 		/* XXX Helper funct to conv char* to name? */
 		origin = lookup->origin->origin;
 #ifdef HAVE_LIBIDN2
@@ -2187,7 +2197,8 @@ setup_lookup(dig_lookup_t *lookup) {
 		len = (unsigned int)strlen(origin);
 		isc_buffer_init(&b, origin, len);
 		isc_buffer_add(&b, len);
-		result = dns_name_fromtext(lookup->oname, &b, dns_rootname, 0);
+		result = dns_fixedname_fromtext(fixed_pool_lookup_oname, &b,
+						dns_rootname, 0);
 		if (result != ISC_R_SUCCESS) {
 			dns_message_puttempname(lookup->sendmsg, &lookup->name);
 			dns_message_puttempname(lookup->sendmsg,
@@ -2205,14 +2216,15 @@ setup_lookup(dig_lookup_t *lookup) {
 			len = (unsigned int)strlen(textname);
 			isc_buffer_init(&b, textname, len);
 			isc_buffer_add(&b, len);
-			result = dns_name_fromtext(name, &b, NULL, 0);
+			result = dns_fixedname_fromtext(&fixed, &b, NULL, 0);
 			if (result == ISC_R_SUCCESS) {
 				if (!dns_name_isabsolute(name)) {
-					result = dns_name_concatenate(
+					result = dns_fixedname_concatenate(
 						name, lookup->oname,
-						lookup->name);
+						fixed_pool_lookup_name);
 				} else {
-					dns_name_copy(name, lookup->name);
+					dns_fixedname_copy(
+						name, fixed_pool_lookup_name);
 				}
 			}
 			if (result != ISC_R_SUCCESS) {
@@ -2237,8 +2249,8 @@ setup_lookup(dig_lookup_t *lookup) {
 			len = (unsigned int)strlen(textname);
 			isc_buffer_init(&b, textname, len);
 			isc_buffer_add(&b, len);
-			result = dns_name_fromtext(lookup->name, &b,
-						   dns_rootname, 0);
+			result = dns_fixedname_fromtext(fixed_pool_lookup_name,
+							&b, dns_rootname, 0);
 			if (result != ISC_R_SUCCESS) {
 				dns_message_puttempname(lookup->sendmsg,
 							&lookup->name);

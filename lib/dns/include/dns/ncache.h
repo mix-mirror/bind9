@@ -168,10 +168,17 @@ dns_ncache_current(dns_rdataset_t *ncacherdataset, dns_name_t *found,
 		   dns_rdataset_t *rdataset);
 
 /*%<
- * Extract the current rdataset and name from a ncache entry.
+ * Extract the current rdataset and a borrowed name from a ncache entry.
+ * The name data remains owned by the ncache entry.
  *
  * Requires:
  * \li	'ncacherdataset' to be valid and to be a negative cache entry
  * \li	'found' to be valid.
  * \li	'rdataset' to be unassociated.
  */
+
+void
+dns_ncache_currentfixedname(dns_rdataset_t  *ncacherdataset,
+			    dns_fixedname_t *found, dns_rdataset_t *rdataset);
+/*%< Like dns_ncache_current(), but copy the owner into an initialized
+ * fixedname. */

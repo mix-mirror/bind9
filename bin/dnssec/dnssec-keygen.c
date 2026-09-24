@@ -251,7 +251,7 @@ keygen(keygen_ctx_t *ctx, const char *keyname) {
 		name = dns_fixedname_initname(&fname);
 		isc_buffer_constinit(&buf, keyname, strlen(keyname));
 		isc_buffer_add(&buf, strlen(keyname));
-		result = dns_name_fromtext(name, &buf, dns_rootname, 0);
+		result = dns_fixedname_fromtext(&fname, &buf, dns_rootname, 0);
 		if (result != ISC_R_SUCCESS) {
 			fatal("invalid key name %s: %s", keyname,
 			      isc_result_totext(result));

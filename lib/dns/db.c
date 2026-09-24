@@ -510,9 +510,10 @@ dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
 isc_result_t
 dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	     dns_rdatatype_t type, unsigned int options, isc_stdtime_t now,
-	     dns_name_t *foundname, dns_clientinfomethods_t *methods,
+	     dns_fixedname_t *fixed_foundname, dns_clientinfomethods_t *methods,
 	     dns_clientinfo_t *clientinfo, dns_rdataset_t *rdataset,
 	     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	dns_name_t *foundname = dns_fixedname_name(fixed_foundname);
 	/*
 	 * Find the best match for 'name' and 'type' in version 'version'
 	 * of 'db', passing in 'arg'.
@@ -520,7 +521,7 @@ dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 
 	REQUIRE(DNS_DB_VALID(db));
 	REQUIRE(type != dns_rdatatype_rrsig);
-	REQUIRE(dns_name_hasbuffer(foundname));
+	REQUIRE(DNS_NAME_VALID(foundname));
 	REQUIRE(rdataset == NULL || (DNS_RDATASET_VALID(rdataset) &&
 				     !dns_rdataset_isassociated(rdataset)));
 	REQUIRE(sigrdataset == NULL ||
@@ -529,8 +530,8 @@ dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 
 	if (db->methods->find != NULL) {
 		return (db->methods->find)(db, name, version, type, options,
-					   now, foundname, methods, clientinfo,
-					   rdataset,
+					   now, fixed_foundname, methods,
+					   clientinfo, rdataset,
 					   sigrdataset DNS__DB_FLARG_PASS);
 	}
 	return ISC_R_NOTIMPLEMENTED;
@@ -895,10 +896,10 @@ dns_db_setsigningtime(dns_db_t *db, dns_dbnode_t *node,
 }
 
 isc_result_t
-dns_db_getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *name,
-		      dns_typepair_t *typepair) {
+dns_db_getsigningtime(dns_db_t *db, isc_stdtime_t *resign,
+		      dns_fixedname_t *fixed_name, dns_typepair_t *typepair) {
 	if (db->methods->getsigningtime != NULL) {
-		return (db->methods->getsigningtime)(db, resign, name,
+		return (db->methods->getsigningtime)(db, resign, fixed_name,
 						     typepair);
 	}
 	return ISC_R_NOTFOUND;

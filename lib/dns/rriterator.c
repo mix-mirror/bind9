@@ -71,9 +71,8 @@ dns_rriterator_first(dns_rriterator_t *it) {
 	 * Walk the tree to find the first node with data.
 	 */
 	while (it->result == ISC_R_SUCCESS) {
-		it->result = dns_dbiterator_current(
-			it->dbit, &it->node,
-			dns_fixedname_name(&it->fixedname));
+		it->result = dns_dbiterator_current(it->dbit, &it->node,
+						    &it->fixedname);
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
 		}
@@ -123,9 +122,8 @@ dns_rriterator_nextrrset(dns_rriterator_t *it) {
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
 		}
-		it->result = dns_dbiterator_current(
-			it->dbit, &it->node,
-			dns_fixedname_name(&it->fixedname));
+		it->result = dns_dbiterator_current(it->dbit, &it->node,
+						    &it->fixedname);
 		if (it->result != ISC_R_SUCCESS) {
 			return it->result;
 		}

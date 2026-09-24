@@ -175,7 +175,7 @@ typedef struct query_ctx query_ctx_t;
 
 /* query context structure */
 struct query_ctx {
-	dns_name_t *fname;	     /* lookup/response name */
+	dns_fixedname_t *fname;		  /* lookup/response name */
 	dns_name_t *tname;	     /* temporary name, used
 				      * when processing ANY
 				      * queries */
@@ -211,7 +211,7 @@ struct query_ctx {
 	dns_dbversion_t *version; /* DB version */
 
 	dns_db_t	*zdb;	 /* zone DB values, saved */
-	dns_name_t	*zfname; /* for a better answer */
+	dns_fixedname_t *zfname; /* for a better answer */
 	dns_fixedname_t	 zfoundname;
 	dns_dbversion_t *zversion;
 	dns_rdataset_t	*zrdataset;

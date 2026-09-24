@@ -28,6 +28,7 @@
 
 #include <dns/db.h>
 #include <dns/dbiterator.h>
+#include <dns/fixedname.h>
 #include <dns/lib.h>
 #include <dns/name.h>
 
@@ -38,11 +39,11 @@
 #define TEST_ORIGIN "test"
 
 static isc_result_t
-make_name(const char *src, dns_name_t *name) {
+make_name(const char *src, dns_fixedname_t *fixed_name) {
 	isc_buffer_t b;
 	isc_buffer_constinit(&b, src, strlen(src));
 	isc_buffer_add(&b, strlen(src));
-	return dns_name_fromtext(name, &b, dns_rootname, 0);
+	return dns_fixedname_fromtext(fixed_name, &b, dns_rootname, 0);
 }
 
 /* create: make sure we can create a dbiterator */
@@ -81,11 +82,11 @@ test_walk(const char *filename, int flags, int nodes) {
 	dns_db_t *db = NULL;
 	dns_dbiterator_t *iter = NULL;
 	dns_dbnode_t *node = NULL;
-	dns_name_t *name;
+
 	dns_fixedname_t f;
 	int i = 0;
 
-	name = dns_fixedname_initname(&f);
+	dns_fixedname_init(&f);
 
 	result = dns_test_loaddb(&db, dns_dbtype_zone, TEST_ORIGIN, filename);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -94,7 +95,7 @@ test_walk(const char *filename, int flags, int nodes) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	DNS_DBITERATOR_FOREACH(iter) {
-		result = dns_dbiterator_current(iter, &node, name);
+		result = dns_dbiterator_current(iter, &node, &f);
 		assert_int_equal(result, ISC_R_SUCCESS);
 		dns_db_detachnode(&node);
 		i++;
@@ -133,11 +134,11 @@ test_reverse(const char *filename, int flags, int nodes) {
 	dns_db_t *db = NULL;
 	dns_dbiterator_t *iter = NULL;
 	dns_dbnode_t *node = NULL;
-	dns_name_t *name;
+
 	dns_fixedname_t f;
 	int i = 0;
 
-	name = dns_fixedname_initname(&f);
+	dns_fixedname_init(&f);
 
 	result = dns_test_loaddb(&db, dns_dbtype_zone, TEST_ORIGIN, filename);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -148,7 +149,7 @@ test_reverse(const char *filename, int flags, int nodes) {
 	for (result = dns_dbiterator_last(iter); result == ISC_R_SUCCESS;
 	     result = dns_dbiterator_prev(iter))
 	{
-		result = dns_dbiterator_current(iter, &node, name);
+		result = dns_dbiterator_current(iter, &node, &f);
 		assert_int_equal(result, ISC_R_SUCCESS);
 		dns_db_detachnode(&node);
 		i++;
@@ -187,11 +188,11 @@ test_seek_node(const char *filename, bool nsec3, int flags, int nodes) {
 	dns_db_t *db = NULL;
 	dns_dbiterator_t *iter = NULL, *iter3 = NULL;
 	dns_dbnode_t *node = NULL;
-	dns_name_t *name, *seekname;
+	dns_name_t *seekname;
 	dns_fixedname_t f1, f2;
 	int i = 0;
 
-	name = dns_fixedname_initname(&f1);
+	dns_fixedname_init(&f1);
 	seekname = dns_fixedname_initname(&f2);
 
 	result = dns_test_loaddb(&db, dns_dbtype_zone, TEST_ORIGIN, filename);
@@ -203,7 +204,7 @@ test_seek_node(const char *filename, bool nsec3, int flags, int nodes) {
 	result3 = dns_db_createiterator(db, flags, &iter3);
 	assert_int_equal(result3, ISC_R_SUCCESS);
 
-	result = make_name("c." TEST_ORIGIN, seekname);
+	result = make_name("c." TEST_ORIGIN, &f2);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_dbiterator_seek(iter, seekname);
@@ -223,7 +224,7 @@ test_seek_node(const char *filename, bool nsec3, int flags, int nodes) {
 	}
 
 	while (result == ISC_R_SUCCESS) {
-		result = dns_dbiterator_current(iter, &node, name);
+		result = dns_dbiterator_current(iter, &node, &f1);
 		assert_int_equal(result, ISC_R_SUCCESS);
 		dns_db_detachnode(&node);
 		result = dns_dbiterator_next(iter);
@@ -245,7 +246,7 @@ test_seek_node(const char *filename, bool nsec3, int flags, int nodes) {
 	}
 
 	while (result == ISC_R_SUCCESS) {
-		result = dns_dbiterator_current(iter, &node, name);
+		result = dns_dbiterator_current(iter, &node, &f1);
 		assert_int_equal(result, ISC_R_SUCCESS);
 		dns_db_detachnode(&node);
 		result = dns_dbiterator_prev(iter);
@@ -301,7 +302,7 @@ test_seek_empty(const char *filename) {
 	result = dns_db_createiterator(db, 0, &iter);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = make_name("d." TEST_ORIGIN, seekname);
+	result = make_name("d." TEST_ORIGIN, &f1);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_dbiterator_seek(iter, seekname);
@@ -342,13 +343,13 @@ test_seek_nx(const char *filename) {
 	result = dns_db_createiterator(db, 0, &iter);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = make_name("nonexistent." TEST_ORIGIN, seekname);
+	result = make_name("nonexistent." TEST_ORIGIN, &f1);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_dbiterator_seek(iter, seekname);
 	assert_int_equal(result, DNS_R_PARTIALMATCH);
 
-	result = make_name("nonexistent.", seekname);
+	result = make_name("nonexistent.", &f1);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_dbiterator_seek(iter, seekname);

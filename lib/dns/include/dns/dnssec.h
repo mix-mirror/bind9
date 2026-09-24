@@ -142,7 +142,8 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 isc_result_t
 dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		  bool ignoretime, isc_mem_t *mctx, dns_rdata_t *sigrdata,
-		  dns_name_t *wild, dns_name_t *wildsigner);
+		  dns_fixedname_t *fixed_wild,
+		  dns_fixedname_t *fixed_wildsigner);
 /*%<
  *	Verifies the RRSIG record covering this rdataset signed by a specific
  *	key.  This does not determine if the key's owner is authorized to sign

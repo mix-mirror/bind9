@@ -497,7 +497,8 @@ dns_keytable_find(dns_keytable_t *keytable, const dns_name_t *keyname,
 
 isc_result_t
 dns_keytable_finddeepestmatch(dns_keytable_t *keytable, const dns_name_t *name,
-			      dns_name_t *foundname) {
+			      dns_fixedname_t *fixed_foundname) {
+	dns_name_t *foundname = dns_fixedname_name(fixed_foundname);
 	isc_result_t result;
 	dns_qpread_t qpr;
 	dns_keynode_t *keynode = NULL;
@@ -517,7 +518,7 @@ dns_keytable_finddeepestmatch(dns_keytable_t *keytable, const dns_name_t *name,
 	keynode = pval;
 
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
-		dns_name_copy(&keynode->name, foundname);
+		dns_fixedname_copy(&keynode->name, fixed_foundname);
 		result = ISC_R_SUCCESS;
 	}
 
@@ -527,7 +528,8 @@ dns_keytable_finddeepestmatch(dns_keytable_t *keytable, const dns_name_t *name,
 
 bool
 dns_keytable_issecuredomain(dns_keytable_t *keytable, const dns_name_t *name,
-			    dns_name_t *foundname) {
+			    dns_fixedname_t *fixed_foundname) {
+	dns_name_t *foundname = dns_fixedname_name(fixed_foundname);
 	isc_result_t result;
 	dns_qpread_t qpr;
 	dns_keynode_t *keynode = NULL;
@@ -547,7 +549,7 @@ dns_keytable_issecuredomain(dns_keytable_t *keytable, const dns_name_t *name,
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		keynode = pval;
 		if (foundname != NULL) {
-			dns_name_copy(&keynode->name, foundname);
+			dns_fixedname_copy(&keynode->name, fixed_foundname);
 		}
 		secure = true;
 	}

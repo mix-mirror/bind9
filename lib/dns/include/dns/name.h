@@ -112,7 +112,6 @@ struct dns_name {
 		bool hasupdaterec : 1; /*%< Used by client. */
 	} attributes;
 	unsigned char *ndata ISC_ATTR_COUNTED_BY_PTR(length);
-	isc_buffer_t  *buffer;
 	ISC_LINK(dns_name_t) link;
 	ISC_LIST(dns_rdataset_t) list;
 	isc_hashmap_t *hashmap;
@@ -233,23 +232,12 @@ dns_name_reset(dns_name_t *name) {
 	name->ndata = NULL;
 	name->length = 0;
 	name->attributes.absolute = false;
-	if (name->buffer != NULL) {
-		isc_buffer_clear(name->buffer);
-	}
 }
 /*%<
  * Reinitialize 'name'.
  *
  * Notes:
- * \li	This function distinguishes itself from dns_name_init() in two
- *	key ways:
- *
- * \li	+ If any buffer is associated with 'name' (via dns_name_setbuffer()
- *	  or by being part of a dns_fixedname_t) the link to the buffer
- *	  is retained but the buffer itself is cleared.
- *
- * \li	+ Of the attributes associated with 'name', all are retained except
- *	  the absolute flag.
+ * \li	Retain all attributes except the absolute flag.
  *
  * Requires:
  * \li	'name' is a valid name.
@@ -268,7 +256,6 @@ dns_name_invalidate(dns_name_t *name) {
 	name->ndata = NULL;
 	name->length = 0;
 	name->attributes = (struct dns_name_attrs){};
-	name->buffer = NULL;
 	ISC_LINK_INIT(name, link);
 }
 /*%<
@@ -281,61 +268,12 @@ dns_name_invalidate(dns_name_t *name) {
  * \li	If assertion checking is enabled, future attempts to use 'name'
  *	without initializing it will cause an assertion failure.
  *
- * \li	If the name had a dedicated buffer, that association is ended.
  */
 
 bool
 dns_name_isvalid(const dns_name_t *name);
 /*%<
  * Check whether 'name' points to a valid dns_name
- */
-
-/***
- *** Dedicated Buffers
- ***/
-
-static inline void
-dns_name_setbuffer(dns_name_t *name, isc_buffer_t *buffer) {
-	REQUIRE(DNS_NAME_VALID(name));
-	REQUIRE((buffer != NULL && name->buffer == NULL) || (buffer == NULL));
-
-	name->buffer = buffer;
-}
-/*%<
- * Dedicate a buffer for use with 'name'.
- *
- * Notes:
- * \li	Specification of a target buffer in dns_name_fromwire() and
- *	dns_name_fromtext() is optional if 'name' has a dedicated buffer.
- *	The target name in dns_name_concatenate() must have a dedicated
- *	buffer.
- *
- * \li	The caller must not write to buffer until the name has been
- *	invalidated or is otherwise known not to be in use.
- *
- * \li	If buffer is NULL and the name previously had a dedicated buffer,
- *	than that buffer is no longer dedicated to use with this name.
- *	The caller is responsible for ensuring that the storage used by
- *	the name remains valid.
- *
- * Requires:
- * \li	'name' is a valid name.
- *
- * \li	'buffer' is a valid binary buffer and 'name' doesn't have a
- *	dedicated buffer already, or 'buffer' is NULL.
- */
-
-bool
-dns_name_hasbuffer(const dns_name_t *name);
-/*%<
- * Does 'name' have a dedicated buffer?
- *
- * Requires:
- * \li	'name' is a valid name.
- *
- * Returns:
- * \li	true	'name' has a dedicated buffer.
- * \li	false	'name' does not have a dedicated buffer.
  */
 
 /***
@@ -704,7 +642,9 @@ dns_name_clone(const dns_name_t *source, dns_name_t *target);
 void
 dns_name_fromregion(dns_name_t *name, const isc_region_t *r);
 /*%<
- * Make 'name' refer to region 'r'.
+ * Make 'name' refer to region 'r' without copying. The caller must keep
+ * the region's storage valid while the name is in use. To copy the data,
+ * use dns_fixedname_fromregion().
  *
  * Note:
  * \li	If the conversion encounters a root label before the end of the
@@ -758,8 +698,7 @@ dns_name_fromwire(dns_name_t *name, isc_buffer_t *source, dns_decompress_t dctx,
  * \li	'source' is a valid buffer and the first byte of the active
  *	region should be the first byte of a DNS wire format domain name.
  *
- * \li	'target' is a valid buffer or 'target' is NULL and 'name' has
- *	a dedicated buffer.
+ * \li	'target' is a valid buffer.
  *
  * \li	'dctx' is a valid decompression context.
  *
@@ -768,7 +707,7 @@ dns_name_fromwire(dns_name_t *name, isc_buffer_t *source, dns_decompress_t dctx,
  * Ensures:
  *
  *	If result is success:
- * \li		If 'target' is not NULL, 'name' is attached to it.
+ * \li		'name' is attached to 'target'.
  *
  * \li		The current location in source is advanced, and the used space
  *		in target is updated.
@@ -813,45 +752,6 @@ dns_name_towire(const dns_name_t *name, dns_compress_t *cctx,
  * Returns:
  * \li	Success
  * \li	Resource Limit: Not enough space in buffer
- */
-
-isc_result_t
-dns_name_fromtext(dns_name_t *name, isc_buffer_t *source,
-		  const dns_name_t *origin, unsigned int options);
-/*%<
- * Convert the textual representation of a DNS name in 'source'
- * and store it in 'name'.
- *
- * Notes:
- * \li	Relative domain names will have 'origin' appended to them
- *	unless 'origin' is NULL, in which case relative domain names
- *	will remain relative.
- *
- * \li	If DNS_NAME_DOWNCASE is set in 'options', any uppercase letters
- *	in 'source' will be downcased when they are copied into 'target'.
- *
- * Requires:
- *
- * \li	'name' is a valid name with a dedicated buffer.
- *
- * \li	'source' is a valid buffer.
- *
- * Ensures:
- *
- *	If result is success:
- * \li		Uppercase letters are downcased in the copy iff
- *		DNS_NAME_DOWNCASE is set in 'options'.
- *
- * \li		The current location in source is advanced.
- *
- * Result:
- *\li	#ISC_R_SUCCESS
- *\li	#DNS_R_EMPTYLABEL
- *\li	#DNS_R_LABELTOOLONG
- *\li	#DNS_R_BADESCAPE
- *\li	#DNS_R_BADDOTTEDQUAD
- *\li	#ISC_R_NOSPACE
- *\li	#ISC_R_UNEXPECTEDEND
  */
 
 isc_result_t
@@ -990,49 +890,8 @@ dns_name_tofilenametext(const dns_name_t *name, bool omit_final_dot,
  */
 
 isc_result_t
-dns_name_downcase(const dns_name_t *source, dns_name_t *name);
-/*%<
- * Downcase 'source'.
- *
- * Requires:
- *
- *\li	'source' and 'name' are valid names.
- *
- *\li	If source == name, then
- *		'source' must not be read-only
- *
- *\li	'name' has a dedicated buffer.
- *
- * Returns:
- *\li	#ISC_R_SUCCESS
- *\li	#ISC_R_NOSPACE
- *
- * Note: if source == name, then the result will always be ISC_R_SUCCESS.
- */
-
-isc_result_t
-dns_name_concatenate(const dns_name_t *prefix, const dns_name_t *suffix,
-		     dns_name_t *name);
-/*%<
- *	Concatenate 'prefix' and 'suffix' and place the result in 'name'.
- *	(Note that 'name' may be the same as 'prefix', in which case
- *	'suffix' will be appended to it.)
- *
- * Requires:
- *
- *\li	'prefix' is a valid name or NULL.
- *
- *\li	'suffix' is a valid name or NULL.
- *
- *\li	'name' is a valid name with a dedicated buffer.
- *
- *\li	If 'prefix' is absolute, 'suffix' must be NULL or the empty name.
- *
- * Returns:
- *\li	#ISC_R_SUCCESS
- *\li	#ISC_R_NOSPACE
- *\li	#DNS_R_NAMETOOLONG
- */
+dns_name_downcase(dns_name_t *name);
+/*%< Lowercase a valid, writable name in place. */
 
 static inline void
 dns_name_split(const dns_name_t *name, unsigned int suffixlabels,
@@ -1067,10 +926,6 @@ dns_name_split(const dns_name_t *name, unsigned int suffixlabels,
  *
  *\li	Copying name data is avoided as much as possible, so 'prefix'
  *	and 'suffix' will end up pointing at the data for 'name'.
- *
- *\li	It is legitimate to pass a 'prefix' or 'suffix' that has
- *	its name data stored someplace other than the dedicated buffer.
- *	This is useful to avoid name copying in the calling function.
  *
  *\li	It is also legitimate to pass a 'prefix' or 'suffix' that is
  *	the same dns_name_t as 'name'.
@@ -1242,22 +1097,20 @@ dns_name_fromstring(dns_name_t *target, const char *src,
 		    isc_mem_t *mctx);
 /*%<
  * Convert a string to a name and place it in target, allocating memory
- * as necessary.  'options' has the same semantics as that of
- * dns_name_fromtext().
- *
- * If 'target' has a buffer then the name will be copied into it rather than
- * memory being allocated.
+ * using 'mctx'. The caller must release the data with dns_name_free().
+ * 'options' has the same semantics as dns_fixedname_fromtext().
  *
  * Requires:
  *
- * \li	'target' is a valid name that is not read-only.
+ * \li	'target' is a valid, bindable name.
  * \li	'src' is not NULL.
+ * \li	'mctx' is a valid memory context.
  *
  * Returns:
  *
  *\li	#ISC_R_SUCCESS
  *
- *\li	Any error that dns_name_fromtext() can return.
+ *\li	Any error that dns_fixedname_fromtext() can return.
  *
  *\li	Any error that dns_name_dup() can return.
  */
@@ -1280,19 +1133,6 @@ dns_name_settotextfilter(dns_name_totextfilter_t *proc);
 /*%<
  * Suggested size of buffer passed to dns_name_format().
  * Includes space for the terminating NULL.
- */
-
-void
-dns_name_copy(const dns_name_t *source, dns_name_t *dest);
-/*%<
- * Copies the name in 'source' into 'dest'.  The name data is copied to
- * the dedicated buffer for 'dest'. (If copying to a name that doesn't
- * have a dedicated buffer, use dns_name_setbuffer() first.)
- *
- * Requires:
- * \li	'source' is a valid name.
- *
- * \li	'dest' is an initialized name with a dedicated buffer.
  */
 
 bool

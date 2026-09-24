@@ -418,7 +418,7 @@ dns_rdata_fromtext(dns_rdata_t *rdata, dns_rdataclass_t rdclass,
  *	if result is success:
  *\li	 	If 'rdata' is not NULL, it is attached to the target.
  *
- *\li		The conditions dns_name_fromtext() ensures for names hold
+ *\li		The conditions dns_fixedname_fromtext() ensures for names hold
  *		for all names in the rdata.
  *
  *\li		The used space in target is updated.

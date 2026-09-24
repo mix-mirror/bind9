@@ -256,8 +256,7 @@ configure_zone_ssutable(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 		str = cfg_obj_asstring(identity);
 		isc_buffer_constinit(&b, str, strlen(str));
 		isc_buffer_add(&b, strlen(str));
-		result = dns_name_fromtext(dns_fixedname_name(&fident), &b,
-					   dns_rootname, 0);
+		result = dns_fixedname_fromtext(&fident, &b, dns_rootname, 0);
 		if (result != ISC_R_SUCCESS) {
 			cfg_obj_log(identity, ISC_LOG_ERROR,
 				    "'%s' is not a valid name", str);
@@ -280,14 +279,13 @@ configure_zone_ssutable(const cfg_obj_t *zconfig, const cfg_obj_t *tconfig,
 
 		dns_fixedname_init(&fname);
 		if (usezone) {
-			dns_name_copy(dns_zone_getorigin(zone),
-				      dns_fixedname_name(&fname));
+			dns_fixedname_copy(dns_zone_getorigin(zone), &fname);
 		} else {
 			str = cfg_obj_asstring(dname);
 			isc_buffer_constinit(&b, str, strlen(str));
 			isc_buffer_add(&b, strlen(str));
-			result = dns_name_fromtext(dns_fixedname_name(&fname),
-						   &b, dns_rootname, 0);
+			result = dns_fixedname_fromtext(&fname, &b,
+							dns_rootname, 0);
 			if (result != ISC_R_SUCCESS) {
 				cfg_obj_log(identity, ISC_LOG_ERROR,
 					    "'%s' is not a valid name", str);
@@ -513,7 +511,8 @@ configure_staticstub_servernames(const cfg_obj_t *zconfig, dns_zone_t *zone,
 
 		isc_buffer_constinit(&b, str, strlen(str));
 		isc_buffer_add(&b, strlen(str));
-		result = dns_name_fromtext(nsname, &b, dns_rootname, 0);
+		result = dns_fixedname_fromtext(&fixed_name, &b, dns_rootname,
+						0);
 		if (result != ISC_R_SUCCESS) {
 			cfg_obj_log(zconfig, ISC_LOG_ERROR,
 				    "server-name '%s' is not a valid "
@@ -1534,8 +1533,8 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 			const char *adstr = cfg_obj_asstring(obj);
 			dns_name_t *zn = dns_zone_getorigin(zone);
 
-			CHECK(dns_name_fromstring(rad, adstr, dns_rootname, 0,
-						  mctx));
+			CHECK(dns_fixedname_fromstring(&fixed, adstr,
+						       dns_rootname, 0));
 			if (logreports || dns_name_isroot(rad)) {
 				/* Disable RC for error-logging zones or root */
 				dns_zone_setrad(zone, NULL);

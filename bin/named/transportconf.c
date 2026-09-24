@@ -19,6 +19,7 @@
 #include <isc/string.h>
 #include <isc/util.h>
 
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/transport.h>
 
@@ -27,16 +28,16 @@
 #include <named/log.h>
 #include <named/transportconf.h>
 
-#define create_name(id, name)                                     \
-	isc_buffer_t namesrc;                                     \
-	dns_fixedname_t _fn;                                      \
-	name = dns_fixedname_initname(&_fn);                      \
-	isc_buffer_constinit(&namesrc, id, strlen(id));           \
-	isc_buffer_add(&namesrc, strlen(id));                     \
-	result = (dns_name_fromtext(name, &namesrc, dns_rootname, \
-				    DNS_NAME_DOWNCASE));          \
-	if (result != ISC_R_SUCCESS) {                            \
-		goto cleanup;                                     \
+#define create_name(id, name)                                          \
+	isc_buffer_t namesrc;                                          \
+	dns_fixedname_t _fn;                                           \
+	name = dns_fixedname_initname(&_fn);                           \
+	isc_buffer_constinit(&namesrc, id, strlen(id));                \
+	isc_buffer_add(&namesrc, strlen(id));                          \
+	result = (dns_fixedname_fromtext(&_fn, &namesrc, dns_rootname, \
+					 DNS_NAME_DOWNCASE));          \
+	if (result != ISC_R_SUCCESS) {                                 \
+		goto cleanup;                                          \
 	}
 
 #define parse_transport_option(map, transport, name, setter)      \

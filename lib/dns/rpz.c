@@ -765,7 +765,7 @@ log_badowner(int level, const dns_name_t *name) {
  */
 static isc_result_t
 ip2name(const dns_rpz_cidr_key_t *tgt_ip, dns_rpz_prefix_t tgt_prefix,
-	const dns_name_t *base_name, dns_name_t *ip_name) {
+	const dns_name_t *base_name, dns_fixedname_t *fixed_ip_name) {
 #ifndef INET6_ADDRSTRLEN
 #define INET6_ADDRSTRLEN 46
 #endif /* ifndef INET6_ADDRSTRLEN */
@@ -843,7 +843,7 @@ ip2name(const dns_rpz_cidr_key_t *tgt_ip, dns_rpz_prefix_t tgt_prefix,
 
 	isc_buffer_init(&buffer, str, sizeof(str));
 	isc_buffer_add(&buffer, len);
-	result = dns_name_fromtext(ip_name, &buffer, base_name, 0);
+	result = dns_fixedname_fromtext(fixed_ip_name, &buffer, base_name, 0);
 	return result;
 }
 
@@ -1037,13 +1037,16 @@ name2ipkey(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	 * to ensure that the original name is in canonical form.
 	 */
 	dns_name_t *ip_name2 = dns_fixedname_initname(&ip_name2f);
-	result = ip2name(tgt_ip, (dns_rpz_prefix_t)prefix_num, NULL, ip_name2);
+	result = ip2name(tgt_ip, (dns_rpz_prefix_t)prefix_num, NULL,
+			 &ip_name2f);
 	if (result != ISC_R_SUCCESS || !dns_name_equal(&ip_name, ip_name2)) {
 		char ip2_str[DNS_NAME_FORMATSIZE];
 		if (rpz_type == DNS_RPZ_TYPE_QNAME) {
-			dns_name_concatenate(ip_name2, &rpz->origin, ip_name2);
+			dns_fixedname_concatenate(ip_name2, &rpz->origin,
+						  &ip_name2f);
 		} else {
-			dns_name_concatenate(ip_name2, &rpz->nsdname, ip_name2);
+			dns_fixedname_concatenate(ip_name2, &rpz->nsdname,
+						  &ip_name2f);
 		}
 		dns_name_format(ip_name2, ip2_str, sizeof(ip2_str));
 		log_badname(log_level, src_name, " is not in canonical form ",
@@ -1060,7 +1063,7 @@ name2ipkey(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
  */
 static isc_result_t
 name2data(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
-	  const dns_name_t *src_name, dns_name_t *trig_name,
+	  const dns_name_t *src_name, dns_fixedname_t *fixed_trig_name,
 	  nmdata_t *new_data) {
 	const dns_name_t *suffix = NULL;
 	dns_name_t tmp_name;
@@ -1111,7 +1114,8 @@ name2data(int log_level, dns_rpz_zone_t *rpz, dns_rpz_type_t rpz_type,
 	dns_name_init(&tmp_name);
 	dns_name_getlabelsequence(src_name, prefix_len, nlabels - prefix_len,
 				  &tmp_name);
-	(void)dns_name_concatenate(&tmp_name, dns_rootname, trig_name);
+	(void)dns_fixedname_concatenate(&tmp_name, dns_rootname,
+					fixed_trig_name);
 
 	return ISC_R_SUCCESS;
 }
@@ -1481,7 +1485,7 @@ add_name(dns_rpz_zone_t *rpz, dns_qp_t *qp, dns_rpz_type_t rpz_type,
 
 	trig_name = dns_fixedname_initname(&trig_namef);
 	result = name2data(DNS_RPZ_ERROR_LEVEL, rpz, rpz_type, src_name,
-			   trig_name, &new_data);
+			   &trig_namef, &new_data);
 	/*
 	 * Log complaints about bad owner names but let the zone load.
 	 */
@@ -1796,7 +1800,7 @@ dns_rpz_checkdb(dns_db_t *db, isc_mem_t *mctx) {
 
 	CHECK(dns_db_createiterator(db, DNS_DB_NONSEC3, &dbit));
 	DNS_DBITERATOR_FOREACH(dbit) {
-		CHECK(dns_dbiterator_current(dbit, &node, name));
+		CHECK(dns_dbiterator_current(dbit, &node, &fixedname));
 		CHECK(dns_db_allrdatasets(db, node, NULL, 0, 0, &rdsiter));
 		result = dns_rdatasetiter_first(rdsiter);
 		if (result == ISC_R_SUCCESS) {
@@ -1887,7 +1891,7 @@ update_nodes(dns_rpz_zone_t *rpz, dns_db_t *db, dns_dbversion_t *dbversion,
 			goto done;
 		}
 
-		result = dns_dbiterator_current(updbit, &node, name);
+		result = dns_dbiterator_current(updbit, &node, &fixname);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
 				      DNS_LOGMODULE_RPZ, ISC_LOG_ERROR,
@@ -1928,7 +1932,7 @@ update_nodes(dns_rpz_zone_t *rpz, dns_db_t *db, dns_dbversion_t *dbversion,
 			goto next;
 		}
 
-		dns_name_downcase(name, name);
+		dns_name_downcase(name);
 
 		/* Add entry to the new nodes table */
 		result = isc_ht_add(newnodes, name->ndata, name->length, rpz);
@@ -2019,7 +2023,7 @@ cleanup_nodes(dns_rpz_zone_t *rpz) {
 		isc_ht_iter_currentkey(iter, &key, &keysize);
 		region.base = key;
 		region.length = (unsigned int)keysize;
-		dns_name_fromregion(name, &region);
+		dns_fixedname_fromregion(&fixname, &region);
 
 		rpz_del(rpz, qp, name);
 	}
@@ -2417,7 +2421,7 @@ del_name(dns_rpz_zone_t *rpz, dns_qp_t *qp, dns_rpz_type_t rpz_type,
 	 * something relevant was added and so was valid.
 	 */
 	result = name2data(DNS_RPZ_DEBUG_QUIET, rpz, rpz_type, src_name,
-			   trig_name, &del_data);
+			   &trig_namef, &del_data);
 	if (result != ISC_R_SUCCESS) {
 		return;
 	}
@@ -2503,7 +2507,7 @@ rpz_del(dns_rpz_zone_t *rpz, dns_qp_t *qp, const dns_name_t *src_name) {
 dns_rpz_num_t
 dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 		dns_rpz_zbits_t zbits, const isc_netaddr_t *netaddr,
-		dns_name_t *ip_name, dns_rpz_prefix_t *prefixp) {
+		dns_fixedname_t *fixed_ip_name, dns_rpz_prefix_t *prefixp) {
 	dns_rpz_cidr_key_t tgt_ip;
 	dns_rpz_addr_zbits_t tgt_set;
 	dns_rpz_cidr_node_t *found = NULL;
@@ -2601,7 +2605,8 @@ dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 	default:
 		UNREACHABLE();
 	}
-	result = ip2name(&found->ip, found->prefix, dns_rootname, ip_name);
+	result = ip2name(&found->ip, found->prefix, dns_rootname,
+			 fixed_ip_name);
 	RWUNLOCK(&rpzs->search_lock, isc_rwlocktype_read);
 	if (result != ISC_R_SUCCESS) {
 		/*

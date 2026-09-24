@@ -119,7 +119,7 @@ dns_test_makezone(const char *name, dns_zone_t **zonep, dns_view_t *view,
 	 */
 	dns_zone_settype(zone, dns_zone_primary);
 	origin = dns_fixedname_initname(&fixed_origin);
-	result = dns_name_fromstring(origin, name, dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(&fixed_origin, name, dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
 		goto detach_zone;
 	}
@@ -210,7 +210,7 @@ dns_test_loaddb(dns_db_t **db, dns_dbtype_t dbtype, const char *origin,
 
 	name = dns_fixedname_initname(&fixed);
 
-	RETERR(dns_name_fromstring(name, origin, dns_rootname, 0, NULL));
+	RETERR(dns_fixedname_fromstring(&fixed, origin, dns_rootname, 0));
 
 	RETERR(dns_db_create(isc_g_mctx, dbimp, name, dbtype, dns_rdataclass_in,
 			     0, NULL, db));
@@ -398,16 +398,15 @@ dns_test_namefromstring(const char *namestr, dns_fixedname_t *fname) {
 	size_t length;
 	isc_buffer_t *b = NULL;
 	isc_result_t result;
-	dns_name_t *name;
 
 	length = strlen(namestr);
 
-	name = dns_fixedname_initname(fname);
+	dns_fixedname_init(fname);
 
 	isc_buffer_allocate(isc_g_mctx, &b, length);
 
 	isc_buffer_putmem(b, (const unsigned char *)namestr, length);
-	result = dns_name_fromtext(name, b, NULL, 0);
+	result = dns_fixedname_fromtext(fname, b, NULL, 0);
 	INSIST(result == ISC_R_SUCCESS);
 
 	isc_buffer_free(&b);
@@ -436,8 +435,8 @@ dns_test_difffromchanges(dns_diff_t *diff, const zonechange_t *changes,
 		 * Parse owner name.
 		 */
 		name = dns_fixedname_initname(&fixedname);
-		result = dns_name_fromstring(name, changes[i].owner,
-					     dns_rootname, 0, isc_g_mctx);
+		result = dns_fixedname_fromstring(&fixedname, changes[i].owner,
+						  dns_rootname, 0);
 		if (result != ISC_R_SUCCESS) {
 			break;
 		}

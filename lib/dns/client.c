@@ -33,6 +33,7 @@
 #include <dns/client.h>
 #include <dns/db.h>
 #include <dns/dispatch.h>
+#include <dns/fixedname.h>
 #include <dns/forward.h>
 #include <dns/keytable.h>
 #include <dns/message.h>
@@ -449,7 +450,7 @@ start_fetch(resctx_t *rctx) {
 }
 
 static isc_result_t
-view_find(resctx_t *rctx, dns_db_t **dbp, dns_name_t *foundname) {
+view_find(resctx_t *rctx, dns_db_t **dbp, dns_fixedname_t *fixed_foundname) {
 	isc_result_t result;
 	dns_name_t *name = dns_fixedname_name(&rctx->name);
 	dns_rdatatype_t type;
@@ -461,7 +462,8 @@ view_find(resctx_t *rctx, dns_db_t **dbp, dns_name_t *foundname) {
 	}
 
 	result = dns_view_find(rctx->view, name, type, 0, 0, false, dbp,
-			       foundname, rctx->rdataset, rctx->sigrdataset);
+			       fixed_foundname, rctx->rdataset,
+			       rctx->sigrdataset);
 
 	return result;
 }
@@ -502,7 +504,7 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			INSIST(!dns_rdataset_isassociated(rctx->rdataset));
 			INSIST(rctx->sigrdataset == NULL ||
 			       !dns_rdataset_isassociated(rctx->sigrdataset));
-			result = view_find(rctx, &db, fname);
+			result = view_find(rctx, &db, &foundname);
 			if (result == ISC_R_NOTFOUND) {
 				/*
 				 * We don't know anything about the name.
@@ -529,7 +531,7 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			node = resp->node;
 			result = resp->result;
 			vresult = resp->vresult;
-			dns_name_copy(resp->foundname, fname);
+			dns_fixedname_copy(resp->foundname, &foundname);
 			INSIST(resp->rdataset == rctx->rdataset);
 			INSIST(resp->sigrdataset == rctx->sigrdataset);
 			dns_resolver_freefresp(&resp);
@@ -582,7 +584,7 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			if (tresult != ISC_R_SUCCESS) {
 				goto done;
 			}
-			dns_name_copy(&cname.cname, name);
+			dns_fixedname_copy(&cname.cname, &rctx->name);
 			dns_rdata_freestruct(&cname);
 			want_restart = true;
 			goto done;
@@ -624,8 +626,8 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			 */
 			prefix = dns_fixedname_initname(&fixed);
 			dns_name_split(name, nlabels, prefix, NULL);
-			tresult = dns_name_concatenate(prefix, &dname.dname,
-						       name);
+			tresult = dns_fixedname_concatenate(
+				prefix, &dname.dname, &rctx->name);
 			dns_rdata_freestruct(&dname);
 			if (tresult == ISC_R_SUCCESS) {
 				want_restart = true;
@@ -910,7 +912,7 @@ startresolve(dns_client_t *client, const dns_name_t *name,
 	rctx->sigrdataset = sigrdataset;
 
 	dns_fixedname_init(&rctx->name);
-	dns_name_copy(name, dns_fixedname_name(&rctx->name));
+	dns_fixedname_copy(name, &rctx->name);
 
 	dns_view_attach(client->view, &rctx->view);
 

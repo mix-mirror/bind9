@@ -559,8 +559,8 @@ dns64prefix_answer(dns_message_t *msg, isc_buffer_t *buf) {
 	size_t i, count = 10;
 
 	name = dns_fixedname_initname(&fixed);
-	result = dns_name_fromstring(name, "ipv4only.arpa", dns_rootname, 0,
-				     NULL);
+	result = dns_fixedname_fromstring(&fixed, "ipv4only.arpa", dns_rootname,
+					  0);
 	check_result(result, "dns_name_fromstring");
 
 	result = dns_message_findname(msg, DNS_SECTION_ANSWER, name,

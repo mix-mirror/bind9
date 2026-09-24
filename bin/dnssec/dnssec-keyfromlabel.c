@@ -354,7 +354,7 @@ main(int argc, char **argv) {
 		isc_buffer_init(&buf, argv[isc_commandline_index],
 				strlen(argv[isc_commandline_index]));
 		isc_buffer_add(&buf, strlen(argv[isc_commandline_index]));
-		result = dns_name_fromtext(name, &buf, dns_rootname, 0);
+		result = dns_fixedname_fromtext(&fname, &buf, dns_rootname, 0);
 		if (result != ISC_R_SUCCESS) {
 			fatal("invalid key name %s: %s",
 			      argv[isc_commandline_index],

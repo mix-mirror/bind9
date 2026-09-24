@@ -33,6 +33,7 @@
 #include <isc/util.h>
 
 #include <dns/dnssec.h>
+#include <dns/fixedname.h>
 #include <dns/lib.h>
 #include <dns/name.h>
 #include <dns/rdatalist.h>
@@ -440,7 +441,7 @@ ISC_RUN_TEST_IMPL(skr_read) {
 	dname = dns_fixedname_initname(&dfname);
 	isc_buffer_init(&b, name, strlen(name));
 	isc_buffer_add(&b, strlen(name));
-	result = dns_name_fromtext(dname, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&dfname, &b, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Get the KSK */

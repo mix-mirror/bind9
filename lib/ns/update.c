@@ -635,7 +635,7 @@ foreach_rr(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 		add_rr_prepare_ctx_t *ctx = rr_action_data;
 
 		ctx->oldname = dns_fixedname_initname(&fixed);
-		dns_name_copy(name, ctx->oldname);
+		dns_fixedname_copy(name, &fixed);
 		dns_rdataset_getownercase(&rdataset, ctx->oldname);
 	}
 
@@ -1018,7 +1018,8 @@ temp_order(const void *av, const void *bv) {
 
 static isc_result_t
 temp_check(isc_mem_t *mctx, dns_diff_t *temp, dns_db_t *db,
-	   dns_dbversion_t *ver, dns_name_t *tmpname, dns_rdatatype_t *typep) {
+	   dns_dbversion_t *ver, dns_fixedname_t *fixed_tmpname,
+	   dns_rdatatype_t *typep) {
 	isc_result_t result;
 	dns_name_t *name;
 	dns_dbnode_t *node;
@@ -1035,7 +1036,7 @@ temp_check(isc_mem_t *mctx, dns_diff_t *temp, dns_db_t *db,
 	t = ISC_LIST_HEAD(temp->tuples);
 	while (t != NULL) {
 		name = &t->name;
-		dns_name_copy(name, tmpname);
+		dns_fixedname_copy(name, fixed_tmpname);
 		*typep = t->rdata.type;
 
 		/* A new unique name begins here. */
@@ -2078,15 +2079,15 @@ check_mx(ns_client_t *client, dns_zone_t *zone, dns_db_t *db,
 			continue;
 		}
 		result = dns_db_find(db, &mx.mx, newver, dns_rdatatype_a, 0, 0,
-				     foundname, NULL, NULL);
+				     &fixed, NULL, NULL);
 		if (result == ISC_R_SUCCESS) {
 			continue;
 		}
 
 		if (result == DNS_R_NXRRSET) {
 			result = dns_db_find(db, &mx.mx, newver,
-					     dns_rdatatype_aaaa, 0, 0,
-					     foundname, NULL, NULL);
+					     dns_rdatatype_aaaa, 0, 0, &fixed,
+					     NULL, NULL);
 			if (result == ISC_R_SUCCESS) {
 				continue;
 			}
@@ -2765,7 +2766,7 @@ update_action(void *arg) {
 		}
 
 		tmpname = dns_fixedname_initname(&tmpnamefixed);
-		result = temp_check(mctx, &temp, db, ver, tmpname, &type);
+		result = temp_check(mctx, &temp, db, ver, &tmpnamefixed, &type);
 		if (result != ISC_R_SUCCESS) {
 			FAILNT(result, tmpname, type,
 			       "'RRset exists (value dependent)' prerequisite "

@@ -24,6 +24,7 @@
 #include <isc/netaddr.h>
 
 #include <dns/byaddr.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 
 #include <tests/isc.h>
@@ -63,17 +64,13 @@ ISC_RUN_TEST_IMPL(byaddr_parseptrname) {
 
 	for (size_t i = 0; i < ARRAY_SIZE(tests); i++) {
 		int result;
-		char bdata[128];
-		isc_buffer_t b;
 		isc_netaddr_t addr;
-		dns_name_t name;
+		dns_fixedname_t fixed;
+		dns_name_t *name = dns_fixedname_initname(&fixed);
 
-		isc_buffer_init(&b, bdata, sizeof(bdata));
-		dns_name_init(&name);
-		dns_name_setbuffer(&name, &b);
-		dns_name_fromstring(&name, tests[i].ptrname, NULL, 0, NULL);
+		dns_fixedname_fromstring(&fixed, tests[i].ptrname, NULL, 0);
 
-		result = dns_byaddr_parseptrname(&name, &addr);
+		result = dns_byaddr_parseptrname(name, &addr);
 
 		if (tests[i].address) {
 			assert_int_equal(result, ISC_R_SUCCESS);
@@ -81,8 +78,10 @@ ISC_RUN_TEST_IMPL(byaddr_parseptrname) {
 			assert_int_not_equal(result, ISC_R_SUCCESS);
 		}
 
-		dns_name_invalidate(&name);
-		isc_buffer_clear(&b);
+		dns_fixedname_invalidate(&fixed);
+		char bdata[128];
+		isc_buffer_t b;
+		isc_buffer_init(&b, bdata, sizeof(bdata));
 		isc_netaddr_totext(&addr, &b);
 		isc_buffer_putuint8(&b, 0);
 

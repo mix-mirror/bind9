@@ -201,12 +201,12 @@ ownercase_test_one(const char *str1, const char *str2) {
 	/* Minimal initialization of the mock objects */
 	isc_buffer_constinit(&b, str1, strlen(str1));
 	isc_buffer_add(&b, strlen(str1));
-	result = dns_name_fromtext(name1, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fname1, &b, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_buffer_constinit(&b, str2, strlen(str2));
 	isc_buffer_add(&b, strlen(str2));
-	result = dns_name_fromtext(name2, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fname2, &b, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Store the case from name1 */
@@ -295,7 +295,8 @@ verify_aaaa_records(dns_db_t *db, dns_dbversion_t *version,
 	dns_rdataset_t rdataset;
 	bool *found_ips = NULL;
 	dns_fixedname_t found_fname;
-	dns_name_t *found_name = dns_fixedname_initname(&found_fname);
+
+	dns_fixedname_init(&found_fname);
 
 	/* Allocate zero-initialized found flags array */
 	found_ips = isc_mem_cget(isc_g_mctx, (size_t)expected_count,
@@ -304,7 +305,7 @@ verify_aaaa_records(dns_db_t *db, dns_dbversion_t *version,
 	dns_rdataset_init(&rdataset);
 
 	result = dns_db_find(db, name, version, dns_rdatatype_aaaa, 0, 0,
-			     found_name, &rdataset, NULL);
+			     &found_fname, &rdataset, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Check rdataset metadata */
@@ -371,12 +372,12 @@ ISC_RUN_TEST_IMPL(setownercase) {
 	/* Minimal initialization of the mock objects */
 	isc_buffer_constinit(&b, str1, strlen(str1));
 	isc_buffer_add(&b, strlen(str1));
-	result = dns_name_fromtext(name1, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fname1, &b, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_buffer_constinit(&b, str1, strlen(str1));
 	isc_buffer_add(&b, strlen(str1));
-	result = dns_name_fromtext(name2, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fname2, &b, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	assert_false(CASESET(&header));
@@ -466,8 +467,7 @@ ISC_RUN_TEST_IMPL(unscheduled_resign) {
 	UNLOCK(&qpdb->heap->lock);
 
 	dns_fixedname_init(&fixed);
-	result = dns_db_getsigningtime(db, &resign, dns_fixedname_name(&fixed),
-				       &typepair);
+	result = dns_db_getsigningtime(db, &resign, &fixed, &typepair);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	LOCK(&qpdb->heap->lock);
@@ -496,8 +496,7 @@ ISC_RUN_TEST_IMPL(unscheduled_resign) {
 	assert_null(isc_heap_element(qpdb->heap->heap, 1));
 	UNLOCK(&qpdb->heap->lock);
 
-	result = dns_db_getsigningtime(db, &resign, dns_fixedname_name(&fixed),
-				       &typepair);
+	result = dns_db_getsigningtime(db, &resign, &fixed, &typepair);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	dns_db_detach(&db);
@@ -582,7 +581,7 @@ ISC_RUN_TEST_IMPL(wildcard_foundname) {
 
 	dns_rdataset_init(&rdataset);
 	dns_db_currentversion(db, &version);
-	result = dns_db_find(db, qname, version, dns_rdatatype_a, 0, 0, found,
+	result = dns_db_find(db, qname, version, dns_rdatatype_a, 0, 0, &ffound,
 			     &rdataset, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_true(dns_name_equal(found, wild));
@@ -631,7 +630,7 @@ ISC_RUN_TEST_IMPL(wildcard_delegation_foundname) {
 
 	dns_rdataset_init(&rdataset);
 	dns_db_currentversion(db, &version);
-	result = dns_db_find(db, qname, version, dns_rdatatype_a, 0, 0, found,
+	result = dns_db_find(db, qname, version, dns_rdatatype_a, 0, 0, &ffound,
 			     &rdataset, NULL);
 	assert_int_equal(result, DNS_R_DELEGATION);
 	assert_true(dns_name_equal(found, wild));
@@ -817,7 +816,7 @@ add_record_unchecked(dns_db_t *db, const char *owner, dns_rdatatype_t rdtype,
  */
 static isc_result_t
 find_record(dns_db_t *db, const char *qname, dns_rdatatype_t rdtype,
-	    unsigned int options, dns_name_t *found) {
+	    unsigned int options, dns_fixedname_t *fixed_found) {
 	isc_result_t result;
 	dns_dbversion_t *version = NULL;
 	dns_fixedname_t fqname;
@@ -827,7 +826,7 @@ find_record(dns_db_t *db, const char *qname, dns_rdatatype_t rdtype,
 	dns_rdataset_init(&rdataset);
 	dns_db_currentversion(db, &version);
 	result = dns_db_find(db, dns_fixedname_name(&fqname), version, rdtype,
-			     options, 0, found, &rdataset, NULL);
+			     options, 0, fixed_found, &rdataset, NULL);
 	dns_rdataset_cleanup(&rdataset);
 	dns_db_closeversion(db, &version, false);
 
@@ -871,31 +870,33 @@ ISC_RUN_TEST_IMPL(nodes_outside_zone) {
 	add_record_unchecked(db, "*.attacker.", dns_rdatatype_a, "192.0.2.3");
 
 	/* Names in the zone are answered from the zone. */
-	result = find_record(db, "www.example.org.", dns_rdatatype_a, 0, found);
+	result = find_record(db, "www.example.org.", dns_rdatatype_a, 0,
+			     &ffound);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_test_namefromstring("www.example.org.", &fexpected);
 	expected = dns_fixedname_name(&fexpected);
 	assert_true(dns_name_equal(found, expected));
 
-	result = find_record(db, "example.org.", dns_rdatatype_soa, 0, found);
+	result = find_record(db, "example.org.", dns_rdatatype_soa, 0, &ffound);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_true(dns_name_equal(found, &example_org_name));
 
 	/* The closest encloser of a nonexistent name is in the zone. */
-	result = find_record(db, "nx.example.org.", dns_rdatatype_a, 0, found);
+	result = find_record(db, "nx.example.org.", dns_rdatatype_a, 0,
+			     &ffound);
 	assert_int_equal(result, DNS_R_NXDOMAIN);
 	assert_true(dns_name_equal(found, &example_org_name));
 	assert_false(found->attributes.wildcard);
 
 	/* Names outside the zone are not found, with or without glue. */
-	result = find_record(db, "mail.attacker.", dns_rdatatype_a, 0, found);
+	result = find_record(db, "mail.attacker.", dns_rdatatype_a, 0, &ffound);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	result = find_record(db, "attacker.", dns_rdatatype_a,
-			     DNS_DBFIND_GLUEOK, found);
+			     DNS_DBFIND_GLUEOK, &ffound);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	result = find_record(db, "org.", dns_rdatatype_ns, 0, found);
+	result = find_record(db, "org.", dns_rdatatype_ns, 0, &ffound);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	dns_db_detach(&db);

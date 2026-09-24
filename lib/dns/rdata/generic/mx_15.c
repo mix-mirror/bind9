@@ -82,7 +82,7 @@ fromtext_mx(ARGS_FROMTEXT) {
 	if (origin == NULL) {
 		origin = dns_rootname;
 	}
-	RETTOK(dns_name_fromtext(name, &buffer, origin, options));
+	RETTOK(dns_fixedname_fromtext(&fn, &buffer, origin, options));
 	RETTOK(dns_name_towire(name, NULL, target));
 	ok = true;
 	if ((options & DNS_RDATA_CHECKNAMES) != 0) {
@@ -285,8 +285,7 @@ additionaldata_mx(ARGS_ADDLDATA) {
 	RETERR((add)(arg, &name, dns_rdatatype_a, NULL DNS__DB_FILELINE));
 
 	dns_fixedname_init(&fixed);
-	result = dns_name_concatenate(&port25, &name,
-				      dns_fixedname_name(&fixed));
+	result = dns_fixedname_concatenate(&port25, &name, &fixed);
 	if (result != ISC_R_SUCCESS) {
 		return ISC_R_SUCCESS;
 	}

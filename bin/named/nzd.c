@@ -33,7 +33,7 @@ nzd_setkey(MDB_val *key, dns_name_t *name, char *namebuf, size_t buflen) {
 	dns_fixedname_t fixed;
 
 	dns_fixedname_init(&fixed);
-	dns_name_downcase(name, dns_fixedname_name(&fixed));
+	dns_fixedname_downcase(name, &fixed);
 	dns_name_format(dns_fixedname_name(&fixed), namebuf, buflen);
 
 	key->mv_data = namebuf;
@@ -426,8 +426,8 @@ nzd_load_nzf(dns_view_t *view) {
 		isc_buffer_constinit(&b, origin, strlen(origin));
 		isc_buffer_add(&b, strlen(origin));
 		name = dns_fixedname_initname(&fname);
-		CHECK(dns_name_fromtext(name, &b, dns_rootname,
-					DNS_NAME_DOWNCASE));
+		CHECK(dns_fixedname_fromtext(&fname, &b, dns_rootname,
+					     DNS_NAME_DOWNCASE));
 		dns_name_format(name, zname, sizeof(zname));
 
 		key.mv_data = zname;

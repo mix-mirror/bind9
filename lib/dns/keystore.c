@@ -157,7 +157,7 @@ buildpkcs11label(const char *uri, const dns_name_t *zname, const char *policy,
 		return ISC_R_NOSPACE;
 	}
 	isc_buffer_putstr(buf, "-");
-	RETERR(dns_name_fromstring(pname, policy, dns_rootname, 0, NULL));
+	RETERR(dns_fixedname_fromstring(&fname, policy, dns_rootname, 0));
 	RETERR(dns_name_tofilenametext(pname, false, buf));
 	/* key type + current time */
 	isc_time_formatshorttimestamp(&now, timebuf, sizeof(timebuf));

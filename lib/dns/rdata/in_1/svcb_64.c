@@ -608,7 +608,7 @@ generic_fromtext_in_svcb(ARGS_FROMTEXT) {
 		origin = dns_rootname;
 	}
 
-	RETTOK(dns_name_fromtext(name, &buffer, origin, options));
+	RETTOK(dns_fixedname_fromtext(&fn, &buffer, origin, options));
 	RETTOK(dns_name_towire(name, NULL, target));
 
 	if (!alias && (options & DNS_RDATA_CHECKNAMES) != 0) {
@@ -1157,7 +1157,7 @@ generic_additionaldata_in_svcb(ARGS_ADDLDATA) {
 				result = dns_rdata_tostruct(&current, &cname,
 							    NULL);
 				RUNTIME_CHECK(result == ISC_R_SUCCESS);
-				dns_name_copy(&cname.cname, fname);
+				dns_fixedname_copy(&cname.cname, &fixed);
 				dns_name_clone(fname, &name);
 			} else {
 				done = true;

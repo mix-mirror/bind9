@@ -92,7 +92,7 @@ addnamedeleg(const char *addrstr, dns_delegset_t *delegset, dns_deleg_t *deleg,
 	dns_fixedname_t fname;
 	dns_name_t *name = dns_fixedname_initname(&fname);
 
-	dns_name_fromstring(name, addrstr, NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, addrstr, NULL, 0);
 	fn(delegset, deleg, name);
 }
 
@@ -113,7 +113,7 @@ writedb(dns_delegdb_t *db, const char *zonecutstr, dns_ttl_t expire,
 	dns_name_t *zonecut = dns_fixedname_initname(&fzonecut);
 	isc_result_t result;
 
-	dns_name_fromstring(zonecut, zonecutstr, NULL, 0, NULL);
+	dns_fixedname_fromstring(&fzonecut, zonecutstr, NULL, 0);
 	result = dns_delegset_insert(db, zonecut, expire, *delegsetp);
 
 	dns_delegset_detach(delegsetp);
@@ -137,10 +137,10 @@ lookupdb(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
 		   *zonecut = dns_fixedname_initname(&fzonecut);
 
 	if (expectedzcstr != NULL) {
-		dns_name_fromstring(expectedzc, expectedzcstr, NULL, 0, NULL);
+		dns_fixedname_fromstring(&fexpectedzc, expectedzcstr, NULL, 0);
 	}
-	dns_name_fromstring(name, namestr, NULL, 0, NULL);
-	result = dns_delegdb_lookup(db, name, now, options, zonecut, NULL,
+	dns_fixedname_fromstring(&fname, namestr, NULL, 0);
+	result = dns_delegdb_lookup(db, name, now, options, &fzonecut, NULL,
 				    delegsetp);
 
 	if (result == ISC_R_SUCCESS) {
@@ -567,25 +567,25 @@ deletetests(ISC_ATTR_UNUSED void *arg) {
 	writedb(db, "foo.bar.baz.stuff.", 10, &delegset, true);
 	deleg = NULL;
 
-	dns_name_fromstring(name, "foo.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "foo.", NULL, 0);
 	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 	result = dns_delegdb_delete(db, name, true);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "gee.foo.bar.stuff.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "gee.foo.bar.stuff.", NULL, 0);
 	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "foo.bar.baz.stuff.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "foo.bar.baz.stuff.", NULL, 0);
 	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_name_fromstring(name, "foo.bar.baz.stuff.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "foo.bar.baz.stuff.", NULL, 0);
 	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "baz.stuff.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "baz.stuff.", NULL, 0);
 	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
@@ -594,15 +594,15 @@ deletetests(ISC_ATTR_UNUSED void *arg) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_delegset_detach(&delegset);
 
-	dns_name_fromstring(name, "stuff.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "stuff.", NULL, 0);
 	result = dns_delegdb_delete(db, name, true);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_name_fromstring(name, "stuff.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "stuff.", NULL, 0);
 	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "bar.baz.stuff.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "bar.baz.stuff.", NULL, 0);
 	result = dns_delegdb_delete(db, name, false);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
@@ -825,10 +825,10 @@ lookupdb_roothints(dns_delegdb_t *db, const char *namestr, isc_stdtime_t now,
 		   *zonecut = dns_fixedname_initname(&fzonecut);
 
 	if (expectedzcstr != NULL) {
-		dns_name_fromstring(expectedzc, expectedzcstr, NULL, 0, NULL);
+		dns_fixedname_fromstring(&fexpectedzc, expectedzcstr, NULL, 0);
 	}
-	dns_name_fromstring(name, namestr, NULL, 0, NULL);
-	result = dns_delegdb_lookup(db, name, now, DNS_DBFIND_HINTOK, zonecut,
+	dns_fixedname_fromstring(&fname, namestr, NULL, 0);
+	result = dns_delegdb_lookup(db, name, now, DNS_DBFIND_HINTOK, &fzonecut,
 				    NULL, &delegset);
 
 	if (result == ISC_R_SUCCESS || result == DNS_R_EXPIRED) {

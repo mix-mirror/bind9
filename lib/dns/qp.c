@@ -276,17 +276,18 @@ dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name,
 }
 
 void
-dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name,
-		 dns_namespace_t *space) {
+dns_qpkey_toname(const dns_qpkey_t key, size_t keylen,
+		 dns_fixedname_t *fixed_name, dns_namespace_t *space) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	size_t locs[DNS_NAME_MAXLABELS];
 	size_t loc = 0;
 	size_t offset = 0;
 
 	REQUIRE(ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
-	REQUIRE(name->buffer != NULL);
+	REQUIRE(fixed_name != NULL);
 	REQUIRE(keylen > 0);
 
-	dns_name_reset(name);
+	dns_fixedname_reset(fixed_name);
 
 	SET_IF_NOT_NULL(space, DECODE_NAMESPACE(key[offset++]));
 
@@ -323,10 +324,10 @@ scanned:
 		uint8_t len = 0, *lenp = NULL;
 
 		/* Store the location of the length byte */
-		lenp = isc_buffer_used(name->buffer);
+		lenp = isc_buffer_used(&fixed_name->buffer);
 
 		/* Add a length byte to the name data */
-		isc_buffer_putuint8(name->buffer, 0);
+		isc_buffer_putuint8(&fixed_name->buffer, 0);
 		name->length++;
 
 		/* Convert from escaped byte ranges to ASCII */
@@ -334,10 +335,10 @@ scanned:
 			uint8_t bit = qpkey_bit(key, keylen, offset);
 			uint8_t byte = dns_qp_byte_for_bit[bit];
 			if (qp_common_character(byte)) {
-				isc_buffer_putuint8(name->buffer, byte);
+				isc_buffer_putuint8(&fixed_name->buffer, byte);
 			} else {
 				byte += key[++offset] - SHIFT_BITMAP;
-				isc_buffer_putuint8(name->buffer, byte);
+				isc_buffer_putuint8(&fixed_name->buffer, byte);
 			}
 			len++;
 		}
@@ -351,11 +352,11 @@ scanned:
 	/* Add a root label for absolute names */
 	if (key[NAME_OFFSET] == SHIFT_NOBYTE) {
 		name->attributes.absolute = true;
-		isc_buffer_putuint8(name->buffer, 0);
+		isc_buffer_putuint8(&fixed_name->buffer, 0);
 		name->length++;
 	}
 
-	name->ndata = isc_buffer_base(name->buffer);
+	name->ndata = isc_buffer_base(&fixed_name->buffer);
 }
 
 /*

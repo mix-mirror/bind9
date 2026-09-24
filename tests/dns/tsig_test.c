@@ -261,7 +261,7 @@ tsig_tcp(isc_stdtime_t now, isc_result_t expected_result, bool mangle_sig) {
 	/* isc_log_setdebuglevel(lctx, 99); */
 
 	keyname = dns_fixedname_initname(&fkeyname);
-	result = dns_name_fromstring(keyname, "test", dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(&fkeyname, "test", dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_tsigkeyring_create(isc_g_mctx, &ring);
@@ -500,8 +500,8 @@ tsig_delete(bool generated) {
 	dns_fixedname_t fkeyname;
 	dns_name_t *keyname = dns_fixedname_initname(&fkeyname);
 
-	isc_result_t result = dns_name_fromstring(keyname, "tsig-key",
-						  dns_rootname, 0, NULL);
+	isc_result_t result = dns_fixedname_fromstring(&fkeyname, "tsig-key",
+						       dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_tsigkeyring_t *ring = NULL;
@@ -545,8 +545,8 @@ ISC_RUN_TEST_IMPL(tsig_maxkeys) {
 		isc_result_t result;
 
 		snprintf(str, sizeof(str), "tsig-key-%zu", i);
-		result = dns_name_fromstring(keyname, str, dns_rootname, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&fkeyname, str, dns_rootname,
+						  0);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		/* Add a new key. */
@@ -610,10 +610,10 @@ add_key(dns_tsigkeyring_t *ring, const char *namestr, bool generated,
 	dns_tsigkey_t *tkey = NULL, *tmp = NULL;
 	isc_result_t result;
 
-	result = dns_name_fromstring(name, namestr, dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(&fname, namestr, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	result = dns_name_fromstring(creator, TEST_CREATOR, dns_rootname, 0,
-				     NULL);
+	result = dns_fixedname_fromstring(&fcreator, TEST_CREATOR, dns_rootname,
+					  0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* dns_tsigkey_create() derives the DST key from the secret. */
@@ -703,8 +703,8 @@ ISC_RUN_TEST_IMPL(tsig_dumpanddetach_shared) {
 	assert_false(keyfile_exists());
 
 	/* The surviving owner still resolves the key. */
-	result = dns_name_fromstring(name, "session.example", dns_rootname, 0,
-				     NULL);
+	result = dns_fixedname_fromstring(&fname, "session.example",
+					  dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = dns_tsigkey_find(&found, name, NULL, shared);
 	assert_int_equal(result, ISC_R_SUCCESS);

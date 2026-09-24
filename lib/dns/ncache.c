@@ -724,3 +724,11 @@ dns_ncache_current(dns_rdataset_t *ncacherdataset, dns_name_t *found,
 	rdataset->ncache.iter_pos = NULL;
 	rdataset->ncache.iter_count = 0;
 }
+
+void
+dns_ncache_currentfixedname(dns_rdataset_t *ncacherdataset,
+			    dns_fixedname_t *found, dns_rdataset_t *rdataset) {
+	dns_name_t name = DNS_NAME_INITEMPTY;
+	dns_ncache_current(ncacherdataset, &name, rdataset);
+	dns_fixedname_copy(&name, found);
+}

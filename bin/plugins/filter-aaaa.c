@@ -703,7 +703,7 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 			DNS_DBFIND_GLUEOK | DNS_DBFIND_ADDITIONALOK |
 				DNS_DBFIND_PENDINGOK,
 			qctx->client->inner.now,
-			dns_fixedname_initname(&tfoundname), trdataset, NULL);
+			dns_fixedname_init(&tfoundname), trdataset, NULL);
 		dns_rdataset_cleanup(trdataset);
 		ns_client_putrdataset(qctx->client, &trdataset);
 
@@ -754,7 +754,7 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 			.qctx = qctx,
 			.mode = client_state->mode,
 			.section = DNS_SECTION_ANSWER,
-			.name = qctx->fname,
+			.name = dns_fixedname_name(qctx->fname),
 			.type = dns_rdatatype_aaaa,
 		};
 		process_section(&filter_answer);

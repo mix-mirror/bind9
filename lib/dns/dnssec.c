@@ -190,8 +190,7 @@ digest_sig(dst_context_t *ctx, bool downcase, dns_rdata_t *sigrdata,
 	if (downcase) {
 		dns_fixedname_init(&fname);
 
-		RUNTIME_CHECK(dns_name_downcase(&rrsig->signer,
-						dns_fixedname_name(&fname)) ==
+		RUNTIME_CHECK(dns_fixedname_downcase(&rrsig->signer, &fname) ==
 			      ISC_R_SUCCESS);
 		dns_name_toregion(dns_fixedname_name(&fname), &r);
 	} else {
@@ -243,8 +242,7 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	 */
 	dns_name_init(&sig.signer);
 	dns_fixedname_init(&fsigner);
-	RUNTIME_CHECK(dns_name_downcase(dst_key_name(key),
-					dns_fixedname_name(&fsigner)) ==
+	RUNTIME_CHECK(dns_fixedname_downcase(dst_key_name(key), &fsigner) ==
 		      ISC_R_SUCCESS);
 	dns_name_clone(dns_fixedname_name(&fsigner), &sig.signer);
 
@@ -290,8 +288,7 @@ dns_dnssec_sign(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 	}
 
 	dns_fixedname_init(&fnewname);
-	RUNTIME_CHECK(dns_name_downcase(name, dns_fixedname_name(&fnewname)) ==
-		      ISC_R_SUCCESS);
+	RUNTIME_CHECK(dns_fixedname_downcase(name, &fnewname) == ISC_R_SUCCESS);
 	dns_name_toregion(dns_fixedname_name(&fnewname), &r);
 
 	/*
@@ -379,7 +376,10 @@ cleanup_databuf:
 isc_result_t
 dns_dnssec_verify(const dns_name_t *name, dns_rdataset_t *set, dst_key_t *key,
 		  bool ignoretime, isc_mem_t *mctx, dns_rdata_t *sigrdata,
-		  dns_name_t *wild, dns_name_t *wildsigner) {
+		  dns_fixedname_t *fixed_wild,
+		  dns_fixedname_t *fixed_wildsigner) {
+	dns_name_t *wild = dns_fixedname_name(fixed_wild);
+	dns_name_t *wildsigner = dns_fixedname_name(fixed_wildsigner);
 	dns_rdata_nsec_t nsec;
 	dns_rdata_rrsig_t sig;
 	dns_fixedname_t fnewname;
@@ -517,8 +517,7 @@ again:
 	 * If the name is an expanded wildcard, use the wildcard name.
 	 */
 	dns_fixedname_init(&fnewname);
-	RUNTIME_CHECK(dns_name_downcase(name, dns_fixedname_name(&fnewname)) ==
-		      ISC_R_SUCCESS);
+	RUNTIME_CHECK(dns_fixedname_downcase(name, &fnewname) == ISC_R_SUCCESS);
 	if (labels > siglabels) {
 		dns_name_split(dns_fixedname_name(&fnewname), siglabels, NULL,
 			       dns_fixedname_name(&fnewname));
@@ -627,13 +626,13 @@ cleanup_struct:
 
 	if (result == ISC_R_SUCCESS && labels > siglabels) {
 		if (wild != NULL) {
-			RUNTIME_CHECK(dns_name_concatenate(
+			RUNTIME_CHECK(dns_fixedname_concatenate(
 					      dns_wildcardname,
 					      dns_fixedname_name(&fnewname),
-					      wild) == ISC_R_SUCCESS);
+					      fixed_wild) == ISC_R_SUCCESS);
 		}
 		if (wildsigner != NULL) {
-			dns_name_copy(&sig.signer, wildsigner);
+			dns_fixedname_copy(&sig.signer, fixed_wildsigner);
 		}
 		inc_stat(dns_dnssecstats_wildcard);
 		result = DNS_R_FROMWILDCARD;

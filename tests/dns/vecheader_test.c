@@ -193,7 +193,7 @@ ISC_RUN_TEST_IMPL(merge_case_preservation) {
 
 	/* Test: case should be the same as the first header */
 	/* Copy the name for testing */
-	dns_name_copy(name1, merged_name);
+	dns_fixedname_copy(name1, &fmerged_name);
 
 	/* Create a test rdataset from merged header to test case */
 	dns_rdataset_t test_rdataset;
@@ -258,7 +258,7 @@ ISC_RUN_TEST_IMPL(setcase_size_consistency) {
 	dns_test_namefromstring("example.com", &flower_fname);
 
 	/* Copy lowercase name to retrieved_name for testing */
-	dns_name_copy(lower_name, retrieved_name);
+	dns_fixedname_copy(lower_name, &fretrieved_fname);
 
 	/* Create a test rdataset from cased header */
 	create_rdataset_from_vecheader(header, dns_rdataclass_in,

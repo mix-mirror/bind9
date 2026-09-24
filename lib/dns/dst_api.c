@@ -1485,8 +1485,7 @@ dst_key_read_public(const char *filename, int type, isc_mem_t *mctx,
 	dns_fixedname_init(&name);
 	isc_buffer_init(&b, DST_AS_STR(token), strlen(DST_AS_STR(token)));
 	isc_buffer_add(&b, strlen(DST_AS_STR(token)));
-	CHECK(dns_name_fromtext(dns_fixedname_name(&name), &b, dns_rootname,
-				0));
+	CHECK(dns_fixedname_fromtext(&name, &b, dns_rootname, 0));
 
 	/* Read the next word: either TTL, class, or 'KEY' */
 	NEXTTOKEN(lex, opt, &token);
@@ -2647,7 +2646,7 @@ dst_algorithm_fromprivatedns(isc_buffer_t *buffer) {
 	dns_name_t *name = dns_fixedname_initname(&fixed);
 	isc_result_t result;
 
-	result = dns_name_fromwire(name, buffer, DNS_DECOMPRESS_NEVER, NULL);
+	result = dns_fixedname_fromwire(&fixed, buffer, DNS_DECOMPRESS_NEVER);
 	if (result != ISC_R_SUCCESS) {
 		return 0;
 	}

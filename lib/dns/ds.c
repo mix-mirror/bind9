@@ -76,7 +76,7 @@ dns_ds_fromkeyrdata(const dns_name_t *owner, dns_rdata_t *key,
 	}
 
 	name = dns_fixedname_initname(&fname);
-	(void)dns_name_downcase(owner, name);
+	(void)dns_fixedname_downcase(owner, &fname);
 
 	md = isc_md_new();
 
@@ -116,7 +116,7 @@ dns_ds_fromkeyrdata(const dns_name_t *owner, dns_rdata_t *key,
 			isc_region_t r2 = r;
 			INSIST(r2.length >= 5);
 			isc_region_consume(&r2, 4);
-			dns_name_fromregion(name, &r2);
+			dns_fixedname_fromregion(&fname, &r2);
 			dns_name_toregion(name, &r2);
 			privatelen = r2.length;
 			if (r2.length > len) {

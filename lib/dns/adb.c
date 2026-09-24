@@ -901,7 +901,7 @@ new_adbname(dns_adb_t *adb, const dns_name_t *dnsname, unsigned int type) {
 	isc_mutex_init(&name->lock);
 
 	name->name = dns_fixedname_initname(&name->fname);
-	dns_name_copy(dnsname, name->name);
+	dns_fixedname_copy(dnsname, &name->fname);
 
 	inc_adbstats(adb, dns_adbstats_namescnt);
 	return name;
@@ -2554,7 +2554,7 @@ dbfind_name(dns_adbname_t *adbname, isc_stdtime_t now, dns_rdatatype_t rdtype) {
 	dns_rdataset_t rdataset;
 	dns_adb_t *adb = NULL;
 	dns_fixedname_t foundname;
-	dns_name_t *fname = NULL;
+
 	unsigned int options = DNS_DBFIND_GLUEOK | DNS_DBFIND_ADDITIONALOK;
 
 	REQUIRE(DNS_ADBNAME_VALID(adbname));
@@ -2564,7 +2564,7 @@ dbfind_name(dns_adbname_t *adbname, isc_stdtime_t now, dns_rdatatype_t rdtype) {
 	REQUIRE(DNS_ADB_VALID(adb));
 	REQUIRE(dns_rdatatype_isaddr(rdtype));
 
-	fname = dns_fixedname_initname(&foundname);
+	dns_fixedname_init(&foundname);
 	dns_rdataset_init(&rdataset);
 
 	if (rdtype == dns_rdatatype_a) {
@@ -2586,7 +2586,7 @@ dbfind_name(dns_adbname_t *adbname, isc_stdtime_t now, dns_rdatatype_t rdtype) {
 	}
 	result = dns_view_find(adb->view, adbname->name, rdtype, now, options,
 			       (adbname->type & DNS_ADBFIND_STARTATZONE) != 0,
-			       NULL, fname, &rdataset, NULL);
+			       NULL, &foundname, &rdataset, NULL);
 
 	switch (result) {
 	case DNS_R_GLUE:
@@ -2888,8 +2888,8 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 		DP(ENTER_LEVEL, "fetch_name: starting at zone for name %p",
 		   adbname);
 		name = dns_fixedname_initname(&fixed);
-		CHECK(dns_view_bestzonecut(adb->view, adbname->name, name, NULL,
-					   0, 0, true, false, &delegset));
+		CHECK(dns_view_bestzonecut(adb->view, adbname->name, &fixed,
+					   NULL, 0, 0, true, false, &delegset));
 		options |= DNS_FETCHOPT_UNSHARED;
 	} else if (adb->view->qminimization) {
 		options |= DNS_FETCHOPT_QMINIMIZE | DNS_FETCHOPT_QMIN_SKIP_IP6A;

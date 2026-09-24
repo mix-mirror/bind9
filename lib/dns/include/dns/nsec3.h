@@ -20,6 +20,7 @@
 
 #include <dns/db.h>
 #include <dns/diff.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/rdatastruct.h>
 #include <dns/types.h>
@@ -264,7 +265,8 @@ dns_nsec3param_deletechains(dns_db_t *db, dns_dbversion_t *ver,
 isc_result_t
 dns_nsec3_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 			const dns_name_t *nsec3name, dns_rdataset_t *nsec3set,
-			dns_name_t *zonename, bool *exists, bool *data,
-			bool *optout, bool *unknown, bool *setnearest,
-			dns_name_t *closest, dns_name_t *nearest,
-			dns_nseclog_t logit, void *arg);
+			dns_fixedname_t *fixed_zonename, bool *exists,
+			bool *data, bool *optout, bool *unknown,
+			bool *setnearest, dns_fixedname_t *fixed_closest,
+			dns_fixedname_t *fixed_nearest, dns_nseclog_t logit,
+			void *arg);

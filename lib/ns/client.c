@@ -3032,22 +3032,6 @@ ns_client_putrdataset(ns_client_t *client, dns_rdataset_t **rdatasetp) {
 	}
 }
 
-dns_name_t *
-ns_client_newname(ns_client_t *client) {
-	dns_name_t *name = NULL;
-
-	CTRACE("ns_client_newname");
-
-	/*
-	 * The temporary name is backed by a dns_fixedname_t from the
-	 * message's name pool, so it already has a dedicated buffer.
-	 */
-	dns_message_gettempname(client->message, &name);
-
-	CTRACE("ns_client_newname: done");
-	return name;
-}
-
 void
 ns_client_releasename(ns_client_t *client, dns_name_t **namep) {
 	/*%
@@ -3135,4 +3119,16 @@ ns_client_findversion(ns_client_t *client, dns_db_t *db) {
 	dbversion->queryok = false;
 	ISC_LIST_APPEND(client->query.activeversions, dbversion, link);
 	return dbversion;
+}
+
+dns_fixedname_t *
+ns_client_newfixedname(ns_client_t *client) {
+	dns_fixedname_t *name = NULL;
+	dns_message_gettempfixedname(client->message, &name);
+	return name;
+}
+
+void
+ns_client_releasefixedname(ns_client_t *client, dns_fixedname_t **namep) {
+	dns_message_puttempfixedname(client->message, namep);
 }

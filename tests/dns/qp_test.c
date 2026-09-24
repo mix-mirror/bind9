@@ -31,6 +31,7 @@
 #include <isc/urcu.h>
 #include <isc/util.h>
 
+#include <dns/fixedname.h>
 #include <dns/lib.h>
 #include <dns/name.h>
 #include <dns/qp.h>
@@ -51,20 +52,21 @@ bool verbose = false;
  */
 static void
 maybe_set_name(dns_qpreader_t *qp, void *pval, uint32_t ival,
-	       dns_name_t *name) {
+	       dns_fixedname_t *fixed_name) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	if (name != NULL) {
 		dns_qpkey_t key;
 		size_t len;
 		dns_qpnode_t node = make_leaf(pval, ival);
 		dns_name_reset(name);
 		len = leaf_qpkey(qp, &node, key);
-		dns_qpkey_toname(key, len, name, NULL);
+		dns_qpkey_toname(key, len, fixed_name, NULL);
 	}
 }
 
 static isc_result_t
-qpiter_next_with_name(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-		      uint32_t *ival_r) {
+qpiter_next_with_name(dns_qpiter_t *qpi, dns_fixedname_t *fixed_name,
+		      void **pval_r, uint32_t *ival_r) {
 	isc_result_t result;
 	void *pval = NULL;
 	uint32_t ival = 0;
@@ -73,14 +75,14 @@ qpiter_next_with_name(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
 	if (result == ISC_R_SUCCESS) {
 		SET_IF_NOT_NULL(pval_r, pval);
 		SET_IF_NOT_NULL(ival_r, ival);
-		maybe_set_name(qpi->qp, pval, ival, name);
+		maybe_set_name(qpi->qp, pval, ival, fixed_name);
 	}
 	return result;
 }
 
 static isc_result_t
-qpiter_prev_with_name(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-		      uint32_t *ival_r) {
+qpiter_prev_with_name(dns_qpiter_t *qpi, dns_fixedname_t *fixed_name,
+		      void **pval_r, uint32_t *ival_r) {
 	isc_result_t result;
 	void *pval = NULL;
 	uint32_t ival = 0;
@@ -89,14 +91,14 @@ qpiter_prev_with_name(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
 	if (result == ISC_R_SUCCESS) {
 		SET_IF_NOT_NULL(pval_r, pval);
 		SET_IF_NOT_NULL(ival_r, ival);
-		maybe_set_name(qpi->qp, pval, ival, name);
+		maybe_set_name(qpi->qp, pval, ival, fixed_name);
 	}
 	return result;
 }
 
 static isc_result_t
-qpiter_current_with_name(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
-			 uint32_t *ival_r) {
+qpiter_current_with_name(dns_qpiter_t *qpi, dns_fixedname_t *fixed_name,
+			 void **pval_r, uint32_t *ival_r) {
 	isc_result_t result;
 	void *pval = NULL;
 	uint32_t ival = 0;
@@ -105,7 +107,7 @@ qpiter_current_with_name(dns_qpiter_t *qpi, dns_name_t *name, void **pval_r,
 	if (result == ISC_R_SUCCESS) {
 		SET_IF_NOT_NULL(pval_r, pval);
 		SET_IF_NOT_NULL(ival_r, ival);
-		maybe_set_name(qpi->qp, pval, ival, name);
+		maybe_set_name(qpi->qp, pval, ival, fixed_name);
 	}
 	return result;
 }
@@ -209,11 +211,11 @@ ISC_RUN_TEST_IMPL(qpkey_name) {
 		assert_memory_equal(testcases[i].key, key, len);
 
 		out = dns_fixedname_initname(&fn2);
-		dns_qpkey_toname(key, len, out, &space);
+		dns_qpkey_toname(key, len, &fn2, &space);
 		assert_true(dns_name_equal(in, out));
 		assert_int_equal(space, testcases[i].space);
 		/* check that 'out' is properly reset by dns_qpkey_toname */
-		dns_qpkey_toname(key, len, out, NULL);
+		dns_qpkey_toname(key, len, &fn2, NULL);
 		dns_name_format(out, namebuf, sizeof(namebuf));
 	}
 }
@@ -482,8 +484,7 @@ check_partialmatch(dns_qp_t *qp, struct check_partialmatch check[],
 		if ((result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) &&
 		    pval != NULL)
 		{
-			maybe_set_name((dns_qpreader_t *)qp, pval, space,
-				       foundname);
+			maybe_set_name((dns_qpreader_t *)qp, pval, space, &fn2);
 		}
 
 #if 0
@@ -667,7 +668,7 @@ check_qpchainiter(dns_qp_t *qp, struct check_qpchain check[],
 			void *pval = NULL;
 			uint32_t ival = 0;
 			dns_qpchain_node(&chain, j, &pval, &ival);
-			maybe_set_name(chain.qp, pval, ival, found);
+			maybe_set_name(chain.qp, pval, ival, &fn3);
 #if 0
 			char nb[DNS_NAME_FORMATSIZE];
 			dns_name_format(found, nb, sizeof(nb));
@@ -894,9 +895,9 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 			 * we found an exact match; iterate to find
 			 * the predecessor.
 			 */
-			result = qpiter_prev_with_name(&it, pred, NULL, &ival);
+			result = qpiter_prev_with_name(&it, &fn2, NULL, &ival);
 			if (result == ISC_R_NOMORE) {
-				result = qpiter_prev_with_name(&it, pred, NULL,
+				result = qpiter_prev_with_name(&it, &fn2, NULL,
 							       &ival);
 			}
 		} else {
@@ -904,7 +905,7 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 			 * we didn't find a match, so the iterator should
 			 * already be pointed at the predecessor node.
 			 */
-			result = qpiter_current_with_name(&it, pred, NULL,
+			result = qpiter_current_with_name(&it, &fn2, NULL,
 							  &ival);
 		}
 		assert_int_equal(result, ISC_R_SUCCESS);
@@ -925,7 +926,7 @@ check_predecessors_withchain(dns_qp_t *qp, struct check_predecessors check[],
 		isc_mem_free(isc_g_mctx, predstr);
 
 		int j = 0;
-		while (qpiter_next_with_name(&it, name, NULL, NULL) ==
+		while (qpiter_next_with_name(&it, &fn1, NULL, NULL) ==
 		       ISC_R_SUCCESS)
 		{
 #if 0

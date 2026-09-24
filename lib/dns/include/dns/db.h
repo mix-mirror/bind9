@@ -142,8 +142,8 @@ typedef struct dns_db_methods {
 				       dns_rdataset_t *rdataset,
 				       isc_stdtime_t   resign);
 	isc_result_t (*getsigningtime)(dns_db_t *db, isc_stdtime_t *resign,
-				       dns_name_t     *name,
-				       dns_typepair_t *typepair);
+				       dns_fixedname_t *name,
+				       dns_typepair_t  *typepair);
 	dns_stats_t *(*getrrsetstats)(dns_db_t *db);
 	isc_result_t (*findnode)(dns_db_t *db, const dns_name_t *name,
 				 bool create, dns_clientinfomethods_t *methods,
@@ -152,7 +152,7 @@ typedef struct dns_db_methods {
 	isc_result_t (*find)(dns_db_t *db, const dns_name_t *name,
 			     dns_dbversion_t *version, dns_rdatatype_t type,
 			     unsigned int options, isc_stdtime_t now,
-			     dns_name_t			*foundname,
+			     dns_fixedname_t		*foundname,
 			     dns_clientinfomethods_t	*methods,
 			     dns_clientinfo_t		*clientinfo,
 			     dns_rdataset_t		*rdataset,
@@ -826,7 +826,7 @@ dns__db_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 isc_result_t
 dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	     dns_rdatatype_t type, unsigned int options, isc_stdtime_t now,
-	     dns_name_t *foundname, dns_clientinfomethods_t *methods,
+	     dns_fixedname_t *fixed_foundname, dns_clientinfomethods_t *methods,
 	     dns_clientinfo_t *clientinfo, dns_rdataset_t *rdataset,
 	     dns_rdataset_t *sigrdataset DNS__DB_FLARG);
 /*%<
@@ -895,7 +895,7 @@ dns__db_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
  *
  * \li	'type' is not SIG, or a meta-RR type other than 'ANY' (e.g. 'OPT').
  *
- * \li	'foundname' is a valid name with a dedicated buffer.
+ * \li	'foundname' is an initialized fixedname.
  *
  * \li	'rdataset' is NULL, or is a valid unassociated rdataset.
  *
@@ -1595,7 +1595,8 @@ dns_db_setsigningtime(dns_db_t *db, dns_dbnode_t *node,
 
 isc_result_t
 dns_db_getsigningtime(dns_db_t *db, isc_stdtime_t *resign,
-		      dns_name_t *foundname, dns_typepair_t *typepair);
+		      dns_fixedname_t *fixed_foundname,
+		      dns_typepair_t  *typepair);
 /*%<
  * Find the rdataset header with the earliest signing time in a zone
  * database. Update 'foundname' and 'typepair' with its name and

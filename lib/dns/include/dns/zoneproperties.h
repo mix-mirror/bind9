@@ -1476,7 +1476,7 @@ dns_zone_setrad(dns_zone_t *zone, dns_name_t *name);
  */
 
 isc_result_t
-dns_zone_getrad(dns_zone_t *zone, dns_name_t *name);
+dns_zone_getrad(dns_zone_t *zone, dns_fixedname_t *fixed_name);
 /**<
  * \brief get the per zone RAD
  *

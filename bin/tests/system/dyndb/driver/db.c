@@ -286,13 +286,13 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *node, dns_rdataset_t *rdataset,
 }
 
 static isc_result_t
-getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *name,
+getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_fixedname_t *fixed_name,
 	       dns_typepair_t *type) {
 	sampledb_t *sampledb = (sampledb_t *)db;
 
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
-	return dns_db_getsigningtime(sampledb->db, resign, name, type);
+	return dns_db_getsigningtime(sampledb->db, resign, fixed_name, type);
 }
 
 static dns_stats_t *
@@ -319,7 +319,7 @@ findnode(dns_db_t *db, const dns_name_t *name, bool create,
 static isc_result_t
 find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
      dns_rdatatype_t type, unsigned int options, isc_stdtime_t now,
-     dns_name_t *foundname, dns_clientinfomethods_t *methods,
+     dns_fixedname_t *fixed_foundname, dns_clientinfomethods_t *methods,
      dns_clientinfo_t *clientinfo, dns_rdataset_t *rdataset,
      dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
 	sampledb_t *sampledb = (sampledb_t *)db;
@@ -327,7 +327,7 @@ find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
 	return dns__db_find(sampledb->db, name, version, type, options, now,
-			    foundname, methods, clientinfo, rdataset,
+			    fixed_foundname, methods, clientinfo, rdataset,
 			    sigrdataset DNS__DB_FLARG_PASS);
 }
 

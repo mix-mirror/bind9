@@ -362,7 +362,7 @@ cleartree(dns_db_t *db, const dns_name_t *name) {
 	}
 
 	while (result == ISC_R_SUCCESS) {
-		result = dns_dbiterator_current(iter, &node, nodename);
+		result = dns_dbiterator_current(iter, &node, &fnodename);
 		if (result == DNS_R_NEWORIGIN) {
 			result = ISC_R_SUCCESS;
 		}

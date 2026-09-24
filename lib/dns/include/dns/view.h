@@ -524,8 +524,8 @@ dns_view_thaw(dns_view_t *view);
 isc_result_t
 dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
 	      isc_stdtime_t now, unsigned int options, bool use_static_stub,
-	      dns_db_t **dbp, dns_name_t *foundname, dns_rdataset_t *rdataset,
-	      dns_rdataset_t *sigrdataset);
+	      dns_db_t **dbp, dns_fixedname_t *fixed_foundname,
+	      dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);
 /*%<
  * Find an rdataset whose owner name is 'name', and whose type is
  * 'type'.
@@ -580,7 +580,7 @@ dns_view_find(dns_view_t *view, const dns_name_t *name, dns_rdatatype_t type,
  *
  *\li	dbp == NULL || *dbp == NULL
  *
- *\li	'foundname' is a valid name with a dedicated buffer or NULL.
+ *\li	'foundname' is an initialized fixedname or NULL.
  *
  *\li	'rdataset' is a valid, disassociated rdataset.
  *
@@ -658,7 +658,8 @@ dns_view_simplefind(dns_view_t *view, const dns_name_t *name,
 
 isc_result_t
 dns_view_bestzonecut(dns_view_t *view, const dns_name_t *name,
-		     dns_name_t *fname, dns_name_t *dcname, isc_stdtime_t now,
+		     dns_fixedname_t *fixed_fname,
+		     dns_fixedname_t *fixed_dcname, isc_stdtime_t now,
 		     unsigned int options, bool use_hints, bool use_cache,
 		     dns_delegset_t **delegsetp);
 /*%<
@@ -1135,7 +1136,7 @@ dns_view_sfd_del(dns_view_t *view, const dns_name_t *name);
 
 void
 dns_view_sfd_find(dns_view_t *view, const dns_name_t *name,
-		  dns_name_t *foundname);
+		  dns_fixedname_t *fixed_foundname);
 /*%<
  * Find the enclosing name to the synth-from-dnssec namespace tree for 'name'
  * in the specified view.

@@ -58,8 +58,8 @@ main(void) {
 		if (count == ARRAY_SIZE(fixedname)) {
 			errx(1, "too many names");
 		}
-		dns_name_t *name = dns_fixedname_initname(&fixedname[count++]);
-		result = dns_name_fromtext(name, &buf, dns_rootname, 0);
+		dns_fixedname_t *name = dns_fixedname_init(&fixedname[count++]);
+		result = dns_fixedname_fromtext(name, &buf, dns_rootname, 0);
 		CHECKRESULT(result, line);
 	}
 

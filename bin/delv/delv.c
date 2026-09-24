@@ -593,7 +593,7 @@ convert_name(dns_fixedname_t *fn, dns_name_t **name, const char *text) {
 	isc_buffer_add(&b, len);
 	n = dns_fixedname_initname(fn);
 
-	result = dns_name_fromtext(n, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(fn, &b, dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
 		delv_log(ISC_LOG_ERROR, "failed to convert name %s: %s", text,
 			 isc_result_totext(result));
@@ -1797,7 +1797,7 @@ get_reverse(char *reverse, size_t len, char *value, bool strict) {
 		dns_name_t *name;
 
 		name = dns_fixedname_initname(&fname);
-		RETERR(dns_byaddr_createptrname(&addr, name));
+		RETERR(dns_byaddr_createptrname(&addr, &fname));
 		dns_name_format(name, reverse, (unsigned int)len);
 		return ISC_R_SUCCESS;
 	} else {

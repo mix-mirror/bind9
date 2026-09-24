@@ -233,7 +233,8 @@ isusertype(dns_rdatatype_t type) {
 }
 
 static void
-reverse_from_address(dns_name_t *tcpself, const isc_netaddr_t *tcpaddr) {
+reverse_from_address(dns_fixedname_t *fixed_tcpself,
+		     const isc_netaddr_t *tcpaddr) {
 	char buf[16 * 4 + sizeof("IP6.ARPA.")];
 	isc_result_t result;
 	const unsigned char *ap;
@@ -277,12 +278,12 @@ reverse_from_address(dns_name_t *tcpself, const isc_netaddr_t *tcpaddr) {
 	}
 	isc_buffer_init(&b, buf, strlen(buf));
 	isc_buffer_add(&b, strlen(buf));
-	result = dns_name_fromtext(tcpself, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(fixed_tcpself, &b, dns_rootname, 0);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 }
 
 static void
-stf_from_address(dns_name_t *stfself, const isc_netaddr_t *tcpaddr) {
+stf_from_address(dns_fixedname_t *fixed_stfself, const isc_netaddr_t *tcpaddr) {
 	char buf[sizeof("X.X.X.X.Y.Y.Y.Y.2.0.0.2.IP6.ARPA.")];
 	isc_result_t result;
 	const unsigned char *ap;
@@ -317,7 +318,7 @@ stf_from_address(dns_name_t *stfself, const isc_netaddr_t *tcpaddr) {
 	}
 	isc_buffer_init(&b, buf, strlen(buf));
 	isc_buffer_add(&b, strlen(buf));
-	result = dns_name_fromtext(stfself, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(fixed_stfself, &b, dns_rootname, 0);
 	RUNTIME_CHECK(result == ISC_R_SUCCESS);
 }
 
@@ -387,7 +388,7 @@ dns_ssutable_checkrules(dns_ssutable_t *table, const dns_name_t *signer,
 				case dns_ssumatchtype_tcpself:
 					tcpself =
 						dns_fixedname_initname(&fixed);
-					reverse_from_address(tcpself, addr);
+					reverse_from_address(&fixed, addr);
 					dns_name_format(tcpself, namebuf,
 							sizeof(namebuf));
 					isc_log_write(
@@ -401,7 +402,7 @@ dns_ssutable_checkrules(dns_ssutable_t *table, const dns_name_t *signer,
 				case dns_ssumatchtype_6to4self:
 					stfself =
 						dns_fixedname_initname(&fixed);
-					stf_from_address(stfself, addr);
+					stf_from_address(&fixed, addr);
 					dns_name_format(stfself, namebuf,
 							sizeof(namebuf));
 					isc_log_write(
@@ -626,8 +627,8 @@ dns_ssutable_checkrules(dns_ssutable_t *table, const dns_name_t *signer,
 			break;
 		case dns_ssumatchtype_selfwild:
 			wildcard = dns_fixedname_initname(&fixed);
-			result = dns_name_concatenate(dns_wildcardname, signer,
-						      wildcard);
+			result = dns_fixedname_concatenate(dns_wildcardname,
+							   signer, &fixed);
 			if (result != ISC_R_SUCCESS) {
 				if (logit) {
 					isc_log_write(
@@ -795,7 +796,7 @@ dns_ssutable_checkrules(dns_ssutable_t *table, const dns_name_t *signer,
 			continue;
 		case dns_ssumatchtype_tcpself:
 			tcpself = dns_fixedname_initname(&fixed);
-			reverse_from_address(tcpself, addr);
+			reverse_from_address(&fixed, addr);
 			if (dns_name_iswildcard(rule->identity)) {
 				if (!dns_name_matcheswildcard(tcpself,
 							      rule->identity))
@@ -842,7 +843,7 @@ dns_ssutable_checkrules(dns_ssutable_t *table, const dns_name_t *signer,
 			break;
 		case dns_ssumatchtype_6to4self:
 			stfself = dns_fixedname_initname(&fixed);
-			stf_from_address(stfself, addr);
+			stf_from_address(&fixed, addr);
 			if (dns_name_iswildcard(rule->identity)) {
 				if (!dns_name_matcheswildcard(stfself,
 							      rule->identity))

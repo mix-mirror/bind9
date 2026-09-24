@@ -2884,13 +2884,6 @@ dns_message_signer(dns_message_t *msg, dns_name_t *signer) {
 		return DNS_R_NOTVERIFIEDYET;
 	}
 
-	if (!dns_name_hasbuffer(signer)) {
-		isc_buffer_t *dynbuf = NULL;
-		isc_buffer_allocate(msg->mctx, &dynbuf, 512);
-		dns_name_setbuffer(signer, dynbuf);
-		dns_message_takebuffer(msg, &dynbuf);
-	}
-
 	if (msg->sig0 != NULL) {
 		dns_rdata_sig_t sig;
 
@@ -3467,7 +3460,7 @@ render_nameopt(isc_buffer_t *optbuf, bool yaml, isc_buffer_t *target) {
 	char namebuf[DNS_NAME_FORMATSIZE];
 	isc_result_t result;
 
-	result = dns_name_fromwire(name, optbuf, dctx, NULL);
+	result = dns_fixedname_fromwire(&fixed, optbuf, dctx);
 	if (result == ISC_R_SUCCESS && isc_buffer_activelength(optbuf) == 0) {
 		dns_name_format(name, namebuf, sizeof(namebuf));
 		ADD_STRING(target, " \"");
@@ -5055,4 +5048,20 @@ bool
 dns_message_hasdname(dns_message_t *msg) {
 	REQUIRE(DNS_MESSAGE_VALID(msg));
 	return msg->has_dname;
+}
+
+void
+dns_message_gettempfixedname(dns_message_t *msg, dns_fixedname_t **item) {
+	REQUIRE(DNS_MESSAGE_VALID(msg));
+	REQUIRE(item != NULL && *item == NULL);
+	*item = isc_mempool_get(msg->namepool);
+	dns_fixedname_init(*item);
+}
+
+void
+dns_message_puttempfixedname(dns_message_t *msg, dns_fixedname_t **item) {
+	REQUIRE(item != NULL && *item != NULL);
+	dns_name_t *name = dns_fixedname_name(*item);
+	dns_message_puttempname(msg, &name);
+	*item = NULL;
 }

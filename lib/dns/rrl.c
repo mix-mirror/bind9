@@ -31,6 +31,7 @@
 #include <isc/result.h>
 #include <isc/util.h>
 
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/rcode.h>
 #include <dns/rdataclass.h>
@@ -430,8 +431,8 @@ make_key(const dns_rrl_t *rrl, dns_rrl_key_t *key,
 			 * origin name concatenated to the "*" name.
 			 */
 			wild = dns_fixedname_initname(&fixed);
-			result = dns_name_concatenate(dns_wildcardname, origin,
-						      wild);
+			result = dns_fixedname_concatenate(dns_wildcardname,
+							   origin, &fixed);
 			if (result != ISC_R_SUCCESS) {
 				/*
 				 * Fallback to use the zone's origin name
@@ -930,8 +931,7 @@ make_log_buf(dns_rrl_t *rrl, dns_rrl_entry_t *e, const char *str1,
 				e->log_qname = qbuf->index;
 				qbuf->e = e;
 				dns_fixedname_init(&qbuf->qname);
-				dns_name_copy(qname,
-					      dns_fixedname_name(&qbuf->qname));
+				dns_fixedname_copy(qname, &qbuf->qname);
 			}
 		}
 		if (qbuf != NULL) {

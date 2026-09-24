@@ -216,7 +216,7 @@ check_sig(const char *datapath, const char *sigpath, const char *keyname,
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&b, keyname, strlen(keyname));
 	isc_buffer_add(&b, strlen(keyname));
-	result = dns_name_fromtext(name, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fname, &b, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = dst_key_fromfile(name, id, alg, type,
 				  TESTS_DIR "/testdata/dst", isc_g_mctx, &key);
@@ -351,7 +351,7 @@ check_cmp(const char *key1_name, dns_keytag_t key1_id, const char *key2_name,
 	name1 = dns_fixedname_initname(&fname1);
 	isc_buffer_constinit(&b1, key1_name, strlen(key1_name));
 	isc_buffer_add(&b1, strlen(key1_name));
-	result = dns_name_fromtext(name1, &b1, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fname1, &b1, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = dst_key_fromfile(name1, key1_id, alg, type,
 				  TESTS_DIR "/comparekeys", isc_g_mctx, &key1);
@@ -363,7 +363,7 @@ check_cmp(const char *key1_name, dns_keytag_t key1_id, const char *key2_name,
 	name2 = dns_fixedname_initname(&fname2);
 	isc_buffer_constinit(&b2, key2_name, strlen(key2_name));
 	isc_buffer_add(&b2, strlen(key2_name));
-	result = dns_name_fromtext(name2, &b2, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fname2, &b2, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = dst_key_fromfile(name2, key2_id, alg, type,
 				  TESTS_DIR "/comparekeys", isc_g_mctx, &key2);
@@ -498,7 +498,7 @@ ISC_RUN_TEST_IMPL(ecdsa_determinism_test) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&keybuf, "example.", strlen("example."));
 	isc_buffer_add(&keybuf, strlen("example."));
-	result = dns_name_fromtext(name, &keybuf, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fname, &keybuf, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = dst_key_fromfile(name, 19786, DST_ALG_ECDSA256,
 				  DST_TYPE_PUBLIC | DST_TYPE_PRIVATE,

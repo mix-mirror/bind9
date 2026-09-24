@@ -74,11 +74,12 @@ typedef struct dns_dbiteratormethods {
 			      const dns_name_t *name DNS__DB_FLARG);
 	isc_result_t (*prev)(dns_dbiterator_t *iterator DNS__DB_FLARG);
 	isc_result_t (*next)(dns_dbiterator_t *iterator DNS__DB_FLARG);
-	isc_result_t (*current)(dns_dbiterator_t *iterator,
-				dns_dbnode_t	**nodep,
-				dns_name_t *name  DNS__DB_FLARG);
+	isc_result_t (*current)(dns_dbiterator_t     *iterator,
+				dns_dbnode_t	    **nodep,
+				dns_fixedname_t *name DNS__DB_FLARG);
 	isc_result_t (*pause)(dns_dbiterator_t *iterator);
-	isc_result_t (*origin)(dns_dbiterator_t *iterator, dns_name_t *name);
+	isc_result_t (*origin)(dns_dbiterator_t *iterator,
+			       dns_fixedname_t	*name);
 } dns_dbiteratormethods_t;
 
 #define DNS_DBITERATOR_MAGIC	  ISC_MAGIC('D', 'N', 'S', 'I')
@@ -255,7 +256,7 @@ dns__dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG);
 	dns__dbiterator_current(iterator, nodep, name DNS__DB_FILELINE)
 isc_result_t
 dns__dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
-			dns_name_t *name DNS__DB_FLARG);
+			dns_fixedname_t *fixed_name DNS__DB_FLARG);
 /*%<
  * Return the current node.
  *
@@ -270,7 +271,7 @@ dns__dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
  *\li	The node cursor of 'iterator' is at a valid location (i.e. the
  *	result of last call to a cursor movement command was ISC_R_SUCCESS).
  *
- *\li	'name' is NULL, or is a valid name with a dedicated buffer.
+ *\li	'name' is NULL, or is an initialized fixedname.
  *
  * Returns:
  *
@@ -310,7 +311,7 @@ dns_dbiterator_pause(dns_dbiterator_t *iterator);
  */
 
 isc_result_t
-dns_dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name);
+dns_dbiterator_origin(dns_dbiterator_t *iterator, dns_fixedname_t *fixed_name);
 /*%<
  * Return the origin to which returned node names are relative.
  *
@@ -318,7 +319,7 @@ dns_dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name);
  *
  *\li	'iterator' is a valid relative_names iterator.
  *
- *\li	'name' is a valid name with a dedicated buffer.
+ *\li	'name' is an initialized fixedname.
  *
  * Returns:
  *

@@ -1692,7 +1692,7 @@ verify_nodes(vctx_t *vctx, isc_result_t *vresult) {
 	while (!done) {
 		bool isdelegation = false;
 
-		result = dns_dbiterator_current(dbiter, &node, name);
+		result = dns_dbiterator_current(dbiter, &node, &fname);
 		if (result != ISC_R_SUCCESS && result != DNS_R_NEWORIGIN) {
 			zoneverify_log_error(vctx,
 					     "dns_dbiterator_current(): %s",
@@ -1720,17 +1720,17 @@ verify_nodes(vctx_t *vctx, isc_result_t *vresult) {
 		}
 		if (is_delegation(vctx, name, node, NULL)) {
 			zonecut = dns_fixedname_name(&fzonecut);
-			dns_name_copy(name, zonecut);
+			dns_fixedname_copy(name, &fzonecut);
 			isdelegation = true;
 		} else if (has_dname(vctx, node)) {
 			zonecut = dns_fixedname_name(&fzonecut);
-			dns_name_copy(name, zonecut);
+			dns_fixedname_copy(name, &fzonecut);
 		}
 		nextnode = NULL;
 		result = dns_dbiterator_next(dbiter);
 		while (result == ISC_R_SUCCESS) {
 			result = dns_dbiterator_current(dbiter, &nextnode,
-							nextname);
+							&fnextname);
 			if (result != ISC_R_SUCCESS &&
 			    result != DNS_R_NEWORIGIN)
 			{
@@ -1801,7 +1801,7 @@ verify_nodes(vctx_t *vctx, isc_result_t *vresult) {
 		} else {
 			prevname = dns_fixedname_name(&fprevname);
 		}
-		dns_name_copy(name, prevname);
+		dns_fixedname_copy(name, &fprevname);
 		if (*vresult == ISC_R_SUCCESS) {
 			*vresult = tvresult;
 		}
@@ -1818,7 +1818,7 @@ verify_nodes(vctx_t *vctx, isc_result_t *vresult) {
 	}
 
 	DNS_DBITERATOR_FOREACH(dbiter) {
-		result = dns_dbiterator_current(dbiter, &node, name);
+		result = dns_dbiterator_current(dbiter, &node, &fname);
 		if (result != ISC_R_SUCCESS && result != DNS_R_NEWORIGIN) {
 			zoneverify_log_error(vctx,
 					     "dns_dbiterator_current(): %s",

@@ -54,6 +54,7 @@
 #include <dns/ds.h>
 #include <dns/ede.h>
 #include <dns/edns.h>
+#include <dns/fixedname.h>
 #include <dns/forward.h>
 #include <dns/keytable.h>
 #include <dns/message.h>
@@ -1556,7 +1557,7 @@ fcount_incr(fetchctx_t *fctx, bool force) {
 		isc_mem_attach(fctx->mctx, &counter->mctx);
 		isc_mutex_init(&counter->lock);
 		counter->domain = dns_fixedname_initname(&counter->dfname);
-		dns_name_copy(fctx->domain, counter->domain);
+		dns_fixedname_copy(fctx->domain, &counter->dfname);
 
 		UPGRADELOCK(&res->counters_lock, locktype);
 
@@ -1649,7 +1650,7 @@ static void
 copy_to_resp(fetchctx_t *fctx, dns_fetchresponse_t *resp) {
 	resp->result = fctx->resp_result;
 
-	dns_name_copy(fctx->resp.foundname, resp->foundname);
+	dns_fixedname_copy(fctx->resp.foundname, &resp->fname);
 
 	dns_db_attach(fctx->cache, &resp->cache);
 	dns_db_attachnode(fctx->resp_node, &resp->node);
@@ -1678,7 +1679,7 @@ pull_from_resp(dns_fetchresponse_t *resp, fetchctx_t *fctx) {
 	if (resp->node != NULL) {
 		dns_db_attachnode(resp->node, &fctx->resp_node);
 	}
-	dns_name_copy(resp->foundname, fctx->resp.foundname);
+	dns_fixedname_copy(resp->foundname, &fctx->resp.fname);
 }
 
 static void
@@ -3575,12 +3576,13 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 		if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 			fwd = ISC_LIST_HEAD(forwarders->fwdrs);
 			fctx->fwdpolicy = forwarders->fwdpolicy;
-			dns_name_copy(&forwarders->name, fctx->fwdname);
+			dns_fixedname_copy(&forwarders->name, &fctx->fwdfname);
 			if (fctx->fwdpolicy == dns_fwdpolicy_only &&
 			    isstrictsubdomain(&forwarders->name, fctx->domain))
 			{
 				fcount_decr(fctx);
-				dns_name_copy(&forwarders->name, fctx->domain);
+				dns_fixedname_copy(&forwarders->name,
+						   &fctx->dfname);
 				result = fcount_incr(fctx, true);
 				if (result != ISC_R_SUCCESS) {
 					dns_forwarders_detach(&forwarders);
@@ -4657,7 +4659,7 @@ resume_qmin(void *arg) {
 	if (dns_rdatatype_atparent(fctx->type)) {
 		findoptions |= DNS_DBFIND_ABOVE;
 	}
-	result = dns_view_bestzonecut(res->view, fctx->name, fname, dcname,
+	result = dns_view_bestzonecut(res->view, fctx->name, &ffixed, &dcfixed,
 				      fctx->now, findoptions, true, true,
 				      &fctx->delegset);
 	FCTXTRACEN("resume_qmin findzonecut", fname, result);
@@ -4667,11 +4669,11 @@ resume_qmin(void *arg) {
 		goto cleanup;
 	}
 	fcount_decr(fctx);
-	dns_name_copy(fname, fctx->domain);
+	dns_fixedname_copy(fname, &fctx->dfname);
 
 	CHECK(fcount_incr(fctx, false));
 
-	dns_name_copy(dcname, fctx->qmin.dcname);
+	dns_fixedname_copy(dcname, &fctx->qmin.dcfname);
 	fctx->ns_ttl = fctx->delegset->expires - fctx->now;
 	fctx->ns_ttl_ok = true;
 
@@ -4981,8 +4983,8 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 	fctx->qmin.dcname = dns_fixedname_initname(&fctx->qmin.dcfname);
 	fctx->fwdname = dns_fixedname_initname(&fctx->fwdfname);
 
-	dns_name_copy(name, fctx->name);
-	dns_name_copy(name, fctx->qmin.name);
+	dns_fixedname_copy(name, &fctx->fname);
+	dns_fixedname_copy(name, &fctx->qmin.fname);
 
 	fctx->start = isc_time_now();
 	fctx->now = (isc_stdtime_t)fctx->start.seconds;
@@ -5068,7 +5070,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 					   &forwarders);
 		if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 			fctx->fwdpolicy = forwarders->fwdpolicy;
-			dns_name_copy(&forwarders->name, fctx->fwdname);
+			dns_fixedname_copy(&forwarders->name, &fctx->fwdfname);
 			dns_forwarders_detach(&forwarders);
 		}
 
@@ -5077,8 +5079,8 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			 * We're in forward-only mode.  Set the query
 			 * domain.
 			 */
-			dns_name_copy(fctx->fwdname, fctx->domain);
-			dns_name_copy(fctx->fwdname, fctx->qmin.dcname);
+			dns_fixedname_copy(fctx->fwdname, &fctx->dfname);
+			dns_fixedname_copy(fctx->fwdname, &fctx->qmin.dcfname);
 			/*
 			 * Disable query minimization
 			 */
@@ -5096,22 +5098,22 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 				findoptions |= DNS_DBFIND_ABOVE;
 			}
 			result = dns_view_bestzonecut(
-				res->view, name, fctx->fwdname, dcname,
+				res->view, name, &fctx->fwdfname, &dcfixed,
 				fctx->now, findoptions, true, true,
 				&fctx->delegset);
 			if (result != ISC_R_SUCCESS) {
 				goto cleanup_nameservers;
 			}
 
-			dns_name_copy(fctx->fwdname, fctx->domain);
-			dns_name_copy(dcname, fctx->qmin.dcname);
+			dns_fixedname_copy(fctx->fwdname, &fctx->dfname);
+			dns_fixedname_copy(dcname, &fctx->qmin.dcfname);
 			fctx->ns_ttl = fctx->delegset->expires - fctx->now;
 			fctx->ns_ttl_ok = true;
 		}
 	} else {
 		dns_delegset_attach(delegset, &fctx->delegset);
-		dns_name_copy(domain, fctx->domain);
-		dns_name_copy(domain, fctx->qmin.dcname);
+		dns_fixedname_copy(domain, &fctx->dfname);
+		dns_fixedname_copy(domain, &fctx->qmin.dcfname);
 		fctx->ns_ttl = fctx->delegset->expires - fctx->now;
 		fctx->ns_ttl_ok = true;
 	}
@@ -5754,7 +5756,9 @@ cache_rrset(fetchctx_t *fctx, isc_stdtime_t now, dns_name_t *name,
 }
 
 static bool
-get_and_check_signer_name(dns_name_t *signer, dns_rdataset_t *sigrdataset) {
+get_and_check_signer_name(dns_fixedname_t *fixed_signer,
+			  dns_rdataset_t *sigrdataset) {
+	dns_name_t *signer = dns_fixedname_name(fixed_signer);
 	dns_rdata_rrsig_t rrsig;
 	isc_result_t result;
 	dns_rdata_t rdata;
@@ -5767,7 +5771,7 @@ get_and_check_signer_name(dns_name_t *signer, dns_rdataset_t *sigrdataset) {
 	dns_rdataset_current(sigrdataset, &rdata);
 	result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
 	INSIST(result == ISC_R_SUCCESS);
-	dns_name_copy(&rrsig.signer, signer);
+	dns_fixedname_copy(&rrsig.signer, fixed_signer);
 
 	while (dns_rdataset_next(sigrdataset) == ISC_R_SUCCESS) {
 		rdata = (dns_rdata_t)DNS_RDATA_INIT;
@@ -5815,7 +5819,7 @@ fctx_cacheauthority(fetchctx_t *fctx, dns_message_t *message,
 			 * signer.
 			 */
 			signer = dns_fixedname_initname(&fsigner);
-			if (!get_and_check_signer_name(signer, sigrdataset)) {
+			if (!get_and_check_signer_name(&fsigner, sigrdataset)) {
 				continue;
 			}
 
@@ -6062,7 +6066,7 @@ answer_response:
 	FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 
 	fctx_setresult(fctx);
-	dns_name_copy(val->name, fctx->resp.foundname);
+	dns_fixedname_copy(val->name, &fctx->resp.fname);
 	dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
 
 	done = true;
@@ -6119,11 +6123,11 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	isc_result_t result;
 	dns_rdata_rrsig_t rrsig;
 	unsigned int labels;
-	dns_name_t *zonename = NULL;
+
 	dns_fixedname_t fzonename;
-	dns_name_t *closest = NULL;
+
 	dns_fixedname_t fclosest;
-	dns_name_t *nearest = NULL;
+
 	dns_fixedname_t fnearest;
 	dns_rdatatype_t found = dns_rdatatype_none;
 	dns_name_t *noqname = NULL;
@@ -6155,9 +6159,9 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 		return;
 	}
 
-	zonename = dns_fixedname_initname(&fzonename);
-	closest = dns_fixedname_initname(&fclosest);
-	nearest = dns_fixedname_initname(&fnearest);
+	dns_fixedname_init(&fzonename);
+	dns_fixedname_init(&fclosest);
+	dns_fixedname_init(&fnearest);
 
 #define NXND(x) ((x) == ISC_R_SUCCESS)
 
@@ -6184,9 +6188,9 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 
 			if (nrdataset->type == dns_rdatatype_nsec3 &&
 			    NXND(dns_nsec3_noexistnodata(
-				    type, name, nsec, nrdataset, zonename,
+				    type, name, nsec, nrdataset, &fzonename,
 				    &exists, &data, &optout, &unknown,
-				    &setnearest, closest, nearest, fctx_log,
+				    &setnearest, &fclosest, &fnearest, fctx_log,
 				    fctx)))
 			{
 				if (!exists && setnearest) {
@@ -6512,7 +6516,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message, dns_name_t *name) {
 		if (dns_rdataset_isassociated(&fctx->resp.rdataset)) {
 			fctx_setresult(fctx);
 		}
-		dns_name_copy(name, fctx->resp.foundname);
+		dns_fixedname_copy(name, &fctx->resp.fname);
 		dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
 		FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 	}
@@ -6720,7 +6724,7 @@ rctx_ncache(respctx_t *rctx) {
 
 	FCTX_ATTR_SET(fctx, FCTX_ATTR_HAVEANSWER);
 	fctx_setresult(fctx);
-	dns_name_copy(name, fctx->resp.foundname);
+	dns_fixedname_copy(name, &fctx->resp.fname);
 	dns_db_transfernode(fctx->cache, &node, &fctx->resp_node);
 
 unlock:
@@ -7230,7 +7234,8 @@ is_answertarget_allowed(fetchctx_t *fctx, dns_name_t *qname, dns_name_t *rname,
 		tname = dns_fixedname_initname(&fixed);
 		nlabels = dns_name_countlabels(rname);
 		dns_name_split(qname, nlabels, &prefix, NULL);
-		result = dns_name_concatenate(&prefix, &dname.dname, tname);
+		result = dns_fixedname_concatenate(&prefix, &dname.dname,
+						   &fixed);
 		if (result == DNS_R_NAMETOOLONG) {
 			SET_IF_NOT_NULL(chainingp, true);
 			return true;
@@ -7404,7 +7409,7 @@ resume_dslookup(void *arg) {
 		log_ns_ttl(fctx, "resume_dslookup");
 
 		fcount_decr(fctx);
-		dns_name_copy(fctx->nsname, fctx->domain);
+		dns_fixedname_copy(fctx->nsname, &fctx->dfname);
 		CHECK(fcount_incr(fctx, false));
 
 		/* Try again. */
@@ -7439,7 +7444,7 @@ resume_dslookup(void *arg) {
 
 			/* Get domain from fetch before we destroy it. */
 			domain = dns_fixedname_initname(&fixed);
-			dns_name_copy(fetch->private->domain, domain);
+			dns_fixedname_copy(fetch->private->domain, &fixed);
 		}
 
 		n = dns_name_countlabels(fctx->nsname);
@@ -9629,10 +9634,10 @@ rctx_referral(respctx_t *rctx) {
 		dns_delegset_detach(&fctx->delegset);
 	}
 
-	dns_name_copy(rctx->ns_name, fctx->domain);
+	dns_fixedname_copy(rctx->ns_name, &fctx->dfname);
 
 	if ((fctx->options & DNS_FETCHOPT_QMINIMIZE) != 0) {
-		dns_name_copy(rctx->ns_name, fctx->qmin.dcname);
+		dns_fixedname_copy(rctx->ns_name, &fctx->qmin.dcfname);
 
 		fctx_minimize_qname(fctx);
 	}
@@ -9760,8 +9765,8 @@ rctx_nextserver(respctx_t *rctx, dns_message_t *message,
 			name = fctx->domain;
 		}
 		INSIST(fctx->delegset == NULL);
-		result = dns_view_bestzonecut(fctx->res->view, name, fname,
-					      dcname, fctx->now, findoptions,
+		result = dns_view_bestzonecut(fctx->res->view, name, &foundname,
+					      &founddc, fctx->now, findoptions,
 					      true, true, &fctx->delegset);
 		if (result != ISC_R_SUCCESS) {
 			FCTXTRACE("couldn't find a zonecut");
@@ -9780,8 +9785,8 @@ rctx_nextserver(respctx_t *rctx, dns_message_t *message,
 
 		fcount_decr(fctx);
 
-		dns_name_copy(fname, fctx->domain);
-		dns_name_copy(dcname, fctx->qmin.dcname);
+		dns_fixedname_copy(fname, &fctx->dfname);
+		dns_fixedname_copy(dcname, &fctx->qmin.dcfname);
 
 		result = fcount_incr(fctx, true);
 		if (result != ISC_R_SUCCESS) {
@@ -10591,7 +10596,8 @@ fctx_minimize_qname(fetchctx_t *fctx) {
 	if (fctx->qmin_labels <= nlabels) {
 		dns_rdataset_t rdataset;
 		dns_fixedname_t fixed;
-		dns_name_t *fname = dns_fixedname_initname(&fixed);
+
+		dns_fixedname_init(&fixed);
 		dns_rdataset_init(&rdataset);
 		do {
 			/*
@@ -10605,7 +10611,7 @@ fctx_minimize_qname(fetchctx_t *fctx) {
 			 * try with an additional label prepended.
 			 */
 			result = dns_db_find(fctx->cache, &name, NULL,
-					     dns_rdatatype_ns, 0, 0, fname,
+					     dns_rdatatype_ns, 0, 0, &fixed,
 					     &rdataset, NULL);
 			dns_rdataset_cleanup(&rdataset);
 			switch (result) {
@@ -10624,12 +10630,12 @@ fctx_minimize_qname(fetchctx_t *fctx) {
 	}
 
 	if (fctx->qmin_labels < nlabels) {
-		dns_name_copy(&name, fctx->qmin.name);
+		dns_fixedname_copy(&name, &fctx->qmin.fname);
 		fctx->qmintype = dns_rdatatype_ns;
 		fctx->minimized = true;
 	} else {
 		/* Minimization is done, we'll ask for whole qname */
-		dns_name_copy(fctx->name, fctx->qmin.name);
+		dns_fixedname_copy(fctx->name, &fctx->qmin.fname);
 		fctx->qmintype = fctx->type;
 		fctx->minimized = false;
 	}

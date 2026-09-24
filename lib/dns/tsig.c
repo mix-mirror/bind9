@@ -176,8 +176,8 @@ dns_tsigkey_createfromkey(const dns_name_t *name, dst_algorithm_t algorithm,
 	};
 
 	tkey->name = dns_fixedname_initname(&tkey->fn);
-	dns_name_copy(name, tkey->name);
-	(void)dns_name_downcase(tkey->name, tkey->name);
+	dns_fixedname_copy(name, &tkey->fn);
+	(void)dns_name_downcase(tkey->name);
 
 	if (algorithm != DST_ALG_UNKNOWN) {
 		if (dstkey != NULL && dst_key_alg(dstkey) != algorithm) {
@@ -321,17 +321,17 @@ restore_key(dns_tsigkeyring_t *ring, isc_stdtime_t now, FILE *fp) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_init(&b, namestr, strlen(namestr));
 	isc_buffer_add(&b, strlen(namestr));
-	RETERR(dns_name_fromtext(name, &b, dns_rootname, 0));
+	RETERR(dns_fixedname_fromtext(&fname, &b, dns_rootname, 0));
 
 	creator = dns_fixedname_initname(&fcreator);
 	isc_buffer_init(&b, creatorstr, strlen(creatorstr));
 	isc_buffer_add(&b, strlen(creatorstr));
-	RETERR(dns_name_fromtext(creator, &b, dns_rootname, 0));
+	RETERR(dns_fixedname_fromtext(&fcreator, &b, dns_rootname, 0));
 
 	algorithm = dns_fixedname_initname(&falgorithm);
 	isc_buffer_init(&b, algorithmstr, strlen(algorithmstr));
 	isc_buffer_add(&b, strlen(algorithmstr));
-	RETERR(dns_name_fromtext(algorithm, &b, dns_rootname, 0));
+	RETERR(dns_fixedname_fromtext(&falgorithm, &b, dns_rootname, 0));
 
 	dstalg = dns__tsig_algfromname(algorithm);
 	if (dstalg == DST_ALG_UNKNOWN) {
@@ -595,6 +595,7 @@ dns_tsigkey_delete(dns_tsigkeyring_t *ring, dns_tsigkey_t *tkey) {
 
 isc_result_t
 dns_tsig_sign(dns_message_t *msg) {
+	dns_fixedname_t *fixed_pool_owner = NULL;
 	dns_tsigkey_t *key = NULL;
 	dns_rdata_any_tsig_t tsig, querytsig;
 	unsigned char data[128];
@@ -843,8 +844,10 @@ dns_tsig_sign(dns_message_t *msg) {
 		isc_mem_put(mctx, tsig.signature, sigsize);
 	}
 
-	dns_message_gettempname(msg, &owner);
-	dns_name_copy(key->name, owner);
+	fixed_pool_owner = NULL;
+	dns_message_gettempfixedname(msg, &fixed_pool_owner);
+	owner = dns_fixedname_name(fixed_pool_owner);
+	dns_fixedname_copy(key->name, fixed_pool_owner);
 
 	dns_message_gettemprdatalist(msg, &datalist);
 

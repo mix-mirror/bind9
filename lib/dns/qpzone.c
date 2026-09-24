@@ -435,11 +435,11 @@ static isc_result_t
 dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG);
 static isc_result_t
 dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
-		   dns_name_t *name DNS__DB_FLARG);
+		   dns_fixedname_t *fixed_name DNS__DB_FLARG);
 static isc_result_t
 dbiterator_pause(dns_dbiterator_t *iterator);
 static isc_result_t
-dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name);
+dbiterator_origin(dns_dbiterator_t *iterator, dns_fixedname_t *fixed_name);
 
 static dns_dbiteratormethods_t dbiterator_methods = {
 	dbiterator_destroy, dbiterator_first,	dbiterator_last,
@@ -2546,8 +2546,9 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *dbnode, dns_rdataset_t *rdataset,
 }
 
 static isc_result_t
-getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *foundname,
-	       dns_typepair_t *typepair) {
+getsigningtime(dns_db_t *db, isc_stdtime_t *resign,
+	       dns_fixedname_t *fixed_foundname, dns_typepair_t *typepair) {
+	dns_name_t *foundname = dns_fixedname_name(fixed_foundname);
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpz_resign_t *elem = NULL;
 	dns_vecheader_t *header = NULL;
@@ -2588,7 +2589,7 @@ again:
 	if (elem != NULL && RESIGN(elem->header)) {
 		header = elem->header;
 		*resign = (uint32_t)header->resign;
-		dns_name_copy(&elem->node->name, foundname);
+		dns_fixedname_copy(&elem->node->name, fixed_foundname);
 		*typepair = header->typepair;
 		result = ISC_R_SUCCESS;
 	}
@@ -2776,9 +2777,10 @@ matchparams(dns_vecheader_t *header, qpz_search_t *search) {
 }
 
 static isc_result_t
-qpzone_setup_delegation(qpz_search_t *search, dns_name_t *foundname,
+qpzone_setup_delegation(qpz_search_t *search, dns_fixedname_t *fixed_foundname,
 			dns_rdataset_t *rdataset,
 			dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	dns_name_t *foundname = dns_fixedname_name(fixed_foundname);
 	dns_name_t *zcname = NULL;
 	dns_typepair_t typepair;
 	qpznode_t *node = NULL;
@@ -2797,13 +2799,13 @@ qpzone_setup_delegation(qpz_search_t *search, dns_name_t *foundname,
 	/*
 	 * If we have to set foundname, we do it before anything else.
 	 * If we were to set foundname after we had set nodep or bound the
-	 * rdataset, then we'd have to undo that work if dns_name_copy()
+	 * rdataset, then we'd have to undo that work if dns_fixedname_copy()
 	 * failed.  By setting foundname first, there's nothing to undo if
 	 * we have trouble.
 	 */
 	if (foundname != NULL && search->copy_name) {
 		zcname = dns_fixedname_name(&search->zonecut_name);
-		dns_name_copy(zcname, foundname);
+		dns_fixedname_copy(zcname, fixed_foundname);
 	}
 	if (rdataset != NULL) {
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
@@ -3021,8 +3023,8 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 			/*
 			 * Construct the wildcard name for this level.
 			 */
-			result = dns_name_concatenate(dns_wildcardname,
-						      &node->name, wname);
+			result = dns_fixedname_concatenate(
+				dns_wildcardname, &node->name, &fwname);
 			if (result != ISC_R_SUCCESS) {
 				break;
 			}
@@ -3111,8 +3113,9 @@ prev_in_zone(dns_qpiter_t *it, qpznode_t *first, qpznode_t **nodep) {
  */
 static isc_result_t
 previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
-		      dns_name_t *name, qpznode_t **nodep, dns_qpiter_t *nit,
-		      bool *firstp) {
+		      dns_fixedname_t *fixed_name, qpznode_t **nodep,
+		      dns_qpiter_t *nit, bool *firstp) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	isc_result_t result;
 
 	REQUIRE(nodep != NULL && *nodep == NULL);
@@ -3122,7 +3125,7 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 		result = prev_in_zone(&search->iter, search->qpdb->nsec3_origin,
 				      nodep);
 		if (result == ISC_R_SUCCESS) {
-			dns_name_copy(&(*nodep)->name, name);
+			dns_fixedname_copy(&(*nodep)->name, fixed_name);
 		}
 		return result;
 	}
@@ -3186,7 +3189,7 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 				       DNS_DBNAMESPACE_NORMAL, &search->iter,
 				       &search->chain, (void **)nodep, NULL);
 		if (result == ISC_R_SUCCESS) {
-			dns_name_copy(&nsec_node->name, name);
+			dns_fixedname_copy(&nsec_node->name, fixed_name);
 			break;
 		}
 
@@ -3238,7 +3241,7 @@ wrap_nsec3(qpz_search_t *search, qpznode_t **nodep) {
  * current NSEC3PARAM record are considered.
  */
 static isc_result_t
-find_closest_nsec(qpz_search_t *search, dns_name_t *foundname,
+find_closest_nsec(qpz_search_t *search, dns_fixedname_t *fixed_foundname,
 		  dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
 		  bool nsec3, bool secure DNS__DB_FLARG) {
 	qpznode_t *node = NULL, *prevnode = NULL;
@@ -3267,7 +3270,7 @@ find_closest_nsec(qpz_search_t *search, dns_name_t *foundname,
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
-	dns_name_copy(&node->name, name);
+	dns_fixedname_copy(&node->name, &fname);
 again:
 	do {
 		dns_vecheader_t *found = NULL, *foundsig = NULL;
@@ -3309,9 +3312,9 @@ again:
 				empty_node = true;
 				found = NULL;
 				foundsig = NULL;
-				result = previous_closest_nsec(typepair, search,
-							       name, &prevnode,
-							       NULL, NULL);
+				result = previous_closest_nsec(
+					typepair, search, &fname, &prevnode,
+					NULL, NULL);
 			} else if (found != NULL &&
 				   (foundsig != NULL || !need_sig))
 			{
@@ -3324,7 +3327,7 @@ again:
 				 * cut have been removed; we assume this is
 				 * the case.
 				 */
-				dns_name_copy(name, foundname);
+				dns_fixedname_copy(name, fixed_foundname);
 				bindrdataset(search->qpdb, found,
 					     rdataset DNS__DB_FLARG_PASS);
 				if (foundsig != NULL) {
@@ -3342,7 +3345,7 @@ again:
 				 */
 				empty_node = true;
 				result = previous_closest_nsec(
-					typepair, search, name, &prevnode,
+					typepair, search, &fname, &prevnode,
 					&nseciter, &first);
 			} else {
 				/*
@@ -3357,7 +3360,7 @@ again:
 			 * This node isn't active.  We've got to keep
 			 * looking.
 			 */
-			result = previous_closest_nsec(typepair, search, name,
+			result = previous_closest_nsec(typepair, search, &fname,
 						       &prevnode, &nseciter,
 						       &first);
 		}
@@ -3373,7 +3376,7 @@ again:
 		result = wrap_nsec3(search, &node);
 
 		if (result == ISC_R_SUCCESS) {
-			dns_name_copy(&node->name, name);
+			dns_fixedname_copy(&node->name, &fname);
 			wraps = false;
 			goto again;
 		}
@@ -3475,15 +3478,14 @@ qpzone_check_zonecut(qpznode_t *node, void *arg DNS__DB_FLARG) {
 			 */
 			result = DNS_R_PARTIALMATCH;
 		} else {
-			dns_name_t *zcname = NULL;
 
 			/*
 			 * The search will continue beneath the zone cut.
 			 * This may or may not be the best match.  In case it
 			 * is, we need to remember the node name.
 			 */
-			zcname = dns_fixedname_name(&search->zonecut_name);
-			dns_name_copy(&node->name, zcname);
+
+			dns_fixedname_copy(&node->name, &search->zonecut_name);
 			search->copy_name = true;
 		}
 	} else {
@@ -3567,11 +3569,12 @@ qpz_search_setbase(qpz_search_t *search, qpznode_t *origin) {
 static isc_result_t
 qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	    dns_rdatatype_t type, unsigned int options,
-	    isc_stdtime_t now ISC_ATTR_UNUSED, dns_name_t *foundname,
+	    isc_stdtime_t now ISC_ATTR_UNUSED, dns_fixedname_t *fixed_foundname,
 	    dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
 	    dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
 	    dns_rdataset_t *rdataset,
 	    dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	dns_name_t *foundname = dns_fixedname_name(fixed_foundname);
 	isc_result_t result;
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = NULL;
@@ -3624,7 +3627,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		result = ISC_R_NOTFOUND;
 		goto tree_exit;
 	}
-	dns_name_copy(&node->name, foundname);
+	dns_fixedname_copy(&node->name, fixed_foundname);
 
 	/*
 	 * Check the QP chain to see if there's a node above us with a
@@ -3647,7 +3650,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		tresult = qpzone_check_zonecut(n, &search DNS__DB_FLARG_PASS);
 		if (tresult != DNS_R_CONTINUE) {
 			result = tresult;
-			dns_name_copy(&n->name, foundname);
+			dns_fixedname_copy(&n->name, fixed_foundname);
 			node = n;
 		}
 	}
@@ -3656,7 +3659,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	partial_match:
 		if (search.zonecut != NULL) {
 			result = qpzone_setup_delegation(
-				&search, foundname, rdataset,
+				&search, fixed_foundname, rdataset,
 				sigrdataset DNS__DB_FLARG_PASS);
 			goto tree_exit;
 		}
@@ -3670,7 +3673,8 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			 */
 			result = find_wildcard(&search, &node, name, nspace);
 			if (result == ISC_R_SUCCESS) {
-				dns_name_copy(&node->name, foundname);
+				dns_fixedname_copy(&node->name,
+						   fixed_foundname);
 				wild = true;
 				goto found;
 			} else if (result != ISC_R_NOTFOUND) {
@@ -3696,7 +3700,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		    nsec3)
 		{
 			result = find_closest_nsec(
-				&search, foundname, rdataset, sigrdataset,
+				&search, fixed_foundname, rdataset, sigrdataset,
 				nsec3,
 				search.version->secure DNS__DB_FLARG_PASS);
 			if (result == ISC_R_SUCCESS) {
@@ -3918,7 +3922,8 @@ found:
 				NODE_UNLOCK(nlock, &nlocktype);
 				dns_qpchain_node(&search.chain, len - 1,
 						 (void **)&node, NULL);
-				dns_name_copy(&node->name, foundname);
+				dns_fixedname_copy(&node->name,
+						   fixed_foundname);
 				goto partial_match;
 			}
 		}
@@ -3940,7 +3945,7 @@ found:
 			}
 			NODE_UNLOCK(nlock, &nlocktype);
 			result = qpzone_setup_delegation(
-				&search, foundname, rdataset,
+				&search, fixed_foundname, rdataset,
 				sigrdataset DNS__DB_FLARG_PASS);
 			goto tree_exit;
 		}
@@ -3962,7 +3967,7 @@ found:
 
 			NODE_UNLOCK(nlock, &nlocktype);
 			result = find_closest_nsec(
-				&search, foundname, rdataset, sigrdataset,
+				&search, fixed_foundname, rdataset, sigrdataset,
 				false,
 				search.version->secure DNS__DB_FLARG_PASS);
 			if (result == ISC_R_SUCCESS) {
@@ -4820,7 +4825,8 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 static isc_result_t
 dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
-		   dns_name_t *name DNS__DB_FLARG) {
+		   dns_fixedname_t *fixed_name DNS__DB_FLARG) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
 	qpznode_t *node = qpdbiter->node;
 
@@ -4828,7 +4834,7 @@ dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 	REQUIRE(qpdbiter->node != NULL);
 
 	if (name != NULL) {
-		dns_name_copy(&qpdbiter->node->name, name);
+		dns_fixedname_copy(&qpdbiter->node->name, fixed_name);
 	}
 
 	qpznode_acquire(node DNS__DB_FLARG_PASS);
@@ -4844,14 +4850,14 @@ dbiterator_pause(dns_dbiterator_t *iterator ISC_ATTR_UNUSED) {
 }
 
 static isc_result_t
-dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name) {
+dbiterator_origin(dns_dbiterator_t *iterator, dns_fixedname_t *fixed_name) {
 	qpdb_dbiterator_t *qpdbiter = (qpdb_dbiterator_t *)iterator;
 
 	if (qpdbiter->result != ISC_R_SUCCESS) {
 		return qpdbiter->result;
 	}
 
-	dns_name_copy(dns_rootname, name);
+	dns_fixedname_copy(dns_rootname, fixed_name);
 	return ISC_R_SUCCESS;
 }
 
@@ -4960,7 +4966,7 @@ qpzone_addrdataset_inner(qpzonedb_t *qpdb, qpznode_t *node,
 		return result;
 	}
 
-	dns_name_copy(&node->name, name);
+	dns_fixedname_copy(&node->name, &fn);
 	dns_rdataset_getownercase(rdataset, name);
 
 	dns_vecheader_t *newheader = (dns_vecheader_t *)region.base;
@@ -5089,7 +5095,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		 rdataset->type != dns_rdatatype_nsec3 &&
 		 rdataset->covers != dns_rdatatype_nsec3));
 
-	dns_name_copy(&node->name, nodename);
+	dns_fixedname_copy(&node->name, &fname);
 	result = dns_rdatavec_fromrdataset(rdataset, node->mctx, &region, 0);
 	if (result != ISC_R_SUCCESS) {
 		return result;
@@ -5279,7 +5285,7 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 	atomic_init(&newheader->attributes, DNS_VECHEADERATTR_NONEXISTENT);
 	newheader->serial = version->serial;
 
-	dns_name_copy(&node->name, nodename);
+	dns_fixedname_copy(&node->name, &fname);
 
 	nlock = qpzone_get_lock(node);
 	NODE_WRLOCK(nlock, &nlocktype);
@@ -5344,7 +5350,7 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	dns_rdataset_init(&sigrdataset_aaaa);
 
 	result = qpzone_find(ctx->db, name, ctx->version, dns_rdatatype_a,
-			     DNS_DBFIND_GLUEOK, 0, name_a, NULL, NULL,
+			     DNS_DBFIND_GLUEOK, 0, &fixedname_a, NULL, NULL,
 			     &rdataset_a, &sigrdataset_a DNS__DB_FLARG_PASS);
 	if (result == DNS_R_GLUE) {
 		glue = new_glue(ctx->db->mctx, name_a);
@@ -5361,7 +5367,7 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	}
 
 	result = qpzone_find(ctx->db, name, ctx->version, dns_rdatatype_aaaa,
-			     DNS_DBFIND_GLUEOK, 0, name_aaaa, NULL, NULL,
+			     DNS_DBFIND_GLUEOK, 0, &fixedname_aaaa, NULL, NULL,
 			     &rdataset_aaaa,
 			     &sigrdataset_aaaa DNS__DB_FLARG_PASS);
 	if (result == DNS_R_GLUE) {
@@ -5419,6 +5425,7 @@ glue_nsdname_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
  */
 static void
 addglue_to_message(qpzonedb_t *qpdb, dns_glue_t *ge, dns_message_t *msg) {
+	dns_fixedname_t *fixed_pool_name = NULL;
 	for (; ge != NULL; ge = ge->next) {
 		dns_name_t *name = NULL;
 		dns_rdataset_t *rdataset_a = NULL;
@@ -5427,9 +5434,11 @@ addglue_to_message(qpzonedb_t *qpdb, dns_glue_t *ge, dns_message_t *msg) {
 		dns_rdataset_t *sigrdataset_aaaa = NULL;
 		bool prepend_name = false;
 
-		dns_message_gettempname(msg, &name);
+		fixed_pool_name = NULL;
+		dns_message_gettempfixedname(msg, &fixed_pool_name);
+		name = dns_fixedname_name(fixed_pool_name);
 
-		dns_name_copy(&ge->name, name);
+		dns_fixedname_copy(&ge->name, fixed_pool_name);
 
 		if (ge->header_a != NULL) {
 			dns_message_gettemprdataset(msg, &rdataset_a);

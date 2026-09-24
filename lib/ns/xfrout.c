@@ -1441,13 +1441,15 @@ sendstream(xfrout_ctx_t *xfr) {
 						  xfr->client->message->rdclass,
 						  xfr->qtype);
 
-			dns_message_gettempname(msg, &qname);
+			dns_fixedname_t *fixed_qname = NULL;
+			dns_message_gettempfixedname(msg, &fixed_qname);
+			qname = dns_fixedname_name(fixed_qname);
 			isc_buffer_availableregion(&xfr->buf, &r);
 			INSIST(r.length >= xfr->qname->length);
 			r.length = xfr->qname->length;
 			isc_buffer_putmem(&xfr->buf, xfr->qname->ndata,
 					  xfr->qname->length);
-			dns_name_fromregion(qname, &r);
+			dns_fixedname_fromregion(fixed_qname, &r);
 			ISC_LIST_INIT(qname->list);
 			ISC_LIST_APPEND(qname->list, qrdataset, link);
 
@@ -1510,12 +1512,14 @@ sendstream(xfrout_ctx_t *xfr) {
 			log_rr(name, rdata, ttl); /* XXX */
 		}
 
-		dns_message_gettempname(msg, &msgname);
+		dns_fixedname_t *fixed_msgname = NULL;
+		dns_message_gettempfixedname(msg, &fixed_msgname);
+		msgname = dns_fixedname_name(fixed_msgname);
 		isc_buffer_availableregion(&xfr->buf, &r);
 		INSIST(r.length >= name->length);
 		r.length = name->length;
 		isc_buffer_putmem(&xfr->buf, name->ndata, name->length);
-		dns_name_fromregion(msgname, &r);
+		dns_fixedname_fromregion(fixed_msgname, &r);
 
 		/* Reserve space for RR header. */
 		isc_buffer_add(&xfr->buf, 10);

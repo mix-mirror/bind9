@@ -202,7 +202,8 @@ main(int argc, char *argv[]) {
 
 		isc_buffer_init(&buffer, domain, len);
 		isc_buffer_add(&buffer, len);
-		result = dns_name_fromtext(name, &buffer, dns_rootname, 0);
+		result = dns_fixedname_fromtext(&fixed, &buffer, dns_rootname,
+						0);
 		if (result == ISC_R_SUCCESS) {
 			smallname_from_name(name, &pval, &ival);
 			result = dns_qp_insert(qp, pval, ival);

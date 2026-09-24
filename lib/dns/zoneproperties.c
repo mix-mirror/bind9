@@ -364,7 +364,7 @@ tokenparse_label(const token_names_t *names, const foundtoken_t *token,
 	char labeltokidx;
 	int ilabel = -1;
 
-	dns_name_copy(dns_rootname, target);
+	dns_fixedname_copy(dns_rootname, &ft);
 	labels = dns_name_countlabels(names->zonename);
 
 	labeltokidx = isc_ascii_tolower(token->pos[token->len - 1]);
@@ -454,7 +454,7 @@ dns_zone_expandzonefile(isc_buffer_t *b, const char *filename,
 	}
 
 	/* Normalize the name by converting to lower case */
-	result = dns_name_downcase(zonename, names.zonename);
+	result = dns_fixedname_downcase(zonename, &fz);
 	INSIST(result == ISC_R_SUCCESS);
 
 	for (size_t i = 0; i < ARRAY_SIZE(tokens); i++) {
@@ -1981,7 +1981,8 @@ dns_zone_getloop(dns_zone_t *zone) {
 }
 
 isc_result_t
-dns_zone_getrad(dns_zone_t *zone, dns_name_t *name) {
+dns_zone_getrad(dns_zone_t *zone, dns_fixedname_t *fixed_name) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	isc_result_t result = ISC_R_NOTFOUND;
 
 	REQUIRE(DNS_ZONE_VALID(zone));
@@ -1991,7 +1992,7 @@ dns_zone_getrad(dns_zone_t *zone, dns_name_t *name) {
 	dns_rad_t *rad = rcu_dereference(zone->rad);
 	if (rad != NULL) {
 		dns_name_t *inner = dns_fixedname_name(&rad->fname);
-		dns_name_copy(inner, name);
+		dns_fixedname_copy(inner, fixed_name);
 		result = ISC_R_SUCCESS;
 	}
 	rcu_read_unlock();
@@ -2012,7 +2013,7 @@ dns_zone_setrad(dns_zone_t *zone, dns_name_t *name) {
 		dns_fixedname_init(&new_rad->fname);
 
 		isc_mem_attach(zone->mctx, &new_rad->mctx);
-		dns_name_copy(name, dns_fixedname_name(&new_rad->fname));
+		dns_fixedname_copy(name, &new_rad->fname);
 	}
 	dns_rad_t *xchg_rad = rcu_xchg_pointer(&zone->rad, new_rad);
 

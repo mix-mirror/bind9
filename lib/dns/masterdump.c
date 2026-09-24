@@ -584,7 +584,7 @@ rdataset_totext(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 
 	if (owner_name != NULL) {
 		name = dns_fixedname_initname(&fixed);
-		dns_name_copy(owner_name, name);
+		dns_fixedname_copy(owner_name, &fixed);
 		dns_rdataset_getownercase(rdataset, name);
 	}
 
@@ -1290,7 +1290,7 @@ dump_rdatasets_raw(isc_mem_t *mctx, const dns_name_t *owner_name,
 	dns_fixedname_t fixed;
 	dns_name_t *name = dns_fixedname_initname(&fixed);
 
-	dns_name_copy(owner_name, name);
+	dns_fixedname_copy(owner_name, &fixed);
 	DNS_RDATASETITER_FOREACH(rdsiter) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 		dns_rdatasetiter_current(rdsiter, &rdataset);
@@ -1673,14 +1673,15 @@ dumptostream(dns_dumpctx_t *dctx) {
 		dns_rdatasetiter_t *rdsiter = NULL;
 		dns_dbnode_t *node = NULL;
 
-		result = dns_dbiterator_current(dctx->dbiter, &node, name);
+		result = dns_dbiterator_current(dctx->dbiter, &node, &fixname);
 		if (result != ISC_R_SUCCESS && result != DNS_R_NEWORIGIN) {
 			break;
 		}
 		if (result == DNS_R_NEWORIGIN) {
 			dns_name_t *origin =
 				dns_fixedname_name(&dctx->tctx.origin_fixname);
-			result = dns_dbiterator_origin(dctx->dbiter, origin);
+			result = dns_dbiterator_origin(
+				dctx->dbiter, &dctx->tctx.origin_fixname);
 			RUNTIME_CHECK(result == ISC_R_SUCCESS);
 			if ((dctx->tctx.style.flags & DNS_STYLEFLAG_REL_DATA) !=
 			    0)

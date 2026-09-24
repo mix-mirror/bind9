@@ -71,15 +71,13 @@
  * as well by giving the buffer to the message using dns_message_takebuffer().
  * Doing this will cause the buffer to be freed using isc_buffer_free()
  * when the section lists are cleared, such as in a reset or in a destroy.
- * Since the buffer itself exists until the message is destroyed, this sort
- * of code can be written:
+ * Writable names can instead use storage from the message's fixedname pool:
  *
  * \code
- *	buffer = isc_buffer_allocate(mctx, 512);
- *	name = NULL;
- *	result = dns_message_gettempname(message, &name);
- *	result = dns_name_fromtext(name, &source, dns_rootname, 0, buffer);
- *	dns_message_takebuffer(message, &buffer);
+ *	dns_fixedname_t *fixed = NULL;
+ *	dns_message_gettempfixedname(message, &fixed);
+ *	result = dns_fixedname_fromtext(fixed, &source, dns_rootname, 0);
+ *	name = dns_fixedname_name(fixed);
  * \endcode
  *
  *
@@ -1501,3 +1499,11 @@ dns_message_hasdname(dns_message_t *msg);
  * Return whether a DNAME was detected in the ANSWER section of a QUERY
  * message when it was parsed.
  */
+
+void
+dns_message_gettempfixedname(dns_message_t *msg, dns_fixedname_t **item);
+/*%< Obtain an initialized fixedname from the message name pool. */
+
+void
+dns_message_puttempfixedname(dns_message_t *msg, dns_fixedname_t **item);
+/*%< Return a fixedname to the message name pool and clear the pointer. */

@@ -355,7 +355,7 @@ ISC_LOOP_TEST_IMPL(find_zone_keys_overflow) {
 	assert_non_null(mkdtemp(keydir));
 
 	name = dns_fixedname_initname(&fname);
-	result = dns_name_fromstring(name, "example.", dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(&fname, "example.", dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/*

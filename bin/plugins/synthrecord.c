@@ -56,7 +56,8 @@ synthrecord_chrreplace(isc_buffer_t *b, char from, char to) {
 
 static isc_result_t
 synthrecord_reverseanswer(synthrecord_t *inst, isc_netaddr_t *na,
-			  dns_name_t *synthname) {
+			  dns_fixedname_t *fixed_synthname) {
+	dns_name_t *synthname = dns_fixedname_name(fixed_synthname);
 	isc_buffer_t b;
 	char bdata[DNS_NAME_FORMATSIZE];
 	isc_buffer_t addrb;
@@ -115,7 +116,7 @@ synthrecord_reverseanswer(synthrecord_t *inst, isc_netaddr_t *na,
 	isc_buffer_forward(&b, inst->prefix.length);
 	synthrecord_chrreplace(&b, na->family == AF_INET ? '.' : ':', '-');
 
-	return dns_name_fromtext(synthname, &b, &inst->origin, 0);
+	return dns_fixedname_fromtext(fixed_synthname, &b, &inst->origin, 0);
 }
 
 static isc_result_t
@@ -216,7 +217,7 @@ synthrecord_parseforward(synthrecord_t *inst, const dns_name_t *name,
 	 */
 	dns_name_init(&label);
 	dns_name_getlabelsequence(name, 0, 1, &label);
-	dns_name_downcase(&label, &label);
+	dns_name_downcase(&label);
 
 	isc_buffer_init(&b, bdata, sizeof(bdata));
 	dns_name_totext(&label, DNS_NAME_OMITFINALDOT, &b);
@@ -324,9 +325,8 @@ static ns_hookresult_t
 synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 		    isc_result_t *resp) {
 	isc_result_t result;
-	dns_name_t aname = DNS_NAME_INITEMPTY;
-	char anamebdata[DNS_NAME_FORMATSIZE];
-	isc_buffer_t anameb;
+	dns_fixedname_t aname;
+	dns_fixedname_init(&aname);
 	isc_netaddr_t qaddr;
 	const dns_name_t *qname = qctx->client->query.qname;
 	dns_rdata_ptr_t synthptrdata;
@@ -360,8 +360,6 @@ synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 		return NS_HOOK_RETURN;
 	}
 
-	isc_buffer_init(&anameb, anamebdata, sizeof(anamebdata));
-	dns_name_setbuffer(&aname, &anameb);
 	result = synthrecord_reverseanswer(inst, &qaddr, &aname);
 	if (result != ISC_R_SUCCESS) {
 		isc_log_write(
@@ -372,9 +370,9 @@ synthrecord_reverse(synthrecord_t *inst, query_ctx_t *qctx,
 		return NS_HOOK_CONTINUE;
 	}
 
-	synthptrdata = (dns_rdata_ptr_t){
-		.mctx = qctx->client->inner.view->mctx, .ptr = aname
-	};
+	synthptrdata =
+		(dns_rdata_ptr_t){ .mctx = qctx->client->inner.view->mctx,
+				   .ptr = *dns_fixedname_name(&aname) };
 	DNS_RDATACOMMON_INIT(&synthptrdata, dns_rdatatype_ptr,
 			     dns_rdataclass_in);
 	result = synthrecord_respond(inst, qctx, &synthptrdata,

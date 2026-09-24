@@ -155,8 +155,8 @@ check_noqname(const proofset_t *sets, size_t nsets, dns_rdatatype_t type,
 	isc_result_t result;
 
 	assert_true(nsets <= MAXSETS);
-	result = dns_name_fromstring(owner, "proof.example.", dns_rootname, 0,
-				     NULL);
+	result = dns_fixedname_fromstring(&fowner, "proof.example.",
+					  dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	for (size_t i = 0; i < nsets; i++) {

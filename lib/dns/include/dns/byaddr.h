@@ -43,14 +43,15 @@
 #include <dns/types.h>
 
 isc_result_t
-dns_byaddr_createptrname(const isc_netaddr_t *address, dns_name_t *name);
+dns_byaddr_createptrname(const isc_netaddr_t *address,
+			 dns_fixedname_t     *fixed_name);
 /*%<
  * Creates a name that would be used in a PTR query for this address.
  *
  * Requires:
  *
  * \li	'address' is a valid address.
- * \li	'name' is a valid name with a dedicated buffer.
+ * \li	'name' is an initialized fixedname.
  */
 
 isc_result_t

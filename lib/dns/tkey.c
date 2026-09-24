@@ -102,6 +102,7 @@ dns_tkeyctx_destroy(dns_tkeyctx_t **tctxp) {
 static void
 add_rdata_to_list(dns_message_t *msg, dns_name_t *name, dns_rdata_t *rdata,
 		  uint32_t ttl, dns_namelist_t *namelist) {
+	dns_fixedname_t *fixed_pool_newname = NULL;
 	isc_region_t r, newr;
 	dns_rdata_t *newrdata = NULL;
 	dns_name_t *newname = NULL;
@@ -118,8 +119,10 @@ add_rdata_to_list(dns_message_t *msg, dns_name_t *name, dns_rdata_t *rdata,
 	dns_rdata_fromregion(newrdata, rdata->rdclass, rdata->type, &newr);
 	dns_message_takebuffer(msg, &tmprdatabuf);
 
-	dns_message_gettempname(msg, &newname);
-	dns_name_copy(name, newname);
+	fixed_pool_newname = NULL;
+	dns_message_gettempfixedname(msg, &fixed_pool_newname);
+	newname = dns_fixedname_name(fixed_pool_newname);
+	dns_fixedname_copy(name, fixed_pool_newname);
 
 	dns_message_gettemprdatalist(msg, &newlist);
 	newlist->rdclass = newrdata->rdclass;
@@ -180,7 +183,7 @@ process_gsstkey(dns_message_t *msg, dns_name_t *name, dns_rdata_tkey_t *tkeyin,
 
 	intoken = (isc_region_t){ tkeyin->key, tkeyin->keylen };
 	result = dst_gssapi_acceptctx(tctx->gssapi_keytab, &intoken, &outtoken,
-				      &gss_ctx, principal, tctx->mctx);
+				      &gss_ctx, &fprincipal, tctx->mctx);
 	if (result != ISC_R_SUCCESS) {
 		tkeyout->error = dns_tsigerror_badkey;
 		tkey_log("process_gsstkey(): dns_tsigerror_badkey");
@@ -410,7 +413,7 @@ dns_tkey_processquery(dns_message_t *msg, dns_tkeyctx_t *tctx,
 
 		if (!dns_name_isroot(qname)) {
 			unsigned int n = dns_name_countlabels(qname);
-			dns_name_copy(qname, keyname);
+			dns_fixedname_copy(qname, &fkeyname);
 			dns_name_getlabelsequence(keyname, 0, n - 1, keyname);
 		} else {
 			unsigned char randomdata[16];
@@ -424,9 +427,10 @@ dns_tkey_processquery(dns_message_t *msg, dns_tkeyctx_t *tctx,
 			isc_nonce_buf(randomdata, sizeof(randomdata));
 			isc_buffer_init(&b, randomtext, sizeof(randomtext));
 			CHECK(isc_hex_totext(&r, 2, "", &b));
-			CHECK(dns_name_fromtext(keyname, &b, NULL, 0));
+			CHECK(dns_fixedname_fromtext(&fkeyname, &b, NULL, 0));
 		}
-		CHECK(dns_name_concatenate(keyname, dns_rootname, keyname));
+		CHECK(dns_fixedname_concatenate(keyname, dns_rootname,
+						&fkeyname));
 
 		result = dns_tsigkey_find(&tsigkey, keyname, NULL, ring);
 		if (result == ISC_R_SUCCESS) {
@@ -493,6 +497,8 @@ cleanup:
 
 static isc_result_t
 buildquery(dns_message_t *msg, const dns_name_t *name, dns_rdata_tkey_t *tkey) {
+	dns_fixedname_t *fixed_pool_qname = NULL;
+	dns_fixedname_t *fixed_pool_aname = NULL;
 	dns_name_t *qname = NULL, *aname = NULL;
 	dns_rdataset_t *question = NULL, *tkeyset = NULL;
 	dns_rdatalist_t *tkeylist = NULL;
@@ -517,8 +523,12 @@ buildquery(dns_message_t *msg, const dns_name_t *name, dns_rdata_tkey_t *tkey) {
 	}
 	dns_message_takebuffer(msg, &dynbuf);
 
-	dns_message_gettempname(msg, &qname);
-	dns_message_gettempname(msg, &aname);
+	fixed_pool_qname = NULL;
+	dns_message_gettempfixedname(msg, &fixed_pool_qname);
+	qname = dns_fixedname_name(fixed_pool_qname);
+	fixed_pool_aname = NULL;
+	dns_message_gettempfixedname(msg, &fixed_pool_aname);
+	aname = dns_fixedname_name(fixed_pool_aname);
 
 	dns_message_gettemprdataset(msg, &question);
 	dns_rdataset_makequestion(question, dns_rdataclass_any,
@@ -532,8 +542,8 @@ buildquery(dns_message_t *msg, const dns_name_t *name, dns_rdata_tkey_t *tkey) {
 	dns_message_gettemprdataset(msg, &tkeyset);
 	dns_rdatalist_tordataset(tkeylist, tkeyset);
 
-	dns_name_copy(name, qname);
-	dns_name_copy(name, aname);
+	dns_fixedname_copy(name, fixed_pool_qname);
+	dns_fixedname_copy(name, fixed_pool_aname);
 
 	ISC_LIST_APPEND(qname->list, question, link);
 	ISC_LIST_APPEND(aname->list, tkeyset, link);
@@ -671,7 +681,7 @@ dns_tkey_gssnegotiate(dns_message_t *qmsg, dns_message_t *rmsg,
 		 */
 		dns_fixedname_t fixed;
 		dns_fixedname_init(&fixed);
-		dns_name_copy(tkeyname, dns_fixedname_name(&fixed));
+		dns_fixedname_copy(tkeyname, &fixed);
 		tkeyname = dns_fixedname_name(&fixed);
 
 		dns_message_reset(qmsg, DNS_MESSAGE_INTENTRENDER);

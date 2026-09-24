@@ -39,7 +39,7 @@ fromtext_minfo(ARGS_FROMTEXT) {
 		RETERR(isc_lex_getmastertoken(lexer, &token,
 					      isc_tokentype_string, false));
 		buffer_fromregion(&buffer, &token.value.as_region);
-		RETTOK(dns_name_fromtext(name, &buffer, origin, options));
+		RETTOK(dns_fixedname_fromtext(&fn, &buffer, origin, options));
 		RETTOK(dns_name_towire(name, NULL, target));
 		ok = true;
 		if ((options & DNS_RDATA_CHECKNAMES) != 0) {

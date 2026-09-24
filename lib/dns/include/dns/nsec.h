@@ -18,6 +18,7 @@
 #include <stdbool.h>
 
 #include <dns/diff.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/types.h>
 
@@ -101,7 +102,7 @@ dns_nsec_isset(const unsigned char *array, unsigned int type);
 isc_result_t
 dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 		       const dns_name_t *nsecname, dns_rdataset_t *nsecset,
-		       bool *exists, bool *data, dns_name_t *wild,
+		       bool *exists, bool *data, dns_fixedname_t *fixed_wild,
 		       dns_nseclog_t log, void *arg);
 /*%
  * Return ISC_R_SUCCESS if we can determine that the name doesn't exist

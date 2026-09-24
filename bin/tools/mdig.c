@@ -546,8 +546,7 @@ sendquery(struct query *query) {
 	dns_fixedname_init(&queryname);
 	isc_buffer_init(&buf, query->textname, strlen(query->textname));
 	isc_buffer_add(&buf, strlen(query->textname));
-	result = dns_name_fromtext(dns_fixedname_name(&queryname), &buf,
-				   dns_rootname, 0);
+	result = dns_fixedname_fromtext(&queryname, &buf, dns_rootname, 0);
 	CHECKM("dns_name_fromtext", result);
 
 	dns_message_create(isc_g_mctx, NULL, NULL, DNS_MESSAGE_INTENTRENDER,
@@ -1048,7 +1047,7 @@ get_reverse(char *reverse, size_t len, const char *value) {
 		dns_name_t *name;
 
 		name = dns_fixedname_initname(&fname);
-		result = dns_byaddr_createptrname(&addr, name);
+		result = dns_byaddr_createptrname(&addr, &fname);
 		CHECKM("dns_byaddr_createptrname", result);
 		dns_name_format(name, reverse, (unsigned int)len);
 		return;

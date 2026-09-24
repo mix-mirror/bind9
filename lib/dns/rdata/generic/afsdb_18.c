@@ -51,7 +51,7 @@ fromtext_afsdb(ARGS_FROMTEXT) {
 	if (origin == NULL) {
 		origin = dns_rootname;
 	}
-	RETTOK(dns_name_fromtext(name, &buffer, origin, options));
+	RETTOK(dns_fixedname_fromtext(&fn, &buffer, origin, options));
 	RETTOK(dns_name_towire(name, NULL, target));
 	ok = true;
 	if ((options & DNS_RDATA_CHECKNAMES) != 0) {

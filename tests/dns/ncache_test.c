@@ -28,6 +28,7 @@
 #include <isc/util.h>
 
 #include <dns/db.h>
+#include <dns/fixedname.h>
 #include <dns/lib.h>
 #include <dns/message.h>
 #include <dns/name.h>
@@ -55,7 +56,7 @@ name_fromstring(dns_fixedname_t *fixed, const char *namestr) {
 	dns_name_t *name = dns_fixedname_initname(fixed);
 	isc_result_t result;
 
-	result = dns_name_fromstring(name, namestr, dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(fixed, namestr, dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	return name;
@@ -139,7 +140,8 @@ ncache_add(dns_message_t *msg, const dns_name_t *qname,
 	dns_db_t *db = NULL;
 	dns_dbnode_t *node = NULL;
 	dns_fixedname_t ffound;
-	dns_name_t *found = dns_fixedname_initname(&ffound);
+
+	dns_fixedname_init(&ffound);
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 	isc_result_t result;
 
@@ -157,7 +159,7 @@ ncache_add(dns_message_t *msg, const dns_name_t *qname,
 	dns_db_detachnode(&node);
 
 	*find_result = dns_db_find(db, qname, NULL, dns_rdatatype_a, 0, now,
-				   found, &rdataset, NULL);
+				   &ffound, &rdataset, NULL);
 	dns_rdataset_cleanup(&rdataset);
 
 	dns_db_detach(&db);

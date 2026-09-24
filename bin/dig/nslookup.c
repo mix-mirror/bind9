@@ -317,7 +317,8 @@ trying(char *frm, dig_lookup_t *lookup) {
 }
 
 static void
-chase_cnamechain(dns_message_t *msg, dns_name_t *qname) {
+chase_cnamechain(dns_message_t *msg, dns_fixedname_t *fixed_qname) {
+	dns_name_t *qname = dns_fixedname_name(fixed_qname);
 	isc_result_t result;
 	dns_rdataset_t *rdataset;
 	dns_rdata_cname_t cname;
@@ -338,7 +339,7 @@ chase_cnamechain(dns_message_t *msg, dns_name_t *qname) {
 		dns_rdataset_current(rdataset, &rdata);
 		result = dns_rdata_tostruct(&rdata, &cname, NULL);
 		check_result(result, "dns_rdata_tostruct");
-		dns_name_copy(&cname.cname, qname);
+		dns_fixedname_copy(&cname.cname, fixed_qname);
 		dns_rdata_freestruct(&cname);
 	}
 }
@@ -394,8 +395,8 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 
 		/* Add AAAA lookup. */
 		name = dns_fixedname_initname(&fixed);
-		dns_name_copy(query->lookup->name, name);
-		chase_cnamechain(msg, name);
+		dns_fixedname_copy(query->lookup->name, &fixed);
+		chase_cnamechain(msg, &fixed);
 		dns_name_format(name, namestr, sizeof(namestr));
 		lookup = clone_lookup(query->lookup, false);
 		if (lookup != NULL) {

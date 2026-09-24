@@ -39,6 +39,7 @@
 
 #include <dns/byaddr.h>
 #include <dns/db.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/view.h>
 #include <dns/zone.h>
@@ -126,8 +127,9 @@ cleanup:
  * 			  does not exist or is not managed by this driver.
  */
 static isc_result_t
-syncptr_find_zone(sample_instance_t *inst, dns_rdata_t *rdata, dns_name_t *name,
-		  dns_zone_t **zone) {
+syncptr_find_zone(sample_instance_t *inst, dns_rdata_t *rdata,
+		  dns_fixedname_t *fixed_name, dns_zone_t **zone) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	isc_result_t result;
 	isc_netaddr_t isc_ip; /* internal net address representation */
 	dns_rdata_in_a_t ipv4;
@@ -158,7 +160,7 @@ syncptr_find_zone(sample_instance_t *inst, dns_rdata_t *rdata, dns_name_t *name,
 	 * @example
 	 * 192.168.0.1 -> 1.0.168.192.in-addr.arpa
 	 */
-	result = dns_byaddr_createptrname(&isc_ip, name);
+	result = dns_byaddr_createptrname(&isc_ip, fixed_name);
 	if (result != ISC_R_SUCCESS) {
 		log_write(ISC_LOG_ERROR,
 			  "syncptr_find_zone: dns_byaddr_createptrname -> %s\n",
@@ -234,8 +236,7 @@ syncptr(sample_instance_t *inst, dns_name_t *name, dns_rdata_t *addr_rdata,
 	dns_fixedname_init(&syncptr->ptr_target_name);
 
 	/* Check if reverse zone is managed by this driver */
-	result = syncptr_find_zone(inst, addr_rdata,
-				   dns_fixedname_name(&ptr_name), &ptr_zone);
+	result = syncptr_find_zone(inst, addr_rdata, &ptr_name, &ptr_zone);
 	if (result != ISC_R_SUCCESS) {
 		log_error_r("PTR record synchronization skipped: reverse zone "
 			    "is not managed by driver instance '%s'",
@@ -245,7 +246,7 @@ syncptr(sample_instance_t *inst, dns_name_t *name, dns_rdata_t *addr_rdata,
 
 	/* Reverse zone is managed by this driver, prepare PTR record */
 	dns_zone_attach(ptr_zone, &syncptr->zone);
-	dns_name_copy(name, dns_fixedname_name(&syncptr->ptr_target_name));
+	dns_fixedname_copy(name, &syncptr->ptr_target_name);
 	dns_name_clone(dns_fixedname_name(&syncptr->ptr_target_name),
 		       &ptr_struct.ptr);
 	dns_diff_init(inst->mctx, &syncptr->diff);

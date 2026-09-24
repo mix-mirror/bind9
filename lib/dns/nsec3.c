@@ -246,7 +246,7 @@ dns_nsec3_hashname(dns_fixedname_t *result,
 	memset(rethash, 0, NSEC3_MAX_HASH_LENGTH);
 
 	downcased = dns_fixedname_initname(&fixed);
-	dns_name_downcase(name, downcased);
+	dns_fixedname_downcase(name, &fixed);
 
 	/* hash the node name */
 	len = isc_iterated_hash(rethash, hashalg, iterations, salt,
@@ -266,8 +266,7 @@ dns_nsec3_hashname(dns_fixedname_t *result,
 
 	/* convert the hex to a domain name */
 	dns_fixedname_init(result);
-	return dns_name_fromtext(dns_fixedname_name(result), &namebuffer,
-				 origin, 0);
+	return dns_fixedname_fromtext(result, &namebuffer, origin, 0);
 }
 
 unsigned int
@@ -602,7 +601,7 @@ find_previous:
 			pass++;
 			CHECK(dns_dbiterator_last(dbit));
 		}
-		CHECK(dns_dbiterator_current(dbit, &node, prev));
+		CHECK(dns_dbiterator_current(dbit, &node, &fprev));
 		CHECK(dns_dbiterator_pause(dbit));
 		result = dns_db_findrdataset(db, node, version,
 					     dns_rdatatype_nsec3, 0,
@@ -759,7 +758,7 @@ addnsec3:
 				pass++;
 				CHECK(dns_dbiterator_last(dbit));
 			}
-			CHECK(dns_dbiterator_current(dbit, &node, prev));
+			CHECK(dns_dbiterator_current(dbit, &node, &fprev));
 			CHECK(dns_dbiterator_pause(dbit));
 			result = dns_db_findrdataset(
 				db, node, version, dns_rdatatype_nsec3, 0,
@@ -1256,8 +1255,7 @@ deleteit(dns_db_t *db, dns_dbversion_t *ver, const dns_name_t *name,
 
 	result = dns_db_find(db, name, ver, dns_rdatatype_any,
 			     DNS_DBFIND_GLUEOK | DNS_DBFIND_NOWILD,
-			     (isc_stdtime_t)0, dns_fixedname_name(&foundname),
-			     NULL, NULL);
+			     (isc_stdtime_t)0, &foundname, NULL, NULL);
 	if (result == DNS_R_EMPTYNAME || result == ISC_R_SUCCESS ||
 	    result == DNS_R_ZONECUT)
 	{
@@ -1373,7 +1371,7 @@ dns_nsec3_delnsec3(dns_db_t *db, dns_dbversion_t *version,
 			pass++;
 			CHECK(dns_dbiterator_last(dbit));
 		}
-		CHECK(dns_dbiterator_current(dbit, &node, prev));
+		CHECK(dns_dbiterator_current(dbit, &node, &fprev));
 		CHECK(dns_dbiterator_pause(dbit));
 		result = dns_db_findrdataset(db, node, version,
 					     dns_rdatatype_nsec3, 0,
@@ -1476,7 +1474,7 @@ cleanup_orphaned_ents:
 				pass++;
 				CHECK(dns_dbiterator_last(dbit));
 			}
-			CHECK(dns_dbiterator_current(dbit, &node, prev));
+			CHECK(dns_dbiterator_current(dbit, &node, &fprev));
 			CHECK(dns_dbiterator_pause(dbit));
 			result = dns_db_findrdataset(
 				db, node, version, dns_rdatatype_nsec3, 0,
@@ -1733,10 +1731,14 @@ dns_nsec3_maxiterations(void) {
 isc_result_t
 dns_nsec3_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 			const dns_name_t *nsec3name, dns_rdataset_t *nsec3set,
-			dns_name_t *zonename, bool *exists, bool *data,
-			bool *optout, bool *unknown, bool *setnearest,
-			dns_name_t *closest, dns_name_t *nearest,
-			dns_nseclog_t logit, void *arg) {
+			dns_fixedname_t *fixed_zonename, bool *exists,
+			bool *data, bool *optout, bool *unknown,
+			bool *setnearest, dns_fixedname_t *fixed_closest,
+			dns_fixedname_t *fixed_nearest, dns_nseclog_t logit,
+			void *arg) {
+	dns_name_t *zonename = dns_fixedname_name(fixed_zonename);
+	dns_name_t *closest = dns_fixedname_name(fixed_closest);
+	dns_name_t *nearest = dns_fixedname_name(fixed_nearest);
 	char namebuf[DNS_NAME_FORMATSIZE];
 	dns_fixedname_t fzone;
 	dns_fixedname_t qfixed;
@@ -1805,7 +1807,7 @@ dns_nsec3_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 	 * Is this zone the same or deeper than the current zone?
 	 */
 	if (dns_name_empty(zonename) || dns_name_issubdomain(zone, zonename)) {
-		dns_name_copy(zone, zonename);
+		dns_fixedname_copy(zone, fixed_zonename);
 	}
 
 	if (!dns_name_equal(zone, zonename)) {
@@ -1853,7 +1855,7 @@ dns_nsec3_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 	 * Prepare to compute all the hashes.
 	 */
 	qname = dns_fixedname_initname(&qfixed);
-	dns_name_downcase(name, qname);
+	dns_fixedname_downcase(name, &qfixed);
 	qlabels = dns_name_countlabels(qname);
 	first = true;
 
@@ -1957,7 +1959,7 @@ dns_nsec3_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 					 "NSEC3 indicates potential closest "
 					 "encloser: '%s'",
 					 namebuf);
-				dns_name_copy(qname, closest);
+				dns_fixedname_copy(qname, fixed_closest);
 			}
 			dns_name_format(qname, namebuf, sizeof(namebuf));
 			(*logit)(arg, ISC_LOG_DEBUG(3),
@@ -1990,7 +1992,7 @@ dns_nsec3_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 			    (dns_name_empty(nearest) ||
 			     dns_name_issubdomain(nearest, qname)))
 			{
-				dns_name_copy(qname, nearest);
+				dns_fixedname_copy(qname, fixed_nearest);
 				*setnearest = true;
 			}
 

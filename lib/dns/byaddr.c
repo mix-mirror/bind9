@@ -39,7 +39,8 @@ static char hex_digits[] = { '0', '1', '2', '3', '4', '5', '6', '7',
 			     '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
 
 isc_result_t
-dns_byaddr_createptrname(const isc_netaddr_t *address, dns_name_t *name) {
+dns_byaddr_createptrname(const isc_netaddr_t *address,
+			 dns_fixedname_t *fixed_name) {
 	char textname[128];
 	const unsigned char *bytes;
 	int i;
@@ -82,7 +83,7 @@ dns_byaddr_createptrname(const isc_netaddr_t *address, dns_name_t *name) {
 	len = (unsigned int)strlen(textname);
 	isc_buffer_init(&buffer, textname, len);
 	isc_buffer_add(&buffer, len);
-	return dns_name_fromtext(name, &buffer, dns_rootname, 0);
+	return dns_fixedname_fromtext(fixed_name, &buffer, dns_rootname, 0);
 }
 
 static isc_result_t

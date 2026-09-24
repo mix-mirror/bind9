@@ -163,15 +163,14 @@ ISC_RUN_TEST_IMPL(find) {
 	isc_result_t res;
 	dns_rdataset_t rdataset;
 	dns_fixedname_t fixed;
-	dns_name_t *name = NULL;
 
 	UNUSED(state);
 
-	name = dns_fixedname_initname(&fixed);
+	dns_fixedname_init(&fixed);
 
 	dns_rdataset_init(&rdataset);
-	res = dns_db_find(db1, dns_rootname, v1, dns_rdatatype_soa, 0, 0, name,
-			  &rdataset, NULL);
+	res = dns_db_find(db1, dns_rootname, v1, dns_rdatatype_soa, 0, 0,
+			  &fixed, &rdataset, NULL);
 	/*
 	 * Note: in the QPzone database, the root node always exists,
 	 * even if it's empty, so we would get DNS_R_NXRRSET from this
@@ -185,7 +184,7 @@ ISC_RUN_TEST_IMPL(find) {
 
 	dns_rdataset_init(&rdataset);
 	check_assertion((void)dns_db_find(db1, dns_rootname, v2,
-					  dns_rdatatype_soa, 0, 0, name,
+					  dns_rdatatype_soa, 0, 0, &fixed,
 					  &rdataset, NULL));
 }
 

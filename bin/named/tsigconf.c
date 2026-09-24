@@ -67,8 +67,8 @@ add_initial_keys(const cfg_obj_t *list, dns_tsigkeyring_t *ring,
 		 */
 		isc_buffer_constinit(&keynamesrc, keyid, strlen(keyid));
 		isc_buffer_add(&keynamesrc, strlen(keyid));
-		CHECK(dns_name_fromtext(keyname, &keynamesrc, dns_rootname,
-					DNS_NAME_DOWNCASE));
+		CHECK(dns_fixedname_fromtext(&fkey, &keynamesrc, dns_rootname,
+					     DNS_NAME_DOWNCASE));
 
 		/*
 		 * Create the algorithm.

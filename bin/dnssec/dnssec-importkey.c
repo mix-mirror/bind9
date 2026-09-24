@@ -66,7 +66,7 @@ initname(char *setname) {
 
 	isc_buffer_init(&buf, setname, strlen(setname));
 	isc_buffer_add(&buf, strlen(setname));
-	result = dns_name_fromtext(name, &buf, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fixed, &buf, dns_rootname, 0);
 	return result;
 }
 
@@ -181,7 +181,7 @@ loadkey(char *filename, unsigned char *key_buf, unsigned int key_buf_size,
 	rdclass = dst_key_class(key);
 
 	name = dns_fixedname_initname(&fixed);
-	dns_name_copy(dst_key_name(key), name);
+	dns_fixedname_copy(dst_key_name(key), &fixed);
 
 	dst_key_free(&key);
 }

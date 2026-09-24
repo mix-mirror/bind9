@@ -21,6 +21,7 @@
 #include <isc/util.h>
 
 #include <dns/db.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/nsec.h>
 #include <dns/rdata.h>
@@ -110,7 +111,8 @@ dns_nsec_buildrdata(dns_db_t *db, dns_dbversion_t *version, dns_dbnode_t *node,
 	 * Downcase next owner name.
 	 */
 	nextname = dns_fixedname_initname(&fnextname);
-	RUNTIME_CHECK(dns_name_downcase(target, nextname) == ISC_R_SUCCESS);
+	RUNTIME_CHECK(dns_fixedname_downcase(target, &fnextname) ==
+		      ISC_R_SUCCESS);
 	memset(buffer, 0, DNS_NSEC_BUFFERSIZE);
 	dns_name_toregion(nextname, &r);
 	memmove(buffer, r.base, r.length);
@@ -311,8 +313,9 @@ dns_nsec_nseconly(dns_db_t *db, dns_dbversion_t *version, dns_diff_t *diff,
 isc_result_t
 dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 		       const dns_name_t *nsecname, dns_rdataset_t *nsecset,
-		       bool *exists, bool *data, dns_name_t *wild,
+		       bool *exists, bool *data, dns_fixedname_t *fixed_wild,
 		       dns_nseclog_t logit, void *arg) {
+	dns_name_t *wild = dns_fixedname_name(fixed_wild);
 	int order;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 	isc_result_t result;
@@ -470,7 +473,8 @@ dns_nsec_noexistnodata(dns_rdatatype_t type, const dns_name_t *name,
 			dns_name_getlabelsequence(&nsec.next, labels - nlabels,
 						  nlabels, &common);
 		}
-		result = dns_name_concatenate(dns_wildcardname, &common, wild);
+		result = dns_fixedname_concatenate(dns_wildcardname, &common,
+						   fixed_wild);
 		if (result != ISC_R_SUCCESS) {
 			dns_rdata_freestruct(&nsec);
 			(*logit)(arg, ISC_LOG_DEBUG(3),

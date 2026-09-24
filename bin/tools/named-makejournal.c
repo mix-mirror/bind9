@@ -48,7 +48,7 @@ loadzone(dns_db_t **db, const char *origin, const char *filename) {
 	dns_fixedname_t fixed;
 	dns_name_t *name = dns_fixedname_initname(&fixed);
 
-	RETERR(dns_name_fromstring(name, origin, dns_rootname, 0, NULL));
+	RETERR(dns_fixedname_fromstring(&fixed, origin, dns_rootname, 0));
 	RETERR(dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, name, dns_dbtype_zone,
 			     dns_rdataclass_in, 0, NULL, db));
 

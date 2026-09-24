@@ -20,6 +20,7 @@
 
 #include <dns/callbacks.h>
 #include <dns/deleg.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/qp.h>
 #include <dns/view.h>
@@ -275,8 +276,12 @@ getparentnode(dns_qpchain_t *chain, delegdb_node_t **node, dns_ttl_t now) {
  */
 static isc_result_t
 deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr, const dns_name_t *name,
-	     isc_stdtime_t optnow, unsigned int options, dns_name_t *zonecut,
-	     dns_name_t *deepestzonecut, dns_delegset_t **delegsetp) {
+	     isc_stdtime_t optnow, unsigned int options,
+	     dns_fixedname_t *fixed_zonecut,
+	     dns_fixedname_t *fixed_deepestzonecut,
+	     dns_delegset_t **delegsetp) {
+	dns_name_t *deepestzonecut = dns_fixedname_name(fixed_deepestzonecut);
+	dns_name_t *zonecut = dns_fixedname_name(fixed_zonecut);
 	isc_result_t result = ISC_R_SUCCESS;
 	delegdb_node_t *node = NULL;
 	isc_stdtime_t now = optnow > 0 ? optnow : isc_stdtime_now();
@@ -287,8 +292,8 @@ deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr, const dns_name_t *name,
 
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(DNS_NAME_VALID(name));
-	REQUIRE(zonecut == NULL || dns_name_hasbuffer(zonecut));
-	REQUIRE(deepestzonecut == NULL || dns_name_hasbuffer(deepestzonecut));
+	REQUIRE(zonecut == NULL || DNS_NAME_VALID(zonecut));
+	REQUIRE(deepestzonecut == NULL || DNS_NAME_VALID(deepestzonecut));
 
 	result = dns_qp_lookup(qpr, name, DNS_DBNAMESPACE_NORMAL, NULL, &chain,
 			       (void **)&node, NULL);
@@ -299,7 +304,7 @@ deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr, const dns_name_t *name,
 	INSIST(VALID_DELEGDB_NODE(node));
 
 	if (zonecut != NULL && deepestzonecut != NULL) {
-		dns_name_copy(&node->zonecut, deepestzonecut);
+		dns_fixedname_copy(&node->zonecut, fixed_deepestzonecut);
 	}
 
 	/*
@@ -335,7 +340,7 @@ deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr, const dns_name_t *name,
 		}
 
 		if (zonecut != NULL) {
-			dns_name_copy(&node->zonecut, zonecut);
+			dns_fixedname_copy(&node->zonecut, fixed_zonecut);
 		}
 		INSIST(node->delegset);
 		dns_delegset_attach(node->delegset, delegsetp);
@@ -350,7 +355,7 @@ deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr, const dns_name_t *name,
 
 	if (isactive(node, now)) {
 		if (zonecut != NULL) {
-			dns_name_copy(&node->zonecut, zonecut);
+			dns_fixedname_copy(&node->zonecut, fixed_zonecut);
 		}
 		INSIST(node->delegset);
 		dns_delegset_attach(node->delegset, delegsetp);
@@ -363,8 +368,10 @@ deleg_lookup(dns_delegdb_t *delegdb, dns_qpread_t *qpr, const dns_name_t *name,
 
 isc_result_t
 dns_delegdb_lookup(dns_delegdb_t *delegdb, const dns_name_t *name,
-		   isc_stdtime_t now, unsigned int options, dns_name_t *zonecut,
-		   dns_name_t *deepestzonecut, dns_delegset_t **delegsetp) {
+		   isc_stdtime_t now, unsigned int options,
+		   dns_fixedname_t *fixed_zonecut,
+		   dns_fixedname_t *fixed_deepestzonecut,
+		   dns_delegset_t **delegsetp) {
 	isc_result_t result = ISC_R_SHUTTINGDOWN;
 	dns_qpread_t qpr = {};
 	char namebuf[DNS_NAME_FORMATSIZE];
@@ -377,8 +384,8 @@ dns_delegdb_lookup(dns_delegdb_t *delegdb, const dns_name_t *name,
 	LIBDNS_DELEGDB_LOOKUP_START(delegdb, namebuf);
 
 	dns_qpmulti_query(delegdb->qplru->nodes, &qpr);
-	result = deleg_lookup(delegdb, &qpr, name, now, options, zonecut,
-			      deepestzonecut, delegsetp);
+	result = deleg_lookup(delegdb, &qpr, name, now, options, fixed_zonecut,
+			      fixed_deepestzonecut, delegsetp);
 	dns_qpread_destroy(delegdb->qplru->nodes, &qpr);
 
 	LIBDNS_DELEGDB_LOOKUP_DONE(delegdb, namebuf, result);

@@ -259,7 +259,7 @@ fromwire_opt(ARGS_FROMWIRE) {
 			isc_buffer_add(&b, length);
 			isc_buffer_setactive(&b, length);
 			name = dns_fixedname_initname(&fixed);
-			result = dns_name_fromwire(name, &b, dctx, NULL);
+			result = dns_fixedname_fromwire(&fixed, &b, dctx);
 			if (result != ISC_R_SUCCESS || name->length != length ||
 			    !dns_name_isabsolute(name))
 			{

@@ -274,7 +274,8 @@ dns_nametree_find(dns_nametree_t *nametree, const dns_name_t *name,
 
 bool
 dns_nametree_covered(dns_nametree_t *nametree, const dns_name_t *name,
-		     dns_name_t *found, uint32_t bit) {
+		     dns_fixedname_t *fixed_found, uint32_t bit) {
+	dns_name_t *found = dns_fixedname_name(fixed_found);
 	isc_result_t result;
 	dns_qpread_t qpr;
 	dns_ntnode_t *node = NULL;
@@ -287,7 +288,7 @@ dns_nametree_covered(dns_nametree_t *nametree, const dns_name_t *name,
 			       (void **)&node, NULL);
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		if (found != NULL) {
-			dns_name_copy(&node->name, found);
+			dns_fixedname_copy(&node->name, fixed_found);
 		}
 		switch (nametree->type) {
 		case DNS_NAMETREE_BOOL:

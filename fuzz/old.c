@@ -67,15 +67,9 @@ old_name_fromwire(dns_name_t *name, isc_buffer_t *source, dns_decompress_t dctx,
 	 */
 
 	REQUIRE(VALID_NAME(name));
-	REQUIRE((target != NULL && ISC_BUFFER_VALID(target)) ||
-		(target == NULL && ISC_BUFFER_VALID(name->buffer)));
+	REQUIRE(ISC_BUFFER_VALID(target));
 
 	downcase = ((options & DNS_NAME_DOWNCASE) != 0);
-
-	if (target == NULL && name->buffer != NULL) {
-		target = name->buffer;
-		isc_buffer_clear(target);
-	}
 
 	REQUIRE(BINDABLE(name));
 

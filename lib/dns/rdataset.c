@@ -396,7 +396,7 @@ dns_rdataset_towire(dns_rdataset_t *rdataset, const dns_name_t *owner_name,
 	}
 
 	name = dns_fixedname_initname(&fixed);
-	dns_name_copy(owner_name, name);
+	dns_fixedname_copy(owner_name, &fixed);
 	dns_rdataset_getownercase(rdataset, name);
 	dns_compress_setmultiuse(cctx, true);
 

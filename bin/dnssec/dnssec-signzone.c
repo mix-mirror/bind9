@@ -187,7 +187,7 @@ savezonecut(dns_fixedname_t *fzonecut, dns_name_t *name) {
 	dns_name_t *result;
 
 	result = dns_fixedname_initname(fzonecut);
-	dns_name_copy(name, result);
+	dns_fixedname_copy(name, fzonecut);
 
 	return result;
 }
@@ -430,7 +430,7 @@ expecttofindkey(dns_name_t *name) {
 
 	dns_fixedname_init(&fname);
 	result = dns_db_find(gdb, name, gversion, dns_rdatatype_dnskey, options,
-			     0, dns_fixedname_name(&fname), NULL, NULL);
+			     0, &fname, NULL, NULL);
 	switch (result) {
 	case ISC_R_SUCCESS:
 	case DNS_R_NXDOMAIN:
@@ -1014,11 +1014,11 @@ addnowildcardhash(hashlist_t *l,
 
 	wild = dns_fixedname_initname(&fixed);
 
-	result = dns_name_concatenate(dns_wildcardname, name, wild);
+	result = dns_fixedname_concatenate(dns_wildcardname, name, &fixed);
 	if (result == ISC_R_NOSPACE) {
 		return;
 	}
-	check_result(result, "addnowildcardhash: dns_name_concatenate()");
+	check_result(result, "addnowildcardhash: dns_fixedname_concatenate()");
 
 	result = dns_db_findnode(gdb, wild, false, &node);
 	if (result == ISC_R_SUCCESS) {
@@ -1406,14 +1406,14 @@ static void
 get_soa_ttls(void) {
 	dns_rdataset_t soaset;
 	dns_fixedname_t fname;
-	dns_name_t *name;
+
 	isc_result_t result;
 	dns_rdata_t rdata = DNS_RDATA_INIT;
 
-	name = dns_fixedname_initname(&fname);
+	dns_fixedname_init(&fname);
 	dns_rdataset_init(&soaset);
 	result = dns_db_find(gdb, gorigin, gversion, dns_rdatatype_soa, 0, 0,
-			     name, &soaset, NULL);
+			     &fname, &soaset, NULL);
 	if (result != ISC_R_SUCCESS) {
 		fatal("failed to find an SOA at the zone apex: %s",
 		      isc_result_totext(result));
@@ -1551,7 +1551,7 @@ signapex(void) {
 	name = dns_fixedname_initname(&fixed);
 	result = dns_dbiterator_seek(gdbiter, gorigin);
 	check_result(result, "dns_dbiterator_seek()");
-	result = dns_dbiterator_current(gdbiter, &node, name);
+	result = dns_dbiterator_current(gdbiter, &node, &fixed);
 	check_dns_dbiterator_current(result);
 	signname(node, true, name);
 	dumpnode(name, node);
@@ -1608,7 +1608,7 @@ assignwork(void *arg) {
 	node = NULL;
 	found = false;
 	while (!found) {
-		result = dns_dbiterator_current(gdbiter, &node, name);
+		result = dns_dbiterator_current(gdbiter, &node, &fname);
 		check_dns_dbiterator_current(result);
 		/*
 		 * The origin was handled by signapex().
@@ -1840,7 +1840,7 @@ nsecify(void) {
 	check_result(result, "dns_db_createiterator()");
 	DNS_DBITERATOR_FOREACH(dbiter) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-		result = dns_dbiterator_current(dbiter, &node, name);
+		result = dns_dbiterator_current(dbiter, &node, &fname);
 		check_dns_dbiterator_current(result);
 		result = dns_db_allrdatasets(gdb, node, gversion, 0, 0,
 					     &rdsiter);
@@ -1867,7 +1867,7 @@ nsecify(void) {
 	check_result(result, "dns_dbiterator_first()");
 
 	while (!done) {
-		result = dns_dbiterator_current(dbiter, &node, name);
+		result = dns_dbiterator_current(dbiter, &node, &fname);
 		check_dns_dbiterator_current(result);
 		/*
 		 * Skip out-of-zone records.
@@ -1904,7 +1904,7 @@ nsecify(void) {
 		while (result == ISC_R_SUCCESS) {
 			bool active = false;
 			result = dns_dbiterator_current(dbiter, &nextnode,
-							nextname);
+							&fnextname);
 			check_dns_dbiterator_current(result);
 			active = active_node(nextnode);
 			if (!active) {
@@ -2019,7 +2019,7 @@ addnsec3(dns_name_t *name, dns_dbnode_t *node, const unsigned char *salt,
 	dns_fixedname_init(&hashname);
 	dns_rdataset_init(&rdataset);
 
-	dns_name_downcase(name, name);
+	dns_name_downcase(name);
 	result = dns_nsec3_hashname(&hashname, hash, &hash_len, name, gorigin,
 				    dns_hash_sha1, iterations, salt, salt_len);
 	check_result(result, "addnsec3: dns_nsec3_hashname()");
@@ -2231,7 +2231,7 @@ cleanup_zone(void) {
 
 	DNS_DBITERATOR_FOREACH(dbiter) {
 		dns_rdataset_t rdataset = DNS_RDATASET_INIT;
-		result = dns_dbiterator_current(dbiter, &node, name);
+		result = dns_dbiterator_current(dbiter, &node, &fname);
 		check_dns_dbiterator_current(result);
 		result = dns_db_allrdatasets(gdb, node, gversion, 0, 0,
 					     &rdsiter);
@@ -2289,7 +2289,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 	check_result(result, "dns_dbiterator_first()");
 
 	while (!done) {
-		result = dns_dbiterator_current(dbiter, &node, name);
+		result = dns_dbiterator_current(dbiter, &node, &fname);
 		check_dns_dbiterator_current(result);
 		/*
 		 * Skip out-of-zone records.
@@ -2319,7 +2319,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 		nextnode = NULL;
 		while (result == ISC_R_SUCCESS) {
 			result = dns_dbiterator_current(dbiter, &nextnode,
-							nextname);
+							&fnextname);
 			check_dns_dbiterator_current(result);
 			active = active_node(nextnode);
 			if (!active) {
@@ -2358,13 +2358,13 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 			break;
 		}
 		if (result == ISC_R_NOMORE) {
-			dns_name_copy(gorigin, nextname);
+			dns_fixedname_copy(gorigin, &fnextname);
 			done = true;
 		} else if (result != ISC_R_SUCCESS) {
 			fatal("iterating through the database failed: %s",
 			      isc_result_totext(result));
 		}
-		dns_name_downcase(name, name);
+		dns_name_downcase(name);
 		hashlist_add_dns_name(hashlist, name, hashalg, iterations, salt,
 				      salt_len, false);
 		dns_db_detachnode(&node);
@@ -2374,7 +2374,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 		 * node for another <name,nextname> span so we don't add
 		 * it here.  Empty labels on nextname are within the span.
 		 */
-		dns_name_downcase(nextname, nextname);
+		dns_name_downcase(nextname);
 		dns_name_fullcompare(name, nextname, &order, &nlabels);
 		addnowildcardhash(hashlist, name, hashalg, iterations, salt,
 				  salt_len);
@@ -2419,7 +2419,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 	check_result(result, "dns_db_createiterator()");
 
 	DNS_DBITERATOR_FOREACH(dbiter) {
-		result = dns_dbiterator_current(dbiter, &node, name);
+		result = dns_dbiterator_current(dbiter, &node, &fname);
 		check_dns_dbiterator_current(result);
 		nsec3clean(name, node, hashalg, iterations, salt, salt_len,
 			   hashlist);
@@ -2437,7 +2437,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 	check_result(result, "dns_dbiterator_first()");
 
 	while (!done) {
-		result = dns_dbiterator_current(dbiter, &node, name);
+		result = dns_dbiterator_current(dbiter, &node, &fname);
 		check_dns_dbiterator_current(result);
 		/*
 		 * Skip out-of-zone records.
@@ -2461,7 +2461,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 		nextnode = NULL;
 		while (result == ISC_R_SUCCESS) {
 			result = dns_dbiterator_current(dbiter, &nextnode,
-							nextname);
+							&fnextname);
 			check_dns_dbiterator_current(result);
 			active = active_node(nextnode);
 			if (!active) {
@@ -2495,7 +2495,7 @@ nsec3ify(unsigned int hashalg, dns_iterations_t iterations,
 			break;
 		}
 		if (result == ISC_R_NOMORE) {
-			dns_name_copy(gorigin, nextname);
+			dns_fixedname_copy(gorigin, &fnextname);
 			done = true;
 		} else if (result != ISC_R_SUCCESS) {
 			fatal("iterating through the database failed: %s",
@@ -2540,7 +2540,7 @@ loadzone(char *file, const char *origin, dns_rdataclass_t rdclass,
 	isc_buffer_add(&b, len);
 
 	name = dns_fixedname_initname(&fname);
-	result = dns_name_fromtext(name, &b, dns_rootname, 0);
+	result = dns_fixedname_fromtext(&fname, &b, dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
 		fatal("failed converting name '%s' to dns format: %s", origin,
 		      isc_result_totext(result));

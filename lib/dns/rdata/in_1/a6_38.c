@@ -83,7 +83,7 @@ fromtext_in_a6(ARGS_FROMTEXT) {
 		origin = dns_rootname;
 	}
 
-	RETTOK(dns_name_fromtext(name, &buffer, origin, options));
+	RETTOK(dns_fixedname_fromtext(&fn, &buffer, origin, options));
 	RETTOK(dns_name_towire(name, NULL, target));
 
 	ok = true;

@@ -508,14 +508,6 @@ ns_client_putrdataset(ns_client_t *client, dns_rdataset_t **rdatasetp);
  * used in query.c and in plugins.
  */
 
-dns_name_t *
-ns_client_newname(ns_client_t *client);
-/*%<
- * Get a temporary name for the client message.  The name has a
- * dedicated buffer attached and is valid until the client message is
- * reset or destroyed.
- */
-
 void
 ns_client_releasename(ns_client_t *client, dns_name_t **namep);
 /*%<
@@ -583,3 +575,9 @@ ns__client_put_cb(void *client0);
  * Free all resources allocated to this client object, so that
  * it can be freed.
  */
+
+dns_fixedname_t *
+ns_client_newfixedname(ns_client_t *client);
+
+void
+ns_client_releasefixedname(ns_client_t *client, dns_fixedname_t **namep);

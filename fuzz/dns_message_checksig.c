@@ -178,7 +178,7 @@ LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 	dns_tsigkeyring_create(mctx, &ring);
 	dns_tsigkeyring_create(mctx, &emptyring);
 
-	result = dns_name_fromstring(name, "tsig-key", dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(&fixed, "tsig-key", dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "dns_name_fromstring failed: %s\n",
 			isc_result_totext(result));
@@ -199,7 +199,7 @@ LLVMFuzzerInitialize(int *argc ISC_ATTR_UNUSED, char ***argv ISC_ATTR_UNUSED) {
 		return 1;
 	}
 
-	result = dns_name_fromstring(name, "sig0key", dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(&fixed, "sig0key", dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
 		fprintf(stderr, "dns_name_fromstring failed: %s\n",
 			isc_result_totext(result));

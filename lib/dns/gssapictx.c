@@ -173,8 +173,8 @@ dst_gssapi_identitymatchesrealmkrb5(const dns_name_t *signer,
 		dns_name_t *machine;
 
 		machine = dns_fixedname_initname(&fixed);
-		result = dns_name_fromstring(machine, sname, dns_rootname, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&fixed, sname, dns_rootname,
+						  0);
 		if (result != ISC_R_SUCCESS) {
 			return false;
 		}
@@ -255,7 +255,7 @@ dst_gssapi_identitymatchesrealmms(const dns_name_t *signer,
 		dns_name_t *machine;
 
 		machine = dns_fixedname_initname(&fixed);
-		result = dns_name_fromstring(machine, sbuf, realm, 0, NULL);
+		result = dns_fixedname_fromstring(&fixed, sbuf, realm, 0);
 		if (result != ISC_R_SUCCESS) {
 			return false;
 		}
@@ -394,7 +394,7 @@ cleanup:
 isc_result_t
 dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 		     isc_buffer_t **outtokenp, dns_gss_ctx_id_t *ctxout,
-		     dns_name_t *principal, isc_mem_t *mctx) {
+		     dns_fixedname_t *fixed_principal, isc_mem_t *mctx) {
 	isc_region_t r;
 	isc_buffer_t namebuf;
 	gss_buffer_desc gnamebuf = GSS_C_EMPTY_BUFFER, gintoken,
@@ -535,7 +535,8 @@ dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 	isc_buffer_init(&namebuf, r.base, r.length);
 	isc_buffer_add(&namebuf, r.length);
 
-	CHECK(dns_name_fromtext(principal, &namebuf, dns_rootname, 0));
+	CHECK(dns_fixedname_fromtext(fixed_principal, &namebuf, dns_rootname,
+				     0));
 
 	*ctxout = context;
 
@@ -660,7 +661,8 @@ dst_gssapi_initctx(const dns_name_t *name, isc_buffer_t *intoken,
 isc_result_t
 dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 		     isc_buffer_t **outtoken, dns_gss_ctx_id_t *ctxout,
-		     dns_name_t *principal, isc_mem_t *mctx) {
+		     dns_fixedname_t *fixed_principal, isc_mem_t *mctx) {
+	dns_name_t *principal = dns_fixedname_name(fixed_principal);
 	UNUSED(gssapi_keytab);
 	UNUSED(intoken);
 	UNUSED(outtoken);

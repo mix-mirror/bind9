@@ -87,6 +87,7 @@
 #include <isc/attributes.h>
 
 #include <dns/db.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/types.h>
 
@@ -490,8 +491,8 @@ dns_qpkey_fromname(dns_qpkey_t key, const dns_name_t *name,
  */
 
 void
-dns_qpkey_toname(const dns_qpkey_t key, size_t keylen, dns_name_t *name,
-		 dns_namespace_t *space);
+dns_qpkey_toname(const dns_qpkey_t key, size_t keylen,
+		 dns_fixedname_t *fixed_name, dns_namespace_t *space);
 /*%<
  * Convert a trie lookup key back into a DNS name.
  *

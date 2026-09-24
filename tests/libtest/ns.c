@@ -272,15 +272,17 @@ attach_query_msg_to_client(ns_client_t *client, const char *qnamestr,
 	 * Allocate structures required to construct the query.
 	 */
 	dns_message_gettemprdataset(message, &qrdataset);
-	dns_message_gettempname(message, &qname);
+	dns_fixedname_t *fixed_qname = NULL;
+	dns_message_gettempfixedname(message, &fixed_qname);
+	qname = dns_fixedname_name(fixed_qname);
 
 	/*
 	 * Convert "qnamestr" to a DNS name, create a question rdataset of
 	 * class IN and type "qtype", link the two and add the result to the
 	 * QUESTION section of the query.
 	 */
-	result = dns_name_fromstring(qname, qnamestr, dns_rootname, 0,
-				     isc_g_mctx);
+	result = dns_fixedname_fromstring(fixed_qname, qnamestr, dns_rootname,
+					  0);
 	if (result != ISC_R_SUCCESS) {
 		goto put_name;
 	}
@@ -517,7 +519,7 @@ ns_test_loaddb(dns_db_t **db, dns_dbtype_t dbtype, const char *origin,
 
 	name = dns_fixedname_initname(&fixed);
 
-	RETERR(dns_name_fromstring(name, origin, dns_rootname, 0, NULL));
+	RETERR(dns_fixedname_fromstring(&fixed, origin, dns_rootname, 0));
 
 	RETERR(dns_db_create(isc_g_mctx, dbimp, name, dbtype, dns_rdataclass_in,
 			     0, NULL, db));

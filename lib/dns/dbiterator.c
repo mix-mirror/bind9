@@ -18,6 +18,7 @@
 #include <isc/util.h>
 
 #include <dns/dbiterator.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 
 void
@@ -88,13 +89,14 @@ dns__dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 isc_result_t
 dns__dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
-			dns_name_t *name DNS__DB_FLARG) {
+			dns_fixedname_t *fixed_name DNS__DB_FLARG) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	REQUIRE(DNS_DBITERATOR_VALID(iterator));
 	REQUIRE(nodep != NULL && *nodep == NULL);
-	REQUIRE(name == NULL || dns_name_hasbuffer(name));
+	REQUIRE(name == NULL || DNS_NAME_VALID(name));
 
 	return iterator->methods->current(iterator, nodep,
-					  name DNS__DB_FLARG_PASS);
+					  fixed_name DNS__DB_FLARG_PASS);
 }
 
 isc_result_t
@@ -105,10 +107,11 @@ dns_dbiterator_pause(dns_dbiterator_t *iterator) {
 }
 
 isc_result_t
-dns_dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name) {
+dns_dbiterator_origin(dns_dbiterator_t *iterator, dns_fixedname_t *fixed_name) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	REQUIRE(DNS_DBITERATOR_VALID(iterator));
 	REQUIRE(iterator->relative_names);
-	REQUIRE(dns_name_hasbuffer(name));
+	REQUIRE(DNS_NAME_VALID(name));
 
-	return iterator->methods->origin(iterator, name);
+	return iterator->methods->origin(iterator, fixed_name);
 }

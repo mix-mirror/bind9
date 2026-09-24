@@ -72,7 +72,7 @@ fromtext_in_srv(ARGS_FROMTEXT) {
 	if (origin == NULL) {
 		origin = dns_rootname;
 	}
-	RETTOK(dns_name_fromtext(name, &buffer, origin, options));
+	RETTOK(dns_fixedname_fromtext(&fn, &buffer, origin, options));
 	RETTOK(dns_name_towire(name, NULL, target));
 	ok = true;
 
@@ -332,14 +332,13 @@ additionaldata_in_srv(ARGS_ADDLDATA) {
 
 	dns_fixedname_init(&fixed);
 	snprintf(buf, sizeof(buf), "_%u._tcp", port);
-	result = dns_name_fromstring(dns_fixedname_name(&fixed), buf, NULL, 0,
-				     NULL);
+	result = dns_fixedname_fromstring(&fixed, buf, NULL, 0);
 	if (result != ISC_R_SUCCESS) {
 		return ISC_R_SUCCESS;
 	}
 
-	result = dns_name_concatenate(dns_fixedname_name(&fixed), &name,
-				      dns_fixedname_name(&fixed));
+	result = dns_fixedname_concatenate(dns_fixedname_name(&fixed), &name,
+					   &fixed);
 	if (result != ISC_R_SUCCESS) {
 		return ISC_R_SUCCESS;
 	}

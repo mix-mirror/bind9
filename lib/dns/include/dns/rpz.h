@@ -414,7 +414,7 @@ ISC_REFCOUNT_DECL(dns_rpz_zones);
 dns_rpz_num_t
 dns_rpz_find_ip(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,
 		dns_rpz_zbits_t zbits, const isc_netaddr_t *netaddr,
-		dns_name_t *ip_name, dns_rpz_prefix_t *prefixp);
+		dns_fixedname_t *fixed_ip_name, dns_rpz_prefix_t *prefixp);
 
 dns_rpz_zbits_t
 dns_rpz_find_name(dns_rpz_zones_t *rpzs, dns_rpz_type_t rpz_type,

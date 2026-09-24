@@ -213,7 +213,7 @@ ISC_RUN_TEST_IMPL(covered_bool) {
 
 	/* Check that the found name is as expected */
 	dns_test_namefromstring("other.example.com.", &fn);
-	assert_true(dns_nametree_covered(booltree, name, found, 0));
+	assert_true(dns_nametree_covered(booltree, name, &fn2, 0));
 	dns_name_format(found, buf, sizeof(buf));
 	assert_string_equal(buf, "example.com");
 }

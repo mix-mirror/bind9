@@ -60,7 +60,7 @@ dst_gssapi_initctx(const dns_name_t *name, isc_buffer_t *intoken,
 isc_result_t
 dst_gssapi_acceptctx(const char *gssapi_keytab, isc_region_t *intoken,
 		     isc_buffer_t **outtoken, dns_gss_ctx_id_t *context,
-		     dns_name_t *principal, isc_mem_t *mctx);
+		     dns_fixedname_t *fixed_principal, isc_mem_t *mctx);
 /*
  *	Accepts a GSS context.
  *

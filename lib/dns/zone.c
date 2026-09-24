@@ -55,6 +55,7 @@
 #include <dns/dlz.h>
 #include <dns/dnssec.h>
 #include <dns/dsync.h>
+#include <dns/fixedname.h>
 #include <dns/journal.h>
 #include <dns/kasp.h>
 #include <dns/keydata.h>
@@ -1821,7 +1822,7 @@ zone_check_mx(dns_zone_t *zone, dns_db_t *db, dns_name_t *name,
 
 	foundname = dns_fixedname_initname(&fixed);
 
-	result = dns_db_find(db, name, NULL, dns_rdatatype_a, 0, 0, foundname,
+	result = dns_db_find(db, name, NULL, dns_rdatatype_a, 0, 0, &fixed,
 			     NULL, NULL);
 	if (result == ISC_R_SUCCESS) {
 		return true;
@@ -1829,7 +1830,7 @@ zone_check_mx(dns_zone_t *zone, dns_db_t *db, dns_name_t *name,
 
 	if (result == DNS_R_NXRRSET) {
 		result = dns_db_find(db, name, NULL, dns_rdatatype_aaaa, 0, 0,
-				     foundname, NULL, NULL);
+				     &fixed, NULL, NULL);
 		if (result == ISC_R_SUCCESS) {
 			return true;
 		}
@@ -1922,7 +1923,7 @@ zone_check_srv(dns_zone_t *zone, dns_db_t *db, dns_name_t *name,
 
 	foundname = dns_fixedname_initname(&fixed);
 
-	result = dns_db_find(db, name, NULL, dns_rdatatype_a, 0, 0, foundname,
+	result = dns_db_find(db, name, NULL, dns_rdatatype_a, 0, 0, &fixed,
 			     NULL, NULL);
 	if (result == ISC_R_SUCCESS) {
 		return true;
@@ -1930,7 +1931,7 @@ zone_check_srv(dns_zone_t *zone, dns_db_t *db, dns_name_t *name,
 
 	if (result == DNS_R_NXRRSET) {
 		result = dns_db_find(db, name, NULL, dns_rdatatype_aaaa, 0, 0,
-				     foundname, NULL, NULL);
+				     &fixed, NULL, NULL);
 		if (result == ISC_R_SUCCESS) {
 			return true;
 		}
@@ -2023,8 +2024,8 @@ zone_check_glue(dns_zone_t *zone, dns_db_t *db, bool *has_a, bool *has_aaaa,
 	 * Perform a regular lookup to catch DNAME records then look
 	 * for glue.
 	 */
-	result = dns_db_find(db, name, NULL, dns_rdatatype_a, 0, 0, foundname,
-			     &a, NULL);
+	result = dns_db_find(db, name, NULL, dns_rdatatype_a, 0, 0, &fixed, &a,
+			     NULL);
 	switch (result) {
 	case ISC_R_SUCCESS:
 	case DNS_R_DNAME:
@@ -2033,14 +2034,14 @@ zone_check_glue(dns_zone_t *zone, dns_db_t *db, bool *has_a, bool *has_aaaa,
 	default:
 		dns_rdataset_cleanup(&a);
 		result = dns_db_find(db, name, NULL, dns_rdatatype_a,
-				     DNS_DBFIND_GLUEOK, 0, foundname, &a, NULL);
+				     DNS_DBFIND_GLUEOK, 0, &fixed, &a, NULL);
 	}
 	if (result == ISC_R_SUCCESS) {
 		SET_IF_NOT_NULL(has_a, true);
 		dns_rdataset_disassociate(&a);
 		if (has_aaaa != NULL && !*has_aaaa) {
 			result = dns_db_find(db, name, NULL, dns_rdatatype_aaaa,
-					     DNS_DBFIND_GLUEOK, 0, foundname,
+					     DNS_DBFIND_GLUEOK, 0, &fixed,
 					     &aaaa, NULL);
 			if (result == ISC_R_SUCCESS) {
 				*has_aaaa = true;
@@ -2058,7 +2059,7 @@ zone_check_glue(dns_zone_t *zone, dns_db_t *db, bool *has_a, bool *has_aaaa,
 	    result == DNS_R_GLUE)
 	{
 		tresult = dns_db_find(db, name, NULL, dns_rdatatype_aaaa,
-				      DNS_DBFIND_GLUEOK, 0, foundname, &aaaa,
+				      DNS_DBFIND_GLUEOK, 0, &fixed, &aaaa,
 				      NULL);
 		if (tresult == ISC_R_SUCCESS) {
 			dns_rdataset_cleanup(&a);
@@ -2212,7 +2213,7 @@ zone_check_dup(dns_zone_t *zone, dns_db_t *db) {
 	}
 
 	DNS_DBITERATOR_FOREACH(dbiterator) {
-		result = dns_dbiterator_current(dbiterator, &node, name);
+		result = dns_dbiterator_current(dbiterator, &node, &fixed);
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
@@ -2280,7 +2281,8 @@ zone_is_served_by(dns_zone_t *zone, dns_db_t *db, dns_rdatatype_t type,
 		  dns_name_t *name) {
 	dns_rdataset_t rdataset;
 	dns_fixedname_t found;
-	dns_name_t *foundname = dns_fixedname_initname(&found);
+
+	dns_fixedname_init(&found);
 	isc_result_t result;
 
 	/*
@@ -2294,7 +2296,7 @@ zone_is_served_by(dns_zone_t *zone, dns_db_t *db, dns_rdatatype_t type,
 	}
 
 	dns_rdataset_init(&rdataset);
-	result = dns_db_find(db, name, NULL, type, 0, 0, foundname, &rdataset,
+	result = dns_db_find(db, name, NULL, type, 0, 0, &found, &rdataset,
 			     NULL);
 	dns_rdataset_cleanup(&rdataset);
 	switch (result) {
@@ -2344,7 +2346,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 	}
 
 	DNS_DBITERATOR_FOREACH(dbiterator) {
-		CHECK(dns_dbiterator_current(dbiterator, &node, name));
+		CHECK(dns_dbiterator_current(dbiterator, &node, &fixed));
 
 		/*
 		 * Is this name visible in the zone?
@@ -2420,7 +2422,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 		/*
 		 * Remember bottom of zone due to NS.
 		 */
-		dns_name_copy(name, bottom);
+		dns_fixedname_copy(name, &fixedbottom);
 
 		DNS_RDATASET_FOREACH(&rdataset) {
 			dns_rdata_t rdata = DNS_RDATA_INIT;
@@ -2528,7 +2530,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 			/*
 			 * Remember bottom of zone due to DNAME.
 			 */
-			dns_name_copy(name, bottom);
+			dns_fixedname_copy(name, &fixedbottom);
 			dns_rdataset_disassociate(&rdataset);
 		}
 
@@ -2643,7 +2645,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 	if (has_a) {
 		has_a = false;
 		result = dns_db_find(db, &zone->origin, NULL, dns_rdatatype_ns,
-				     0, 0, name, &rdataset, NULL);
+				     0, 0, &fixed, &rdataset, NULL);
 		if (result != ISC_R_SUCCESS) {
 			dns_rdataset_cleanup(&rdataset);
 			goto cleanup;
@@ -2673,7 +2675,7 @@ integrity_checks(dns_zone_t *zone, dns_db_t *db) {
 	if (has_aaaa) {
 		has_aaaa = false;
 		result = dns_db_find(db, &zone->origin, NULL, dns_rdatatype_ns,
-				     0, 0, name, &rdataset, NULL);
+				     0, 0, &fixed, &rdataset, NULL);
 		if (result != ISC_R_SUCCESS) {
 			dns_rdataset_cleanup(&rdataset);
 			goto cleanup;
@@ -3199,8 +3201,7 @@ dns__zone_set_resigntime(dns_zone_t *zone) {
 		return;
 	}
 
-	result = dns_db_getsigningtime(db, &resign, dns_fixedname_name(&fixed),
-				       &typepair);
+	result = dns_db_getsigningtime(db, &resign, &fixed, &typepair);
 	if (result != ISC_R_SUCCESS) {
 		isc_time_settoepoch(&zone->resigntime);
 		goto cleanup;
@@ -3762,8 +3763,7 @@ addifmissing(dns_keytable_t *keytable, dns_keynode_t *keynode,
 	 */
 	dns_fixedname_init(&fname);
 	result = dns_db_find(db, keyname, ver, dns_rdatatype_keydata,
-			     DNS_DBFIND_NOWILD, 0, dns_fixedname_name(&fname),
-			     NULL, NULL);
+			     DNS_DBFIND_NOWILD, 0, &fname, NULL, NULL);
 	if (result == ISC_R_SUCCESS) {
 		return;
 	}
@@ -4015,7 +4015,7 @@ check_reportchannel(dns_zone_t *zone, dns_db_t *db) {
 	 * Otherwise, we need a '*._er' wildcard with a TXT rdataset.
 	 */
 	name = dns_fixedname_initname(&fixed);
-	CHECK(dns_name_concatenate(&er, &zone->origin, name));
+	CHECK(dns_fixedname_concatenate(&er, &zone->origin, &fixed));
 	CHECK(dns_db_findnode(db, name, false, &node));
 
 	dns_db_currentversion(db, &version);
@@ -4460,7 +4460,7 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 
 			name = dns_fixedname_initname(&fixed);
 
-			result = dns_db_getsigningtime(db, &resign, name,
+			result = dns_db_getsigningtime(db, &resign, &fixed,
 						       &typepair);
 			if (result == ISC_R_SUCCESS) {
 				isc_stdtime_t timenow = isc_stdtime_now();
@@ -4635,15 +4635,15 @@ zone_check_ns(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *version,
 
 	foundname = dns_fixedname_initname(&fixed);
 
-	result = dns_db_find(db, name, version, dns_rdatatype_a, 0, 0,
-			     foundname, NULL, NULL);
+	result = dns_db_find(db, name, version, dns_rdatatype_a, 0, 0, &fixed,
+			     NULL, NULL);
 	if (result == ISC_R_SUCCESS) {
 		return true;
 	}
 
 	if (result == DNS_R_NXRRSET) {
 		result = dns_db_find(db, name, version, dns_rdatatype_aaaa, 0,
-				     0, foundname, NULL, NULL);
+				     0, &fixed, NULL, NULL);
 		if (result == ISC_R_SUCCESS) {
 			return true;
 		}
@@ -6005,7 +6005,7 @@ zone_resigninc(dns_zone_t *zone) {
 	stop = now + 5;
 
 	name = dns_fixedname_initname(&fixed);
-	result = dns_db_getsigningtime(db, &resign, name, &typepair);
+	result = dns_db_getsigningtime(db, &resign, &fixed, &typepair);
 	if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
 		dns_zone_log(zone, ISC_LOG_ERROR,
 			     "zone_resigninc:dns_db_getsigningtime -> %s",
@@ -6056,7 +6056,7 @@ zone_resigninc(dns_zone_t *zone) {
 				     isc_result_totext(result));
 			break;
 		}
-		result = dns_db_getsigningtime(db, &resign, name, &typepair);
+		result = dns_db_getsigningtime(db, &resign, &fixed, &typepair);
 		if (nkeys == 0 && result == ISC_R_NOTFOUND) {
 			result = ISC_R_SUCCESS;
 			break;
@@ -6157,7 +6157,8 @@ cleanup:
 
 static isc_result_t
 next_active(dns_db_t *db, dns_dbversion_t *version, dns_name_t *oldname,
-	    dns_name_t *newname, bool bottom) {
+	    dns_fixedname_t *fixed_newname, bool bottom) {
+	dns_name_t *newname = dns_fixedname_name(fixed_newname);
 	isc_result_t result;
 	dns_dbiterator_t *dbit = NULL;
 	dns_rdatasetiter_t *rdsit = NULL;
@@ -6170,7 +6171,7 @@ next_active(dns_db_t *db, dns_dbversion_t *version, dns_name_t *oldname,
 		if (result == ISC_R_NOMORE) {
 			CHECK(dns_dbiterator_first(dbit));
 		}
-		CHECK(dns_dbiterator_current(dbit, &node, newname));
+		CHECK(dns_dbiterator_current(dbit, &node, fixed_newname));
 		if (bottom && dns_name_issubdomain(newname, oldname) &&
 		    !dns_name_equal(newname, oldname))
 		{
@@ -6280,7 +6281,7 @@ add_nsec(dns_db_t *db, dns_dbversion_t *version, dns_name_t *name,
 
 	next = dns_fixedname_initname(&fixed);
 
-	CHECK(next_active(db, version, name, next, bottom));
+	CHECK(next_active(db, version, name, &fixed, bottom));
 	CHECK(dns_nsec_buildrdata(db, version, node, next, nsecbuffer, &rdata));
 	CHECK(update_one_rr(db, version, diff, DNS_DIFFOP_ADD, name, ttl,
 			    &rdata));
@@ -7275,7 +7276,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 			goto next_addchain;
 		}
 
-		dns_dbiterator_current(nsec3chain->dbiterator, &node, name);
+		dns_dbiterator_current(nsec3chain->dbiterator, &node, &fixed);
 
 		if (nsec3chain->delete_nsec) {
 			delegation = false;
@@ -7295,7 +7296,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 			found = dns_fixedname_initname(&ffound);
 			result = dns_db_find(
 				db, name, version, dns_rdatatype_soa,
-				DNS_DBFIND_NOWILD, 0, found, NULL, NULL);
+				DNS_DBFIND_NOWILD, 0, &ffound, NULL, NULL);
 			if ((result == DNS_R_DELEGATION ||
 			     result == DNS_R_DNAME) &&
 			    !dns_name_equal(name, found))
@@ -7304,7 +7305,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 				 * Remember the obscuring name so that
 				 * we skip all obscured names.
 				 */
-				dns_name_copy(found, name);
+				dns_fixedname_copy(found, &fixed);
 				delegation = true;
 				goto next_addnode;
 			}
@@ -7409,7 +7410,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 				goto cleanup;
 			} else if (delegation) {
 				dns_dbiterator_current(nsec3chain->dbiterator,
-						       &node, nextname);
+						       &node, &nextfixed);
 				dns_db_detachnode(&node);
 				if (!dns_name_issubdomain(nextname, name)) {
 					break;
@@ -7497,7 +7498,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 				   buildnsecchain);
 		}
 
-		dns_dbiterator_current(nsec3chain->dbiterator, &node, name);
+		dns_dbiterator_current(nsec3chain->dbiterator, &node, &fixed);
 		dns_dbiterator_pause(nsec3chain->dbiterator);
 		delegation = false;
 
@@ -7540,7 +7541,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 			found = dns_fixedname_initname(&ffound);
 			result = dns_db_find(
 				db, name, version, dns_rdatatype_soa,
-				DNS_DBFIND_NOWILD, 0, found, NULL, NULL);
+				DNS_DBFIND_NOWILD, 0, &ffound, NULL, NULL);
 			if ((result == DNS_R_DELEGATION ||
 			     result == DNS_R_DNAME) &&
 			    !dns_name_equal(name, found))
@@ -7549,7 +7550,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 				 * Remember the obscuring name so that
 				 * we skip all obscured names.
 				 */
-				dns_name_copy(found, name);
+				dns_fixedname_copy(found, &fixed);
 				delegation = true;
 				goto next_removenode;
 			}
@@ -7624,7 +7625,7 @@ zone_nsec3chain(dns_zone_t *zone) {
 				goto cleanup;
 			} else if (delegation) {
 				dns_dbiterator_current(nsec3chain->dbiterator,
-						       &node, nextname);
+						       &node, &nextfixed);
 				dns_db_detachnode(&node);
 				if (!dns_name_issubdomain(nextname, name)) {
 					break;
@@ -8289,7 +8290,7 @@ zone_sign(dns_zone_t *zone) {
 			nkeys = j;
 		}
 
-		dns_dbiterator_current(signing->dbiterator, &node, name);
+		dns_dbiterator_current(signing->dbiterator, &node, &fixed);
 
 		if (signing->deleteit) {
 			dns_dbiterator_pause(signing->dbiterator);
@@ -8308,7 +8309,7 @@ zone_sign(dns_zone_t *zone) {
 			found = dns_fixedname_initname(&ffound);
 			result = dns_db_find(
 				db, name, version, dns_rdatatype_soa,
-				DNS_DBFIND_NOWILD, 0, found, NULL, NULL);
+				DNS_DBFIND_NOWILD, 0, &ffound, NULL, NULL);
 			if ((result == DNS_R_DELEGATION ||
 			     result == DNS_R_DNAME) &&
 			    !dns_name_equal(name, found))
@@ -8317,7 +8318,7 @@ zone_sign(dns_zone_t *zone) {
 				 * Remember the obscuring name so that
 				 * we skip all obscured names.
 				 */
-				dns_name_copy(found, name);
+				dns_fixedname_copy(found, &fixed);
 				is_bottom_of_zone = true;
 				goto next_node;
 			}
@@ -8499,7 +8500,7 @@ zone_sign(dns_zone_t *zone) {
 				goto done;
 			} else if (is_bottom_of_zone) {
 				dns_dbiterator_current(signing->dbiterator,
-						       &node, nextname);
+						       &node, &nextfixed);
 				dns_db_detachnode(&node);
 				if (!dns_name_issubdomain(nextname, name)) {
 					break;
@@ -15055,7 +15056,7 @@ copy_non_dnssec_records(dns_db_t *db, dns_dbversion_t *version, dns_db_t *rawdb,
 	dns_rdatasetiter_t *rdsit = NULL;
 	isc_result_t result;
 
-	result = dns_dbiterator_current(dbiterator, &rawnode, name);
+	result = dns_dbiterator_current(dbiterator, &rawnode, &fixed);
 	if (result != ISC_R_SUCCESS) {
 		return ISC_R_SUCCESS;
 	}
@@ -18098,7 +18099,8 @@ dsyncfetch_start(dns_zonefetch_t *fetch) {
 	dns_name_split(dns_fixedname_name(&fetch->name), nlabels, &prefix,
 		       NULL);
 
-	result = dns_name_concatenate(&prefix, &_dsync, dsyncname);
+	result = dns_fixedname_concatenate(&prefix, &_dsync,
+					   &dsyncfetch->dsyncname);
 	if (result != ISC_R_SUCCESS) {
 		dnssec_log(zone, ISC_LOG_ERROR,
 			   "dsyncfetch: failed to create parent DSYNC fetch "
@@ -18107,7 +18109,8 @@ dsyncfetch_start(dns_zonefetch_t *fetch) {
 		return result;
 	}
 
-	result = dns_name_concatenate(dsyncname, &dsyncfetch->pname, dsyncname);
+	result = dns_fixedname_concatenate(dsyncname, &dsyncfetch->pname,
+					   &dsyncfetch->dsyncname);
 	if (result != ISC_R_SUCCESS) {
 		dnssec_log(zone, ISC_LOG_ERROR,
 			   "dsyncfetch: failed to create parent DSYNC fetch "
@@ -18250,7 +18253,7 @@ dsyncfetch_done(dns_zonefetch_t *fetch, isc_result_t eresult) {
 		/* Save matched DSYNC record. */
 		if (count == 0) {
 			port = dsync.port;
-			dns_name_copy(&dsync.target, target);
+			dns_fixedname_copy(&dsync.target, &fixed);
 		}
 
 		count++;

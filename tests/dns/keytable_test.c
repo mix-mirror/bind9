@@ -98,8 +98,9 @@ str2name(const char *namestr) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_init(&namebuf, UNCONST(namestr), strlen(namestr));
 	isc_buffer_add(&namebuf, strlen(namestr));
-	assert_int_equal(dns_name_fromtext(name, &namebuf, dns_rootname, 0),
-			 ISC_R_SUCCESS);
+	assert_int_equal(
+		dns_fixedname_fromtext(&fname, &namebuf, dns_rootname, 0),
+		ISC_R_SUCCESS);
 
 	return name;
 }
@@ -521,18 +522,18 @@ ISC_LOOP_TEST_IMPL(find) {
 	 */
 	name = dns_fixedname_initname(&fname);
 	assert_int_equal(dns_keytable_finddeepestmatch(
-				 keytable, str2name("example.com"), name),
+				 keytable, str2name("example.com"), &fname),
 			 ISC_R_SUCCESS);
 	assert_true(dns_name_equal(name, str2name("example.com")));
 	assert_int_equal(dns_keytable_finddeepestmatch(
-				 keytable, str2name("s.example.com"), name),
+				 keytable, str2name("s.example.com"), &fname),
 			 ISC_R_SUCCESS);
 	assert_true(dns_name_equal(name, str2name("example.com")));
 	assert_int_equal(dns_keytable_finddeepestmatch(
-				 keytable, str2name("example.org"), name),
+				 keytable, str2name("example.org"), &fname),
 			 ISC_R_NOTFOUND);
 	assert_int_equal(dns_keytable_finddeepestmatch(
-				 keytable, str2name("null.example"), name),
+				 keytable, str2name("null.example"), &fname),
 			 ISC_R_SUCCESS);
 	assert_true(dns_name_equal(name, str2name("null.example")));
 

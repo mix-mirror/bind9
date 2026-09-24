@@ -588,8 +588,8 @@ check_private(isc_buffer_t *source, dns_secalg_t alg) {
 	if (alg == DNS_KEYALG_PRIVATEDNS) {
 		dns_fixedname_t fixed;
 
-		RETERR(dns_name_fromwire(dns_fixedname_initname(&fixed), source,
-					 DNS_DECOMPRESS_NEVER, NULL));
+		RETERR(dns_fixedname_fromwire(dns_fixedname_init(&fixed),
+					      source, DNS_DECOMPRESS_NEVER));
 	} else if (alg == DNS_KEYALG_PRIVATEOID) {
 		/*
 		 * Check that we can extract the OID from the start of the

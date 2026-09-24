@@ -133,7 +133,7 @@ ISC_RUN_TEST_IMPL(isc_rsa_verify) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&buf, "rsa.", 4);
 	isc_buffer_add(&buf, 4);
-	result = dns_name_fromtext(name, &buf, NULL, 0);
+	result = dns_fixedname_fromtext(&fname, &buf, NULL, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dst_key_fromfile(name, 29238, DST_ALG_RSASHA256,
@@ -219,7 +219,7 @@ ISC_RUN_TEST_IMPL(isc_rsa_fromdns_oversized_exponent) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&buf, "rsa.", 4);
 	isc_buffer_add(&buf, 4);
-	result = dns_name_fromtext(name, &buf, NULL, 0);
+	result = dns_fixedname_fromtext(&fname, &buf, NULL, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* DNSKEY rdata: flags(2) + proto(1) + alg(1) + key */
@@ -268,7 +268,7 @@ ISC_RUN_TEST_IMPL(isc_rsa_fromdns_even_exponent) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&buf, "rsa.", 4);
 	isc_buffer_add(&buf, 4);
-	result = dns_name_fromtext(name, &buf, NULL, 0);
+	result = dns_fixedname_fromtext(&fname, &buf, NULL, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* DNSKEY rdata: flags(2) + proto(1) + alg(1) + RSA wire pubkey. */
@@ -308,7 +308,7 @@ ISC_RUN_TEST_IMPL(isc_rsa_fromdns_oversized_modulus) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&buf, "rsa.", 4);
 	isc_buffer_add(&buf, 4);
-	result = dns_name_fromtext(name, &buf, NULL, 0);
+	result = dns_fixedname_fromtext(&fname, &buf, NULL, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* DNSKEY rdata: flags(2) + proto(1) + alg(1) + RSA wire pubkey. */
@@ -351,7 +351,7 @@ ISC_RUN_TEST_IMPL(isc_rsa_fromdns_short_modulus) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&buf, "rsa.", 4);
 	isc_buffer_add(&buf, 4);
-	result = dns_name_fromtext(name, &buf, NULL, 0);
+	result = dns_fixedname_fromtext(&fname, &buf, NULL, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/*

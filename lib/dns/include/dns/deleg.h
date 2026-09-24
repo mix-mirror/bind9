@@ -158,8 +158,9 @@ dns_delegdb_getconfig(dns_delegdb_t *delegdb);
  */
 isc_result_t
 dns_delegdb_lookup(dns_delegdb_t *db, const dns_name_t *name, isc_stdtime_t now,
-		   unsigned int options, dns_name_t *zonecut,
-		   dns_name_t *deepestzonecut, dns_delegset_t **delegset);
+		   unsigned int options, dns_fixedname_t *fixed_zonecut,
+		   dns_fixedname_t *fixed_deepestzonecut,
+		   dns_delegset_t **delegset);
 
 /*
  * Allocate and attach to the caller a new empty delegation set, but do not

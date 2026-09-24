@@ -185,7 +185,7 @@ dns_keytable_find(dns_keytable_t *keytable, const dns_name_t *keyname,
 
 isc_result_t
 dns_keytable_finddeepestmatch(dns_keytable_t *keytable, const dns_name_t *name,
-			      dns_name_t *foundname);
+			      dns_fixedname_t *fixed_foundname);
 /*%<
  * Search for the deepest match of 'name' in 'keytable'.
  *
@@ -195,7 +195,7 @@ dns_keytable_finddeepestmatch(dns_keytable_t *keytable, const dns_name_t *name,
  *
  *\li	'name' is a valid absolute name.
  *
- *\li	'foundname' is a name with a dedicated buffer.
+ *\li	'foundname' is an initialized fixedname.
  *
  * Returns:
  *
@@ -207,7 +207,7 @@ dns_keytable_finddeepestmatch(dns_keytable_t *keytable, const dns_name_t *name,
 
 bool
 dns_keytable_issecuredomain(dns_keytable_t *keytable, const dns_name_t *name,
-			    dns_name_t *foundname);
+			    dns_fixedname_t *fixed_foundname);
 /*%<
  * Is 'name' at or beneath a trusted key?
  *

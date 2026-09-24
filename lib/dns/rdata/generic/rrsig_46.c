@@ -150,7 +150,7 @@ fromtext_rrsig(ARGS_FROMTEXT) {
 	if (origin == NULL) {
 		origin = dns_rootname;
 	}
-	RETTOK(dns_name_fromtext(signer, &buffer, origin, options));
+	RETTOK(dns_fixedname_fromtext(&fixed, &buffer, origin, options));
 
 	/*
 	 * (RRSIG labels doesn't include the root label, so add one

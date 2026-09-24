@@ -286,7 +286,8 @@ closer_secure_ds_exists(dns_validator_t *val, const dns_name_t *signer,
 
 static bool
 find_nsec_signer(dns_validator_t *val, dns_rdataset_t *sigp,
-		 dns_name_t *signer) {
+		 dns_fixedname_t *fixed_signer) {
+	dns_name_t *signer = dns_fixedname_name(fixed_signer);
 	dns_rdata_rrsig_t sig;
 
 	if (val->nvalidations != NULL &&
@@ -313,7 +314,7 @@ find_nsec_signer(dns_validator_t *val, dns_rdataset_t *sigp,
 		}
 
 		if (dns_name_empty(signer)) {
-			dns_name_copy(&sig.signer, signer);
+			dns_fixedname_copy(&sig.signer, fixed_signer);
 		} else if (!dns_name_equal(signer, &sig.signer)) {
 			validator_log(val, ISC_LOG_DEBUG(3),
 				      "is_insecure_referral: NSEC "
@@ -428,7 +429,7 @@ is_insecure_referral(dns_validator_t *val, dns_name_t *name,
 
 		if (sigp != NULL) {
 			signer = dns_fixedname_initname(&fsigner);
-			if (!find_nsec_signer(val, sigp, signer)) {
+			if (!find_nsec_signer(val, sigp, &fsigner)) {
 				found = false;
 				signer = NULL;
 				SET_IF_NOT_NULL(crossed, true);
@@ -447,7 +448,7 @@ trynsec3:
 	 * Iterate over the ncache entry.
 	 */
 	dns_fixedname_init(&fixed);
-	dns_name_downcase(name, dns_fixedname_name(&fixed));
+	dns_fixedname_downcase(name, &fixed);
 	name = dns_fixedname_name(&fixed);
 	unsigned int nlabels = dns_name_countlabels(name);
 
@@ -492,7 +493,7 @@ trynsec3:
 		 * runs only after the loop, at checksigner.
 		 */
 		signer = dns_fixedname_initname(&fsigner);
-		dns_name_copy(&zone, signer);
+		dns_fixedname_copy(&zone, &fsigner);
 
 		dns_name_getlabel(&nsec3name, 0, &hashlabel);
 		isc_region_consume(&hashlabel, 1);
@@ -1149,8 +1150,8 @@ validator_callback_nsec(void *arg) {
 					 &subvalidator->siginfo->signer) &&
 		    dns_nsec_noexistnodata(val->type, val->name,
 					   subvalidator->name, rdataset,
-					   &exists, &data, wild, validator_log,
-					   val) == ISC_R_SUCCESS)
+					   &exists, &data, &val->wild,
+					   validator_log, val) == ISC_R_SUCCESS)
 		{
 			if (exists && !data) {
 				val->attributes |= VALATTR_FOUNDNODATA;
@@ -1165,10 +1166,9 @@ validator_callback_nsec(void *arg) {
 
 				val->attributes |= VALATTR_FOUNDNOQNAME;
 				if (subvalidator->siginfo != NULL) {
-					dns_name_copy(
+					dns_fixedname_copy(
 						&subvalidator->siginfo->signer,
-						dns_fixedname_name(
-							&val->nseczone));
+						&val->nseczone);
 				}
 
 				closest = dns_fixedname_name(&val->closest);
@@ -1240,16 +1240,16 @@ cleanup:
 static isc_result_t
 view_find(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type) {
 	dns_fixedname_t fixedname;
-	dns_name_t *foundname;
+
 	isc_result_t result;
 	unsigned int options;
 
 	disassociate_rdatasets(val);
 
 	options = DNS_DBFIND_PENDINGOK;
-	foundname = dns_fixedname_initname(&fixedname);
+	dns_fixedname_init(&fixedname);
 	result = dns_view_find(val->view, name, type, 0, options, false, NULL,
-			       foundname, &val->frdataset, &val->fsigrdataset);
+			       &fixedname, &val->frdataset, &val->fsigrdataset);
 
 	if (result == DNS_R_NXDOMAIN) {
 		goto notfound;
@@ -1401,7 +1401,7 @@ create_ds_fetch(dns_validator_t *val, dns_name_t *name, isc_job_cb callback,
 		dns_name_getlabelsequence(name, 1, n - 1, pname);
 
 		fname = dns_fixedname_initname(&fixed);
-		result = dns_view_bestzonecut(val->view, pname, fname, NULL, 0,
+		result = dns_view_bestzonecut(val->view, pname, &fixed, NULL, 0,
 					      0, true, true, &delegset);
 		if (result == ISC_R_SUCCESS && delegset != NULL) {
 			parent = fname;
@@ -1880,7 +1880,7 @@ verify(dns_validator_t *val, dst_key_t *key, dns_rdata_t *rdata,
 
 again:
 	result = dns_dnssec_verify(val->name, val->rdataset, key, ignore,
-				   val->view->mctx, rdata, wild, wildsigner);
+				   val->view->mctx, rdata, &fwild, &fsigner);
 	if ((result == DNS_R_SIGEXPIRED || result == DNS_R_SIGFUTURE) &&
 	    val->view->acceptexpired)
 	{
@@ -1912,12 +1912,11 @@ again:
 			 * Compute the closest encloser in case we need it
 			 * for the NSEC3 NOQNAME proof.
 			 */
-			dns_name_copy(wild, closest);
+			dns_fixedname_copy(wild, &val->closest);
 			dns_name_getlabelsequence(
 				closest, 1, dns_name_countlabels(closest) - 1,
 				closest);
-			dns_name_copy(wildsigner,
-				      dns_fixedname_name(&val->wildsigner));
+			dns_fixedname_copy(wildsigner, &val->wildsigner);
 			val->attributes |= VALATTR_NEEDNOQNAME;
 		}
 		result = ISC_R_SUCCESS;
@@ -3003,7 +3002,8 @@ cleanup:
  */
 static isc_result_t
 checkwildcard(dns_validator_t *val, dns_rdatatype_t type,
-	      dns_name_t *zonename) {
+	      dns_fixedname_t *fixed_zonename) {
+	dns_name_t *zonename = dns_fixedname_name(fixed_zonename);
 	dns_name_t *name, *wild, tname;
 	isc_result_t result;
 	bool exists, data;
@@ -3064,7 +3064,7 @@ checkwildcard(dns_validator_t *val, dns_rdatatype_t type,
 			break;
 		case dns_rdatatype_nsec3:
 			result = dns_nsec3_noexistnodata(
-				val->type, wild, name, rdataset, zonename,
+				val->type, wild, name, rdataset, fixed_zonename,
 				&exists, &data, NULL, NULL, NULL, NULL, NULL,
 				validator_log, val);
 			if (result != ISC_R_SUCCESS) {
@@ -3112,7 +3112,7 @@ findnsec3proofs(dns_validator_t *val) {
 	dns_name_t *closest = dns_fixedname_initname(&fclosest);
 	dns_name_t *nearest = dns_fixedname_initname(&fnearest);
 	dns_name_t *zonename = dns_fixedname_initname(&fzonename);
-	dns_name_t *closestp = NULL;
+	dns_fixedname_t *closestp = NULL;
 	dns_name_t **proofs = val->proofs;
 	bool exists, data, optout, unknown, setnearest;
 
@@ -3127,7 +3127,7 @@ findnsec3proofs(dns_validator_t *val) {
 		}
 
 		result = dns_nsec3_noexistnodata(
-			val->type, val->name, name, rdataset, zonename, NULL,
+			val->type, val->name, name, rdataset, &fzonename, NULL,
 			NULL, NULL, NULL, NULL, NULL, NULL, validator_log, val);
 		if (result != ISC_R_IGNORE && result != ISC_R_SUCCESS) {
 			CLEANUP(result);
@@ -3149,10 +3149,11 @@ findnsec3proofs(dns_validator_t *val) {
 		validator_log(val, ISC_LOG_DEBUG(3),
 			      "closest encloser from wildcard signature '%s'",
 			      namebuf);
-		dns_name_copy(dns_fixedname_name(&val->closest), closest);
+		dns_fixedname_copy(dns_fixedname_name(&val->closest),
+				   &fclosest);
 		closestp = NULL;
 	} else {
-		closestp = closest;
+		closestp = &fclosest;
 	}
 
 	for (result = val_rdataset_first(val, &name, &rdataset);
@@ -3173,9 +3174,9 @@ findnsec3proofs(dns_validator_t *val) {
 		optout = false;
 		unknown = false;
 		result = dns_nsec3_noexistnodata(
-			val->type, val->name, name, rdataset, zonename, &exists,
-			&data, &optout, &unknown, &setnearest, closestp,
-			nearest, validator_log, val);
+			val->type, val->name, name, rdataset, &fzonename,
+			&exists, &data, &optout, &unknown, &setnearest,
+			closestp, &fnearest, validator_log, val);
 		if (unknown) {
 			val->attributes |= VALATTR_FOUNDUNKNOWN;
 		}
@@ -3235,8 +3236,8 @@ findnsec3proofs(dns_validator_t *val) {
 	     dns_name_equal(zonename, wildsigner)))
 	{
 		val->attributes |= VALATTR_FOUNDCLOSEST;
-		result = dns_name_concatenate(dns_wildcardname, closest,
-					      dns_fixedname_name(&val->wild));
+		result = dns_fixedname_concatenate(dns_wildcardname, closest,
+						   &val->wild);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 	} else {
 		val->attributes &= ~VALATTR_FOUNDNOQNAME;
@@ -3250,7 +3251,7 @@ findnsec3proofs(dns_validator_t *val) {
 	if (FOUNDNOQNAME(val) && FOUNDCLOSEST(val) &&
 	    ((NEEDNODATA(val) && !FOUNDNODATA(val)) || NEEDNOWILDCARD(val)))
 	{
-		result = checkwildcard(val, dns_rdatatype_nsec3, zonename);
+		result = checkwildcard(val, dns_rdatatype_nsec3, &fzonename);
 	}
 
 cleanup:
@@ -3387,7 +3388,8 @@ validate_ncache(dns_validator_t *val, bool resume) {
 
 		name = dns_fixedname_initname(&val->fname);
 		rdataset = &val->frdataset;
-		dns_ncache_current(val->rdataset, name, rdataset);
+		dns_ncache_currentfixedname(val->rdataset, &val->fname,
+					    rdataset);
 
 		if (val->frdataset.type == dns_rdatatype_rrsig) {
 			continue;
@@ -3500,7 +3502,7 @@ validate_nx(dns_validator_t *val, bool resume) {
 	    FOUNDCLOSEST(val) &&
 	    ((NEEDNODATA(val) && !FOUNDNODATA(val)) || NEEDNOWILDCARD(val)))
 	{
-		RETERR(checkwildcard(val, dns_rdatatype_nsec, nseczone));
+		RETERR(checkwildcard(val, dns_rdatatype_nsec, &val->nseczone));
 	}
 
 	if ((NEEDNODATA(val) && (FOUNDNODATA(val) || FOUNDOPTOUT(val))) ||
@@ -3679,7 +3681,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 	dns_name_t *tname = dns_fixedname_initname(&val->fname);
 
 	if (val->labels == dns_name_countlabels(val->name)) {
-		dns_name_copy(val->name, tname);
+		dns_fixedname_copy(val->name, &val->fname);
 	} else {
 		dns_name_split(val->name, val->labels, NULL, tname);
 	}
@@ -3801,8 +3803,9 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 		 */
 		if (result == DNS_R_NXRRSET &&
 		    !dns_rdataset_isassociated(&val->frdataset) &&
-		    dns_view_bestzonecut(val->view, tname, found, NULL, 0, 0,
-					 false, false, NULL) == ISC_R_SUCCESS &&
+		    dns_view_bestzonecut(val->view, tname, &fixedfound, NULL, 0,
+					 0, false, false,
+					 NULL) == ISC_R_SUCCESS &&
 		    dns_name_equal(tname, found))
 		{
 			*resp = markanswer(val, "seek_ds (2)");
@@ -3952,7 +3955,7 @@ proveunsecure(dns_validator_t *val, bool have_ds, bool have_dnskey,
 	 */
 	val->attributes |= VALATTR_INSECURITY;
 
-	dns_name_copy(val->name, secroot);
+	dns_fixedname_copy(val->name, &fixedsecroot);
 
 	/*
 	 * If this is a response to a DS query, we need to look in
@@ -3963,7 +3966,8 @@ proveunsecure(dns_validator_t *val, bool have_ds, bool have_dnskey,
 		dns_name_getlabelsequence(secroot, 1, labels - 1, secroot);
 	}
 
-	result = dns_keytable_finddeepestmatch(val->keytable, secroot, secroot);
+	result = dns_keytable_finddeepestmatch(val->keytable, secroot,
+					       &fixedsecroot);
 	if (result == ISC_R_NOTFOUND) {
 		validator_log(val, ISC_LOG_DEBUG(3), "not beneath secure root");
 		return markanswer(val, "proveunsecure (1)");

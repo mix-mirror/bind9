@@ -347,7 +347,7 @@ qp_test_printkey(const dns_qpkey_t key, size_t keylen) {
 	dns_namespace_t s;
 	char txt[DNS_NAME_FORMATSIZE];
 
-	dns_qpkey_toname(key, keylen, n, &s);
+	dns_qpkey_toname(key, keylen, &fn, &s);
 	dns_name_format(n, txt, sizeof(txt));
 	printf("%s%s%s\n", txt,
 	       s == DNS_DBNAMESPACE_NSEC3

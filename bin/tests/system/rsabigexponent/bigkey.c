@@ -116,8 +116,8 @@ main(int argc, char **argv) {
 	name = dns_fixedname_initname(&fname);
 	isc_buffer_constinit(&buf, "example.", strlen("example."));
 	isc_buffer_add(&buf, strlen("example."));
-	CHECKM(dns_name_fromtext(name, &buf, dns_rootname, 0, NULL),
-	       "dns_name_fromtext(\"example.\")");
+	CHECKM(dns_fixedname_fromtext(&fname, &buf, dns_rootname, 0),
+	       "dns_fixedname_fromtext(\"example.\")");
 
 	CHECKM(dst_key_buildinternal(name, DNS_KEYALG_RSASHA256, bits,
 				     DNS_KEYOWNER_ZONE, DNS_KEYPROTO_DNSSEC,

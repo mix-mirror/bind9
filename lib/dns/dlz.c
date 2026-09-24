@@ -400,8 +400,7 @@ dns_dlz_writeablezone(dns_view_t *view, dns_dlzdb_t *dlzdb,
 	isc_buffer_constinit(&buffer, zone_name, strlen(zone_name));
 	isc_buffer_add(&buffer, strlen(zone_name));
 	dns_fixedname_init(&fixorigin);
-	CHECK(dns_name_fromtext(dns_fixedname_name(&fixorigin), &buffer,
-				dns_rootname, 0));
+	CHECK(dns_fixedname_fromtext(&fixorigin, &buffer, dns_rootname, 0));
 	origin = dns_fixedname_name(&fixorigin);
 
 	if (!dlzdb->search) {

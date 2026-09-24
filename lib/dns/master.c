@@ -457,7 +457,7 @@ incctx_create(isc_mem_t *mctx, dns_name_t *origin, dns_incctx_t **ictxp) {
 	ictx->origin = dns_fixedname_name(&ictx->fixed[ictx->origin_in_use]);
 	ictx->in_use[ictx->origin_in_use] = true;
 	dns_name_toregion(origin, &r);
-	dns_name_fromregion(ictx->origin, &r);
+	dns_fixedname_fromregion(&ictx->fixed[ictx->origin_in_use], &r);
 
 	ictx->glue = NULL;
 	ictx->current = NULL;
@@ -548,7 +548,7 @@ loadctx_create(dns_masterformat_t format, isc_mem_t *mctx, unsigned int options,
 
 	lctx->top = dns_fixedname_initname(&lctx->fixed_top);
 	dns_name_toregion(top, &r);
-	dns_name_fromregion(lctx->top, &r);
+	dns_fixedname_fromregion(&lctx->fixed_top, &r);
 
 	dns_master_initrawheader(&lctx->header);
 
@@ -819,7 +819,8 @@ generate(dns_loadctx_t *lctx, char *range, char *lhs, char *gtype, char *rhs,
 		isc_buffer_init(&buffer, lhsbuf, strlen(lhsbuf));
 		isc_buffer_add(&buffer, strlen(lhsbuf));
 		isc_buffer_setactive(&buffer, strlen(lhsbuf));
-		result = dns_name_fromtext(owner, &buffer, ictx->origin, 0);
+		result = dns_fixedname_fromtext(&ownerfixed, &buffer,
+						ictx->origin, 0);
 		if (result != ISC_R_SUCCESS) {
 			goto error_cleanup;
 		}
@@ -1361,8 +1362,9 @@ load_text(dns_loadctx_t *lctx) {
 			isc_buffer_add(&buffer, token.value.as_region.length);
 			isc_buffer_setactive(&buffer,
 					     token.value.as_region.length);
-			result = dns_name_fromtext(new_name, &buffer,
-						   ictx->origin, 0);
+			result = dns_fixedname_fromtext(
+				&ictx->fixed[new_in_use], &buffer, ictx->origin,
+				0);
 			if (MANYERRS(lctx, result)) {
 				SETRESULT(lctx, result);
 				LOGIT(result);
@@ -2143,7 +2145,8 @@ pushfile(const char *master_file, dns_name_t *origin, dns_loadctx_t *lctx) {
 		newctx->in_use[newctx->current_in_use] = true;
 		dns_name_toregion(
 			(ictx->glue != NULL) ? ictx->glue : ictx->current, &r);
-		dns_name_fromregion(newctx->current, &r);
+		dns_fixedname_fromregion(&newctx->fixed[newctx->current_in_use],
+					 &r);
 		newctx->drop = ictx->drop;
 	}
 
@@ -2411,7 +2414,7 @@ load_raw(dns_loadctx_t *lctx) {
 				     &totallen));
 
 		isc_buffer_setactive(&target, (unsigned int)namelen);
-		CHECK(dns_name_fromwire(name, &target, dctx, NULL));
+		CHECK(dns_fixedname_fromwire(&fixed, &target, dctx));
 
 		if ((lctx->options & DNS_MASTER_CHECKTTL) != 0 &&
 		    rdatalist.ttl > lctx->maxttl)

@@ -35,6 +35,7 @@
 #include <isc/uv.h>
 
 #include <dns/dispatch.h>
+#include <dns/fixedname.h>
 #include <dns/lib.h>
 #include <dns/name.h>
 #include <dns/view.h>
@@ -228,8 +229,8 @@ setup_test(void **state) {
 
 	isc_buffer_constinit(&namesrc, tls_name_str, strlen(tls_name_str));
 	isc_buffer_add(&namesrc, strlen(tls_name_str));
-	if (dns_name_fromtext(tls_name, &namesrc, dns_rootname,
-			      DNS_NAME_DOWNCASE) != ISC_R_SUCCESS)
+	if (dns_fixedname_fromtext(&ft, &namesrc, dns_rootname,
+				   DNS_NAME_DOWNCASE) != ISC_R_SUCCESS)
 	{
 		return -1;
 	}

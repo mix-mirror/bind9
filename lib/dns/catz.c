@@ -31,6 +31,7 @@
 
 #include <dns/catz.h>
 #include <dns/dbiterator.h>
+#include <dns/fixedname.h>
 #include <dns/name.h>
 #include <dns/rdatasetiter.h>
 #include <dns/view.h>
@@ -2306,7 +2307,8 @@ dns__catz_update_cb(void *data) {
 	 * records might be processed differently depending on the version of
 	 * the catalog zone's schema.
 	 */
-	result = dns_name_fromstring(name, "version", &updb->origin, 0, NULL);
+	result = dns_fixedname_fromstring(&fixname, "version", &updb->origin,
+					  0);
 	if (result != ISC_R_SUCCESS) {
 		dns_dbiterator_destroy(&updbit);
 		isc_log_write(DNS_LOGCATEGORY_GENERAL, DNS_LOGMODULE_CATZ,
@@ -2340,7 +2342,7 @@ dns__catz_update_cb(void *data) {
 			break;
 		}
 
-		result = dns_dbiterator_current(updbit, &node, name);
+		result = dns_dbiterator_current(updbit, &node, &fixname);
 		if (result != ISC_R_SUCCESS) {
 			isc_log_write(DNS_LOGCATEGORY_GENERAL,
 				      DNS_LOGMODULE_CATZ, ISC_LOG_ERROR,

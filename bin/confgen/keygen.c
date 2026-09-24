@@ -105,7 +105,7 @@ makesafe_keyname(const char *keyname, char *namebuf, size_t length,
 	if (keyname == NULL || keyname[0] == '\0') {
 		fatal("key name must not be empty");
 	}
-	result = dns_name_fromstring(name, keyname, dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(&fixed, keyname, dns_rootname, 0);
 	if (result != ISC_R_SUCCESS) {
 		fatal("invalid key name: %s", isc_result_totext(result));
 	}

@@ -33,5 +33,5 @@ named_tsigkeyring_fromconfig(const cfg_obj_t *config, const cfg_obj_t *vconfig,
  *	Returns:
  *	\li	ISC_R_SUCCESS
  *	\li	DNS_R_BADALG
- *	\li	return codes from dns_name_fromtext()
+ *	\li	return codes from dns_fixedname_fromtext()
  */

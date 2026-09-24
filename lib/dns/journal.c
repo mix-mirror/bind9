@@ -110,7 +110,7 @@ dns_db_createsoatuple(dns_db_t *db, dns_dbversion_t *ver, isc_mem_t *mctx,
 	dns_name_t *zonename;
 
 	zonename = dns_fixedname_initname(&fixed);
-	dns_name_copy(dns_db_origin(db), zonename);
+	dns_fixedname_copy(dns_db_origin(db), &fixed);
 
 	node = NULL;
 	result = dns_db_findnode(db, zonename, false, &node);
@@ -2087,14 +2087,15 @@ dns_journal_current_rr(dns_journal_t *j, dns_name_t **name, uint32_t *ttl,
  */
 static isc_result_t
 get_name_diff(dns_db_t *db, dns_dbversion_t *ver, isc_stdtime_t now,
-	      dns_dbiterator_t *dbit, dns_name_t *name, dns_diffop_t op,
-	      dns_diff_t *diff) {
+	      dns_dbiterator_t *dbit, dns_fixedname_t *fixed_name,
+	      dns_diffop_t op, dns_diff_t *diff) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
 	dns_rdatasetiter_t *rdsiter = NULL;
 	dns_difftuple_t *tuple = NULL;
 
-	RETERR(dns_dbiterator_current(dbit, &node, name));
+	RETERR(dns_dbiterator_current(dbit, &node, fixed_name));
 
 	result = dns_db_allrdatasets(db, node, ver, 0, now, &rdsiter);
 	if (result != ISC_R_SUCCESS) {
@@ -2248,12 +2249,11 @@ diff_namespace(dns_db_t *dba, dns_dbversion_t *dbvera, dns_db_t *dbb,
 	for (;;) {
 		for (i = 0; i < 2; i++) {
 			if (!have[i] && itresult[i] == ISC_R_SUCCESS) {
-				CHECK(get_name_diff(
-					db[i], ver[i], 0, dbit[i],
-					dns_fixedname_name(&fixname[i]),
-					i == 0 ? DNS_DIFFOP_ADD
-					       : DNS_DIFFOP_DEL,
-					&diff[i]));
+				CHECK(get_name_diff(db[i], ver[i], 0, dbit[i],
+						    &fixname[i],
+						    i == 0 ? DNS_DIFFOP_ADD
+							   : DNS_DIFFOP_DEL,
+						    &diff[i]));
 				itresult[i] = dns_dbiterator_next(dbit[i]);
 				have[i] = true;
 			}

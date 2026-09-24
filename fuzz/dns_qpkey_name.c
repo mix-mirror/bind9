@@ -54,17 +54,17 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	isc_buffer_add(&buf, size);
 	isc_buffer_setactive(&buf, size);
 
-	CHECK(dns_name_fromwire(namein, &buf, DNS_DECOMPRESS_NEVER, NULL));
+	CHECK(dns_fixedname_fromwire(&fixedin, &buf, DNS_DECOMPRESS_NEVER));
 
 	/* verify round-trip conversion of first name */
 	size_t keylen = dns_qpkey_fromname(key, namein, DNS_DBNAMESPACE_NORMAL);
-	dns_qpkey_toname(key, keylen, nameout, &space);
+	dns_qpkey_toname(key, keylen, &fixedout, &space);
 
 	assert(dns_name_equal(namein, nameout));
 	assert(space == DNS_DBNAMESPACE_NORMAL);
 
 	/* is there a second name? */
-	CHECK(dns_name_fromwire(namecmp, &buf, DNS_DECOMPRESS_NEVER, NULL));
+	CHECK(dns_fixedname_fromwire(&fixedcmp, &buf, DNS_DECOMPRESS_NEVER));
 
 	size_t cmplen = dns_qpkey_fromname(cmp, namecmp,
 					   DNS_DBNAMESPACE_NORMAL);

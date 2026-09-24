@@ -802,11 +802,12 @@ findnode(dns_db_t *db, const dns_name_t *name, bool create,
 static isc_result_t
 builtin_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	     dns_rdatatype_t type, unsigned int options, isc_stdtime_t now,
-	     dns_name_t *foundname,
+	     dns_fixedname_t *fixed_foundname,
 	     dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
 	     dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
 	     dns_rdataset_t *rdataset,
 	     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	dns_name_t *foundname = dns_fixedname_name(fixed_foundname);
 	bdb_t *bdb = (bdb_t *)db;
 	isc_result_t result;
 	dns_dbnode_t *node = NULL;
@@ -947,7 +948,7 @@ builtin_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	}
 
 	if (foundname != NULL) {
-		dns_name_copy(xname, foundname);
+		dns_fixedname_copy(xname, fixed_foundname);
 	}
 
 	if (node != NULL) {

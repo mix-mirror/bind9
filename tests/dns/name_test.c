@@ -95,15 +95,15 @@ ISC_RUN_TEST_IMPL(fullcompare) {
 		if (data[i].name1[0] == 0) {
 			dns_fixedname_init(&fixed1);
 		} else {
-			result = dns_name_fromstring(name1, data[i].name1, NULL,
-						     0, NULL);
+			result = dns_fixedname_fromstring(
+				&fixed1, data[i].name1, NULL, 0);
 			assert_int_equal(result, ISC_R_SUCCESS);
 		}
 		if (data[i].name2[0] == 0) {
 			dns_fixedname_init(&fixed2);
 		} else {
-			result = dns_name_fromstring(name2, data[i].name2, NULL,
-						     0, NULL);
+			result = dns_fixedname_fromstring(
+				&fixed2, data[i].name2, NULL, 0);
 			assert_int_equal(result, ISC_R_SUCCESS);
 		}
 		relation = dns_name_fullcompare(name1, name1, &order, &nlabels);
@@ -472,34 +472,32 @@ ISC_RUN_TEST_IMPL(collision) {
 
 ISC_RUN_TEST_IMPL(fromregion) {
 	dns_name_t name;
-	isc_buffer_t b;
+	dns_fixedname_t fixed;
 	isc_region_t r;
 	/*
-	 * target and source need to be bigger than DNS_NAME_MAXWIRE to
-	 * exercise 'len > DNS_NAME_MAXWIRE' test in dns_name_fromwire
+	 * The source region may contain more than DNS_NAME_MAXWIRE bytes;
+	 * only the first name is copied.
 	 */
-	unsigned char target[DNS_NAME_MAXWIRE + 10];
 	unsigned char source[DNS_NAME_MAXWIRE + 10] = { '\007', 'e', 'x', 'a',
 							'm',	'p', 'l', 'e' };
 	/*
 	 * Extract the fully qualified name at the beginning of 'source'
-	 * into 'name' where 'name.ndata' points to the buffer 'target'.
+	 * into the fixedname's own storage.
 	 */
-	isc_buffer_init(&b, target, sizeof(target));
 	dns_name_init(&name);
-	dns_name_setbuffer(&name, &b);
+	dns_fixedname_init(&fixed);
 	r.base = source;
 	r.length = sizeof(source);
-	dns_name_fromregion(&name, &r);
-	assert_int_equal(9, name.length);
-	assert_ptr_equal(target, name.ndata);
-	assert_true(dns_name_isabsolute(&name));
+	dns_fixedname_fromregion(&fixed, &r);
+	assert_int_equal(9, fixed.name.length);
+	assert_ptr_equal(fixed.data, fixed.name.ndata);
+	assert_memory_equal(source, fixed.data, 9);
+	assert_true(dns_name_isabsolute(&fixed.name));
 
 	/*
 	 * Extract the fully qualified name at the beginning of 'source'
 	 * into 'name' where 'name.ndata' points to the source.
 	 */
-	isc_buffer_init(&b, target, sizeof(target));
 	dns_name_init(&name);
 	r.base = source;
 	r.length = sizeof(source);
@@ -512,7 +510,6 @@ ISC_RUN_TEST_IMPL(fromregion) {
 	 * Extract the partially qualified name in 'source' into 'name'
 	 * where 'name.ndata' points to the source.
 	 */
-	isc_buffer_init(&b, target, sizeof(target));
 	dns_name_init(&name);
 	r.base = source;
 	r.length = 8;
@@ -524,7 +521,6 @@ ISC_RUN_TEST_IMPL(fromregion) {
 	/*
 	 * Extract empty name in 'source' into 'name'.
 	 */
-	isc_buffer_init(&b, target, sizeof(target));
 	dns_name_init(&name);
 	r.base = source;
 	r.length = 0;
@@ -536,7 +532,8 @@ ISC_RUN_TEST_IMPL(fromregion) {
 
 ISC_RUN_TEST_IMPL(fromwire) {
 	dns_fixedname_t fixed;
-	dns_name_t *name = dns_fixedname_initname(&fixed);
+
+	dns_fixedname_init(&fixed);
 	isc_buffer_t b;
 	unsigned char source[] = { 0x03, 'o', 'n', 'e',	 0x00, 0x03,
 				   't',	 'w', 'o', 0x00, 0x05, 't',
@@ -552,11 +549,11 @@ ISC_RUN_TEST_IMPL(fromwire) {
 	 * as the active region has been set to cover only the first
 	 * two.
 	 */
-	result = dns_name_fromwire(name, &b, DNS_DECOMPRESS_NEVER, NULL);
+	result = dns_fixedname_fromwire(&fixed, &b, DNS_DECOMPRESS_NEVER);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	result = dns_name_fromwire(name, &b, DNS_DECOMPRESS_NEVER, NULL);
+	result = dns_fixedname_fromwire(&fixed, &b, DNS_DECOMPRESS_NEVER);
 	assert_int_equal(result, ISC_R_SUCCESS);
-	result = dns_name_fromwire(name, &b, DNS_DECOMPRESS_NEVER, NULL);
+	result = dns_fixedname_fromwire(&fixed, &b, DNS_DECOMPRESS_NEVER);
 	assert_int_not_equal(result, ISC_R_SUCCESS);
 }
 
@@ -597,8 +594,8 @@ ISC_RUN_TEST_IMPL(istat) {
 	name = dns_fixedname_initname(&fixed);
 
 	for (i = 0; i < (sizeof(data) / sizeof(data[0])); i++) {
-		result = dns_name_fromstring(name, data[i].name, dns_rootname,
-					     0, NULL);
+		result = dns_fixedname_fromstring(&fixed, data[i].name,
+						  dns_rootname, 0);
 		assert_int_equal(result, ISC_R_SUCCESS);
 		assert_int_equal(dns_name_istat(name), data[i].istat);
 	}
@@ -622,7 +619,6 @@ ISC_RUN_TEST_IMPL(init) {
 
 	assert_null(name.ndata);
 	assert_int_equal(name.length, 0);
-	assert_null(name.buffer);
 	assert_true(name_attr_zero(name.attributes));
 }
 
@@ -635,23 +631,56 @@ ISC_RUN_TEST_IMPL(invalidate) {
 
 	assert_null(name.ndata);
 	assert_int_equal(name.length, 0);
-	assert_null(name.buffer);
 	assert_true(name_attr_zero(name.attributes));
 }
 
-/* dns_name_setbuffer/hasbuffer */
-ISC_RUN_TEST_IMPL(buffer) {
-	dns_name_t name;
-	unsigned char buf[BUFSIZ];
-	isc_buffer_t b;
+/* Fixed storage remains usable after the name view references other data. */
+ISC_RUN_TEST_IMPL(fixedname_storage) {
+	dns_fixedname_t fixed;
+	dns_name_t borrowed = DNS_NAME_INITEMPTY;
+	unsigned char data[] = { 1, 'X', 0 };
+	isc_region_t region = { .base = data, .length = sizeof(data) };
 
 	UNUSED(state);
+	dns_fixedname_init(&fixed);
+	dns_name_fromregion(&borrowed, &region);
+	dns_name_clone(&borrowed, &fixed.name);
+	assert_ptr_equal(fixed.name.ndata, data);
+	dns_fixedname_copy(&fixed.name, &fixed);
+	assert_ptr_equal(fixed.name.ndata, fixed.data);
+	assert_memory_equal(fixed.data, data, sizeof(data));
 
-	isc_buffer_init(&b, buf, BUFSIZ);
-	dns_name_init(&name);
-	dns_name_setbuffer(&name, &b);
-	assert_ptr_equal(name.buffer, &b);
-	assert_true(dns_name_hasbuffer(&name));
+	dns_name_clone(&borrowed, &fixed.name);
+	assert_int_equal(dns_fixedname_concatenate(&fixed.name, NULL, &fixed),
+			 ISC_R_SUCCESS);
+	assert_ptr_equal(fixed.name.ndata, fixed.data);
+	assert_memory_equal(fixed.data, data, sizeof(data));
+
+	dns_fixedname_reset(&fixed);
+	assert_true(dns_name_empty(&fixed.name));
+	assert_int_equal(isc_buffer_usedlength(&fixed.buffer), 0);
+	assert_int_equal(dns_fixedname_fromstring(&fixed, "next.example.",
+						  dns_rootname, 0),
+			 ISC_R_SUCCESS);
+	assert_ptr_equal(fixed.name.ndata, fixed.data);
+}
+
+ISC_RUN_TEST_IMPL(fromstring_allocated) {
+	dns_name_t name = DNS_NAME_INITEMPTY;
+	dns_fixedname_t fixed;
+	UNUSED(state);
+	dns_fixedname_init(&fixed);
+	assert_int_equal(dns_name_fromstring(&name, "Mixed.Example.",
+					     dns_rootname, 0, isc_g_mctx),
+			 ISC_R_SUCCESS);
+	assert_true(dns_name_dynamic(&name));
+	assert_int_equal(dns_fixedname_downcase(&name, &fixed), ISC_R_SUCCESS);
+	assert_false(dns_name_dynamic(&fixed.name));
+	assert_true(dns_name_equal(&name, &fixed.name));
+	assert_int_equal(name.ndata[1], 'M');
+	assert_int_equal(fixed.name.ndata[1], 'm');
+	dns_name_free(&name, isc_g_mctx);
+	assert_int_equal(fixed.name.ndata[1], 'm');
 }
 
 /* dns_name_isabsolute */
@@ -668,22 +697,19 @@ ISC_RUN_TEST_IMPL(isabsolute) {
 
 	for (i = 0; i < (sizeof(testcases) / sizeof(testcases[0])); i++) {
 		isc_result_t result;
-		dns_name_t name;
-		unsigned char data[BUFSIZ];
-		isc_buffer_t b, nb;
+		dns_fixedname_t fixed;
+		dns_name_t *name = dns_fixedname_initname(&fixed);
+		isc_buffer_t b;
 		size_t len;
 
 		len = strlen(testcases[i].namestr);
 		isc_buffer_constinit(&b, testcases[i].namestr, len);
 		isc_buffer_add(&b, len);
 
-		dns_name_init(&name);
-		isc_buffer_init(&nb, data, BUFSIZ);
-		dns_name_setbuffer(&name, &nb);
-		result = dns_name_fromtext(&name, &b, NULL, 0);
+		result = dns_fixedname_fromtext(&fixed, &b, NULL, 0);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		assert_int_equal(dns_name_isabsolute(&name),
+		assert_int_equal(dns_name_isabsolute(name),
 				 testcases[i].expect);
 	}
 }
@@ -709,8 +735,8 @@ ISC_RUN_TEST_IMPL(isroot) {
 	for (size_t i = 0; i < ARRAY_SIZE(testcases); i++) {
 		dns_fixedname_t fixed;
 		dns_name_t *name = dns_fixedname_initname(&fixed);
-		isc_result_t result = dns_name_fromstring(
-			name, testcases[i].namestr, NULL, 0, NULL);
+		isc_result_t result = dns_fixedname_fromstring(
+			&fixed, testcases[i].namestr, NULL, 0);
 
 		assert_int_equal(result, ISC_R_SUCCESS);
 		assert_int_equal(dns_name_isroot(name), testcases[i].expect);
@@ -738,8 +764,8 @@ ISC_RUN_TEST_IMPL(belowroot) {
 	for (size_t i = 0; i < ARRAY_SIZE(testcases); i++) {
 		dns_fixedname_t fixed;
 		dns_name_t *name = dns_fixedname_initname(&fixed);
-		isc_result_t result = dns_name_fromstring(
-			name, testcases[i].namestr, NULL, 0, NULL);
+		isc_result_t result = dns_fixedname_fromstring(
+			&fixed, testcases[i].namestr, NULL, 0);
 
 		assert_int_equal(result, ISC_R_SUCCESS);
 		assert_int_equal(dns_name_belowroot(name), testcases[i].expect);
@@ -774,11 +800,11 @@ ISC_RUN_TEST_IMPL(hash) {
 		n1 = dns_fixedname_initname(&f1);
 		n2 = dns_fixedname_initname(&f2);
 
-		result = dns_name_fromstring(n1, testcases[i].name1, NULL, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&f1, testcases[i].name1, NULL,
+						  0);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		result = dns_name_fromstring(n2, testcases[i].name2, NULL, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&f2, testcases[i].name2, NULL,
+						  0);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		/* Check case-insensitive hashing first */
@@ -833,11 +859,11 @@ ISC_RUN_TEST_IMPL(issubdomain) {
 		n1 = dns_fixedname_initname(&f1);
 		n2 = dns_fixedname_initname(&f2);
 
-		result = dns_name_fromstring(n1, testcases[i].name1, NULL, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&f1, testcases[i].name1, NULL,
+						  0);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		result = dns_name_fromstring(n2, testcases[i].name2, NULL, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&f2, testcases[i].name2, NULL,
+						  0);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		if (verbose) {
@@ -883,8 +909,8 @@ ISC_RUN_TEST_IMPL(countlabels) {
 
 		name = dns_fixedname_initname(&fname);
 
-		result = dns_name_fromstring(name, testcases[i].namestr, NULL,
-					     0, NULL);
+		result = dns_fixedname_fromstring(&fname, testcases[i].namestr,
+						  NULL, 0);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		if (verbose) {
@@ -924,11 +950,11 @@ ISC_RUN_TEST_IMPL(getlabel) {
 		n1 = dns_fixedname_initname(&f1);
 		n2 = dns_fixedname_initname(&f2);
 
-		result = dns_name_fromstring(n1, testcases[i].name1, NULL, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&f1, testcases[i].name1, NULL,
+						  0);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		result = dns_name_fromstring(n2, testcases[i].name2, NULL, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&f2, testcases[i].name2, NULL,
+						  0);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		dns_name_getlabel(n1, testcases[i].pos1, &l1);
@@ -972,11 +998,11 @@ ISC_RUN_TEST_IMPL(getlabelsequence) {
 		n1 = dns_fixedname_initname(&f1);
 		n2 = dns_fixedname_initname(&f2);
 
-		result = dns_name_fromstring(n1, testcases[i].name1, NULL, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&f1, testcases[i].name1, NULL,
+						  0);
 		assert_int_equal(result, ISC_R_SUCCESS);
-		result = dns_name_fromstring(n2, testcases[i].name2, NULL, 0,
-					     NULL);
+		result = dns_fixedname_fromstring(&f2, testcases[i].name2, NULL,
+						  0);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		dns_name_getlabelsequence(n1, testcases[i].pos1,
@@ -1002,12 +1028,13 @@ ISC_RUN_TEST_IMPL(maxlabels) {
 		"a.b.c.";
 
 	name = dns_fixedname_initname(&fixed);
-	result = dns_name_fromstring(name, one_too_many, dns_rootname, 0, NULL);
+	result = dns_fixedname_fromstring(&fixed, one_too_many, dns_rootname,
+					  0);
 	assert_int_equal(result, ISC_R_NOSPACE);
 
 	name = dns_fixedname_initname(&fixed);
-	result = dns_name_fromstring(name, one_too_many + 2, dns_rootname, 0,
-				     NULL);
+	result = dns_fixedname_fromstring(&fixed, one_too_many + 2,
+					  dns_rootname, 0);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_true(dns_name_isvalid(name));
 	assert_int_equal(dns_name_countlabels(name), DNS_NAME_MAXLABELS);
@@ -1238,11 +1265,12 @@ ISC_RUN_TEST_IMPL(benchmark) {
 
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(belowroot)
-ISC_TEST_ENTRY(buffer)
+ISC_TEST_ENTRY(fixedname_storage)
 ISC_TEST_ENTRY(collision)
 ISC_TEST_ENTRY(compression)
 ISC_TEST_ENTRY(countlabels)
 ISC_TEST_ENTRY(fromregion)
+ISC_TEST_ENTRY(fromstring_allocated)
 ISC_TEST_ENTRY(fromwire)
 ISC_TEST_ENTRY(fullcompare)
 ISC_TEST_ENTRY(getlabel)

@@ -55,7 +55,7 @@ ISC_LOOP_TEST_IMPL(basic) {
 	isc_result_t result;
 	uint32_t flags = BADCACHE_TEST_FLAG;
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 
 	bc = dns_badcache_new(isc_g_mctx);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now + 60);
@@ -83,7 +83,7 @@ ISC_LOOP_TEST_IMPL(expire) {
 	isc_result_t result;
 	uint32_t flags = BADCACHE_TEST_FLAG;
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 
 	bc = dns_badcache_new(isc_g_mctx);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now + 60);
@@ -135,7 +135,7 @@ ISC_LOOP_TEST_IMPL(print) {
 	bool seen_a = false, seen_aaaa = false;
 	long ttl;
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 
 	bc = dns_badcache_new(isc_g_mctx);
 	dns_badcache_add(bc, name, dns_rdatatype_a, flags, expire);
@@ -210,7 +210,7 @@ ISC_LOOP_TEST_IMPL(flush) {
 	isc_result_t result;
 	uint32_t flags = BADCACHE_TEST_FLAG;
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 
 	bc = dns_badcache_new(isc_g_mctx);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now + 60);
@@ -238,22 +238,22 @@ ISC_LOOP_TEST_IMPL(flushname) {
 
 	bc = dns_badcache_new(isc_g_mctx);
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now + 60);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_name_fromstring(name, "sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.example.com.", NULL, 0);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now + 60);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_name_fromstring(name, "sub.sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.sub.example.com.", NULL, 0);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now + 60);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_name_fromstring(name, "sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.example.com.", NULL, 0);
 	dns_badcache_flushname(bc, name);
 
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
@@ -261,11 +261,11 @@ ISC_LOOP_TEST_IMPL(flushname) {
 	result = dns_badcache_find(bc, name, dns_rdatatype_a, &flags, now);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "sub.sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.sub.example.com.", NULL, 0);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
@@ -284,36 +284,36 @@ ISC_LOOP_TEST_IMPL(flushtree) {
 
 	bc = dns_badcache_new(isc_g_mctx);
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now + 60);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(flags, BADCACHE_TEST_FLAG);
 
-	dns_name_fromstring(name, "sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.example.com.", NULL, 0);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now + 60);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(flags, BADCACHE_TEST_FLAG);
 
-	dns_name_fromstring(name, "sub.sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.sub.example.com.", NULL, 0);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now + 60);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(flags, BADCACHE_TEST_FLAG);
 
-	dns_name_fromstring(name, "sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.example.com.", NULL, 0);
 	dns_badcache_flushtree(bc, name);
 
-	dns_name_fromstring(name, "sub.sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.sub.example.com.", NULL, 0);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.example.com.", NULL, 0);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags, now);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(flags, BADCACHE_TEST_FLAG);
@@ -333,19 +333,19 @@ ISC_LOOP_TEST_IMPL(purge) {
 
 	bc = dns_badcache_new(isc_g_mctx);
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags,
 				   now - 60);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_name_fromstring(name, "sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.example.com.", NULL, 0);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags,
 				   now - 60);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	dns_name_fromstring(name, "sub.sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.sub.example.com.", NULL, 0);
 	dns_badcache_add(bc, name, dns_rdatatype_aaaa, flags, now);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags,
 				   now - 60);
@@ -355,17 +355,17 @@ ISC_LOOP_TEST_IMPL(purge) {
 				   now + 30);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "sub.sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.sub.example.com.", NULL, 0);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags,
 				   now + 30);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "sub.example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "sub.example.com.", NULL, 0);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags,
 				   now + 30);
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
-	dns_name_fromstring(name, "example.com.", NULL, 0, NULL);
+	dns_fixedname_fromstring(&fname, "example.com.", NULL, 0);
 	result = dns_badcache_find(bc, name, dns_rdatatype_aaaa, &flags,
 				   now + 30);
 	assert_int_equal(result, ISC_R_NOTFOUND);

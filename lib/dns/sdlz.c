@@ -223,11 +223,11 @@ static isc_result_t
 dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG);
 static isc_result_t
 dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
-		   dns_name_t *name DNS__DB_FLARG);
+		   dns_fixedname_t *fixed_name DNS__DB_FLARG);
 static isc_result_t
 dbiterator_pause(dns_dbiterator_t *iterator);
 static isc_result_t
-dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name);
+dbiterator_origin(dns_dbiterator_t *iterator, dns_fixedname_t *fixed_name);
 
 static dns_dbiteratormethods_t dbiterator_methods = {
 	dbiterator_destroy, dbiterator_first,	dbiterator_last,
@@ -558,8 +558,8 @@ getnodedata(dns_db_t *db, const dns_name_t *name, bool create,
 				fname = dns_fixedname_name(&fixed);
 				dns_name_getlabelsequence(
 					name, i + 1, dlabels - i - 1, fname);
-				result = dns_name_concatenate(dns_wildcardname,
-							      fname, fname);
+				result = dns_fixedname_concatenate(
+					dns_wildcardname, fname, &fixed);
 				if (result != ISC_R_SUCCESS) {
 					MAYBE_UNLOCK(sdlz->dlzimp);
 					return result;
@@ -580,8 +580,8 @@ getnodedata(dns_db_t *db, const dns_name_t *name, bool create,
 				zonestr, wildstr, sdlz->dlzimp->driverarg,
 				sdlz->dbdata, node, methods, clientinfo);
 			if (result == ISC_R_SUCCESS) {
-				result = dns_name_concatenate(
-					wild, &sdlz->common.origin, wildname);
+				result = dns_fixedname_concatenate(
+					wild, &sdlz->common.origin, &wildfixed);
 				if (result != ISC_R_SUCCESS) {
 					break;
 				}
@@ -770,9 +770,10 @@ findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 static isc_result_t
 sdlz_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	  dns_rdatatype_t type, unsigned int options, isc_stdtime_t now,
-	  dns_name_t *foundname, dns_clientinfomethods_t *methods,
+	  dns_fixedname_t *fixed_foundname, dns_clientinfomethods_t *methods,
 	  dns_clientinfo_t *clientinfo, dns_rdataset_t *rdataset,
 	  dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	dns_name_t *foundname = dns_fixedname_name(fixed_foundname);
 	dns_sdlz_db_t *sdlz = (dns_sdlz_db_t *)db;
 	dns_dbnode_t *node = NULL;
 	dns_fixedname_t fname;
@@ -918,7 +919,7 @@ sdlz_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		if (node != NULL) {
 			dns_sdlznode_t *sdlznode = (dns_sdlznode_t *)node;
 
-			dns_name_copy(&sdlznode->name, foundname);
+			dns_fixedname_copy(&sdlznode->name, fixed_foundname);
 			if (dns_name_iswildcard(&sdlznode->name) &&
 			    !dns_name_equal(name, &sdlznode->name) &&
 			    dns_name_matcheswildcard(name, &sdlznode->name))
@@ -926,7 +927,7 @@ sdlz_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 				foundname->attributes.wildcard = true;
 			}
 		} else {
-			dns_name_copy(xname, foundname);
+			dns_fixedname_copy(xname, fixed_foundname);
 		}
 	}
 
@@ -1111,8 +1112,10 @@ sdlz_addglue_addr(sdlz_addglue_ctx_t *ctx, dns_dbnode_t *node,
 	if (*mnamep == NULL) {
 		dns_sdlznode_t *sdlznode = (dns_sdlznode_t *)node;
 
-		dns_message_gettempname(ctx->msg, mnamep);
-		dns_name_copy(&sdlznode->name, *mnamep);
+		dns_fixedname_t *fixed = NULL;
+		dns_message_gettempfixedname(ctx->msg, &fixed);
+		dns_fixedname_copy(&sdlznode->name, fixed);
+		*mnamep = dns_fixedname_name(fixed);
 	}
 
 	if (required) {
@@ -1314,13 +1317,14 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 static isc_result_t
 dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
-		   dns_name_t *name DNS__DB_FLARG) {
+		   dns_fixedname_t *fixed_name DNS__DB_FLARG) {
+	dns_name_t *name = dns_fixedname_name(fixed_name);
 	sdlz_dbiterator_t *sdlziter = (sdlz_dbiterator_t *)iterator;
 
 	sdlznode_attachnode((dns_dbnode_t *)sdlziter->current,
 			    nodep DNS__DB_FLARG_PASS);
 	if (name != NULL) {
-		dns_name_copy(&sdlziter->current->name, name);
+		dns_fixedname_copy(&sdlziter->current->name, fixed_name);
 		return ISC_R_SUCCESS;
 	}
 	return ISC_R_SUCCESS;
@@ -1333,9 +1337,9 @@ dbiterator_pause(dns_dbiterator_t *iterator) {
 }
 
 static isc_result_t
-dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name) {
+dbiterator_origin(dns_dbiterator_t *iterator, dns_fixedname_t *fixed_name) {
 	UNUSED(iterator);
-	dns_name_copy(dns_rootname, name);
+	dns_fixedname_copy(dns_rootname, fixed_name);
 	return ISC_R_SUCCESS;
 }
 
@@ -1826,7 +1830,7 @@ dns_sdlz_putnamedrr(dns_sdlzallnodes_t *allnodes, const char *name,
 	isc_buffer_constinit(&b, name, strlen(name));
 	isc_buffer_add(&b, strlen(name));
 
-	RETERR(dns_name_fromtext(newname, &b, origin, 0));
+	RETERR(dns_fixedname_fromtext(&fnewname, &b, origin, 0));
 
 	if (allnodes->common.relative_names) {
 		/* All names are relative to the root */
