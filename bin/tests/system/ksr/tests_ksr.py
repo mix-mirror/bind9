@@ -226,6 +226,7 @@ def check_keys(
                 + sign_delay(config)
                 + config["max-zone-ttl"]
                 + config["zone-propagation-delay"]
+                + config["retire-safety"]
             )
 
             if between(now, published, pubdelay):
