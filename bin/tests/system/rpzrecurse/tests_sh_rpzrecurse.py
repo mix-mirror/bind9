@@ -11,6 +11,8 @@
 
 import pytest
 
+from rpzrecurse import common
+
 pytestmark = pytest.mark.extra_artifacts(
     [
         "dig.out.*",
@@ -23,6 +25,10 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns2/named.conf.header",
     ]
 )
+
+
+def bootstrap():
+    common.bootstrap()
 
 
 def test_rpzrecurse(run_tests_sh):
