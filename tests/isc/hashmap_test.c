@@ -262,18 +262,16 @@ test_hashmap_iterator(bool random_data) {
 	{
 		char key[16] = { 0 };
 		ptrdiff_t i;
-		const uint8_t *tkey = NULL;
 		test_node_t *v = NULL;
 
 		isc_hashmap_iter_current(iter, (void *)&v);
-		isc_hashmap_iter_currentkey(iter, &tkey);
 
 		i = v - &nodes[0];
 
 		snprintf(key, 16, "%u", (unsigned int)i);
 		strlcat(key, " key of a raw hashmap!!", 16);
 
-		assert_memory_equal(key, tkey, 16);
+		assert_memory_equal(key, v->key, 16);
 
 		assert_false(seen[i]);
 		seen[i] = true;
@@ -289,16 +287,14 @@ test_hashmap_iterator(bool random_data) {
 	while (result == ISC_R_SUCCESS) {
 		char key[16] = { 0 };
 		ptrdiff_t i;
-		const uint8_t *tkey = NULL;
 		test_node_t *v = NULL;
 
 		isc_hashmap_iter_current(iter, (void *)&v);
-		isc_hashmap_iter_currentkey(iter, &tkey);
 
 		i = v - nodes;
 		snprintf(key, 16, "%u", (unsigned int)i);
 		strlcat(key, " key of a raw hashmap!!", 16);
-		assert_memory_equal(key, tkey, 16);
+		assert_memory_equal(key, v->key, 16);
 
 		if (i % 2 == 0) {
 			result = isc_hashmap_iter_delcurrent_next(iter);
@@ -320,16 +316,14 @@ test_hashmap_iterator(bool random_data) {
 	while (result == ISC_R_SUCCESS) {
 		char key[16] = { 0 };
 		ptrdiff_t i;
-		const uint8_t *tkey = NULL;
 		test_node_t *v = NULL;
 
 		isc_hashmap_iter_current(iter, (void *)&v);
-		isc_hashmap_iter_currentkey(iter, &tkey);
 
 		i = v - nodes;
 		snprintf(key, 16, "%u", (unsigned int)i);
 		strlcat(key, " key of a raw hashmap!!", 16);
-		assert_memory_equal(key, tkey, 16);
+		assert_memory_equal(key, v->key, 16);
 
 		if (i % 2 == 1) {
 			result = isc_hashmap_iter_delcurrent_next(iter);
@@ -501,7 +495,87 @@ ISC_RUN_TEST_IMPL(isc_hashmap_case) {
 	isc_hashmap_destroy(&hashmap);
 }
 
+static bool
+nullable_match(void *value, const void *key) {
+	return value == *(void *const *)key;
+}
+
+ISC_RUN_TEST_IMPL(isc_hashmap_null_value) {
+	isc_hashmap_t *hashmap = NULL;
+	isc_hashmap_iter_t *iter = NULL;
+	int objects[64];
+	void *values[64] = { NULL };
+	bool seen_null = false;
+	unsigned int count = 0;
+	isc_result_t result;
+
+	isc_hashmap_create(isc_g_mctx, 1, &hashmap);
+	for (size_t i = 1; i < 64; i++) {
+		values[i] = &objects[i];
+	}
+
+	/* Force collisions and growth, including a displaced NULL value. */
+	for (size_t i = 64; i-- > 0;) {
+		result = isc_hashmap_add(hashmap, 0, nullable_match, &values[i],
+					 values[i], NULL);
+		assert_int_equal(result, ISC_R_SUCCESS);
+	}
+	assert_int_equal(isc_hashmap_count(hashmap), 64);
+
+	for (size_t i = 0; i < 64; i++) {
+		void *found = NULL;
+		result = isc_hashmap_find(hashmap, 0, nullable_match,
+					  &values[i], &found);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_ptr_equal(found, values[i]);
+		found = &objects[0];
+		result = isc_hashmap_add(hashmap, 0, nullable_match, &values[i],
+					 values[i], &found);
+		assert_int_equal(result, ISC_R_EXISTS);
+		assert_ptr_equal(found, values[i]);
+	}
+
+	/* Shift the collision chain and shrink while retaining NULL. */
+	for (size_t i = 1; i < 64; i++) {
+		result = isc_hashmap_delete(hashmap, 0, nullable_match,
+					    &values[i]);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		result = isc_hashmap_find(hashmap, 0, nullable_match,
+					  &values[0], NULL);
+		assert_int_equal(result, ISC_R_SUCCESS);
+	}
+	assert_int_equal(isc_hashmap_count(hashmap), 1);
+
+	isc_hashmap_iter_create(hashmap, &iter);
+	for (result = isc_hashmap_iter_first(iter); result == ISC_R_SUCCESS;
+	     result = isc_hashmap_iter_delcurrent_next(iter))
+	{
+		void *value = NULL;
+		isc_hashmap_iter_current(iter, &value);
+		assert_null(value);
+		seen_null = true;
+		count++;
+	}
+	assert_int_equal(result, ISC_R_NOMORE);
+	assert_true(seen_null);
+	assert_int_equal(count, 1);
+	isc_hashmap_iter_destroy(&iter);
+	assert_int_equal(isc_hashmap_count(hashmap), 0);
+	result = isc_hashmap_find(hashmap, 0, nullable_match, &values[0], NULL);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+
+	/* Also remove a NULL value through the ordinary deletion API. */
+	result = isc_hashmap_add(hashmap, 0, nullable_match, &values[0], NULL,
+				 NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	result = isc_hashmap_delete(hashmap, 0, nullable_match, &values[0]);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_equal(isc_hashmap_count(hashmap), 0);
+	isc_hashmap_destroy(&hashmap);
+}
+
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY(isc_hashmap_null_value)
 ISC_TEST_ENTRY(isc_hashmap_hash_zero_length)
 ISC_TEST_ENTRY(isc_hashmap_case)
 ISC_TEST_ENTRY(isc_hashmap_1_120)

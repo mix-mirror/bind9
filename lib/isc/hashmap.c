@@ -67,10 +67,9 @@
 #define HASHMAP_MAX_BITS 32U
 
 typedef struct hashmap_node {
-	const void *key;
 	void *value;
 	uint32_t hashval;
-	uint32_t psl;
+	uint32_t psl; /* Probe distance plus one; zero marks an empty bucket. */
 } hashmap_node_t;
 
 typedef struct hashmap_table {
@@ -131,13 +130,11 @@ try_nexttable(const isc_hashmap_t *hashmap, uint8_t idx) {
 }
 
 static void
-hashmap_node_init(hashmap_node_t *node, const uint32_t hashval,
-		  const uint8_t *key, void *value) {
+hashmap_node_init(hashmap_node_t *node, const uint32_t hashval, void *value) {
 	*node = (hashmap_node_t){
 		.value = value,
 		.hashval = hashval,
-		.key = key,
-		.psl = 0,
+		.psl = 1,
 	};
 }
 
@@ -148,16 +145,16 @@ hashmap_dump_table(const isc_hashmap_t *hashmap, const uint8_t idx) {
 		hashmap->tables[idx].hashbits, hashmap->tables[idx].size);
 	for (size_t i = 0; i < hashmap->tables[idx].size; i++) {
 		hashmap_node_t *node = &hashmap->tables[idx].table[i];
-		if (node->key != NULL) {
+		if (node->psl != 0) {
 			uint32_t hash = isc_hash_bits32(
 				node->hashval, hashmap->tables[idx].hashbits);
 			fprintf(stderr,
 				"%p: %zu -> %p"
 				", value = %p"
 				", hash = %" PRIu32 ", hashval = %" PRIu32
-				", psl = %" PRIu32 ", key = %s\n",
+				", psl = %" PRIu32 "\n",
 				hashmap, i, node, node->value, hash,
-				node->hashval, node->psl, (char *)node->key);
+				node->hashval, node->psl - 1);
 		}
 	}
 	fprintf(stderr, "================\n\n");
@@ -189,7 +186,7 @@ hashmap_free_table(isc_hashmap_t *hashmap, const uint8_t idx, bool cleanup) {
 	if (cleanup) {
 		for (size_t i = 0; i < hashmap->tables[idx].size; i++) {
 			hashmap_node_t *node = &hashmap->tables[idx].table[i];
-			if (node->key != NULL) {
+			if (node->psl != 0) {
 				*node = (hashmap_node_t){ 0 };
 				hashmap->count--;
 			}
@@ -267,7 +264,7 @@ nexttable:
 
 		node = &hashmap->tables[idx].table[pos];
 
-		if (node->key == NULL || psl > node->psl) {
+		if (psl >= node->psl) {
 			break;
 		}
 
@@ -302,7 +299,7 @@ isc_hashmap_find(const isc_hashmap_t *hashmap, const uint32_t hashval,
 		return ISC_R_NOTFOUND;
 	}
 
-	INSIST(node->key != NULL);
+	INSIST(node->psl != 0);
 	SET_IF_NOT_NULL(valuep, node->value);
 	return ISC_R_SUCCESS;
 }
@@ -328,7 +325,7 @@ hashmap_delete_node(isc_hashmap_t *hashmap, hashmap_node_t *entry,
 
 		node = &hashmap->tables[idx].table[pos];
 
-		if (node->key == NULL || node->psl == 0) {
+		if (node->psl <= 1) {
 			break;
 		}
 
@@ -356,8 +353,7 @@ hashmap_rehash_one(isc_hashmap_t *hashmap) {
 	INSIST(atomic_load_acquire(&hashmap->iterators) == 0);
 
 	/* Find first non-empty node */
-	while (hashmap->hiter < oldsize && oldtable[hashmap->hiter].key == NULL)
-	{
+	while (hashmap->hiter < oldsize && oldtable[hashmap->hiter].psl == 0) {
 		hashmap->hiter++;
 	}
 
@@ -373,9 +369,10 @@ hashmap_rehash_one(isc_hashmap_t *hashmap) {
 	node = oldtable[hashmap->hiter];
 
 	(void)hashmap_delete_node(hashmap, &oldtable[hashmap->hiter],
-				  node.hashval, node.psl, oldidx, UINT32_MAX);
+				  node.hashval, node.psl - 1, oldidx,
+				  UINT32_MAX);
 
-	isc_result_t result = hashmap_add(hashmap, node.hashval, NULL, node.key,
+	isc_result_t result = hashmap_add(hashmap, node.hashval, NULL, NULL,
 					  node.value, NULL, hashmap->hindex);
 	INSIST(result == ISC_R_SUCCESS);
 
@@ -469,7 +466,7 @@ isc_hashmap_delete(isc_hashmap_t *hashmap, const uint32_t hashval,
 
 	node = hashmap_find(hashmap, hashval, match, key, &psl, &idx);
 	if (node != NULL) {
-		INSIST(node->key != NULL);
+		INSIST(node->psl != 0);
 		(void)hashmap_delete_node(hashmap, node, hashval, psl, idx,
 					  UINT32_MAX);
 		result = ISC_R_SUCCESS;
@@ -513,7 +510,7 @@ hashmap_add(isc_hashmap_t *hashmap, const uint32_t hashval,
 	hash = isc_hash_bits32(hashval, hashmap->tables[idx].hashbits);
 
 	/* Initialize the node to be store to 'node' */
-	hashmap_node_init(&node, hashval, key, value);
+	hashmap_node_init(&node, hashval, value);
 
 	psl = 0;
 	while (true) {
@@ -522,7 +519,7 @@ hashmap_add(isc_hashmap_t *hashmap, const uint32_t hashval,
 		current = &hashmap->tables[idx].table[pos];
 
 		/* Found an empty node */
-		if (current->key == NULL) {
+		if (current->psl == 0) {
 			break;
 		}
 
@@ -584,7 +581,7 @@ isc_hashmap_add(isc_hashmap_t *hashmap, const uint32_t hashval,
 		hashmap_node_t *found = hashmap_find(hashmap, hashval, match,
 						     key, &psl, &fidx);
 		if (found != NULL) {
-			INSIST(found->key != NULL);
+			INSIST(found->psl != 0);
 			SET_IF_NOT_NULL(foundp, found->value);
 			return ISC_R_EXISTS;
 		}
@@ -632,7 +629,7 @@ isc__hashmap_iter_next(isc_hashmap_iter_t *iter) {
 	isc_hashmap_t *hashmap = iter->hashmap;
 
 	while (iter->i < iter->size &&
-	       hashmap->tables[iter->hindex].table[iter->i].key == NULL)
+	       hashmap->tables[iter->hindex].table[iter->i].psl == 0)
 	{
 		iter->i++;
 	}
@@ -682,8 +679,8 @@ isc_hashmap_iter_delcurrent_next(isc_hashmap_iter_t *iter) {
 	hashmap_node_t *node =
 		&iter->hashmap->tables[iter->hindex].table[iter->i];
 
-	if (hashmap_delete_node(iter->hashmap, node, node->hashval, node->psl,
-				iter->hindex, iter->size))
+	if (hashmap_delete_node(iter->hashmap, node, node->hashval,
+				node->psl - 1, iter->hindex, iter->size))
 	{
 		/*
 		 * We have seen the new last element so reduce the size
@@ -703,15 +700,6 @@ isc_hashmap_iter_current(isc_hashmap_iter_t *it, void **valuep) {
 	REQUIRE(valuep != NULL && *valuep == NULL);
 
 	*valuep = it->cur->value;
-}
-
-void
-isc_hashmap_iter_currentkey(isc_hashmap_iter_t *it, const unsigned char **key) {
-	REQUIRE(it != NULL);
-	REQUIRE(it->cur != NULL);
-	REQUIRE(key != NULL && *key == NULL);
-
-	*key = it->cur->key;
 }
 
 unsigned int

@@ -24,6 +24,7 @@
 typedef struct isc_hashmap	isc_hashmap_t;
 typedef struct isc_hashmap_iter isc_hashmap_iter_t;
 
+/* Compare a stored value with the key supplied for this operation. */
 typedef bool (*isc_hashmap_match_fn)(void *node, const void *key);
 
 /*%
@@ -48,13 +49,16 @@ void
 isc_hashmap_destroy(isc_hashmap_t **hashmapp);
 
 /*%
- * Add a node to hashmap, pointed by binary key 'key' of size 'keysize';
- * set its value to 'value'
+ * Add 'value' to hashmap, using 'hashval' and 'match(value, key)' to
+ * identify an existing entry. Only the value and hash are retained; the
+ * key need only remain valid for this call. The value may be NULL.
+ * If an entry exists, leave it unchanged and set '*foundp' to its value
+ * when 'foundp' is non-NULL.
  *
  * Requires:
  * \li	'hashmap' is a valid hashmap
  * \li	'hashval' is a precomputed hash value of 'key'
- * \li	'key' is non-null key of size 'keysize'
+ * \li	'key' is non-NULL
  *
  * Returns:
  * \li	#ISC_R_EXISTS		-- node of the same key already exists
@@ -66,7 +70,7 @@ isc_hashmap_add(isc_hashmap_t *hashmap, const uint32_t hashval,
 		void **foundp);
 
 /*%
- * Find a node matching 'key'/'keysize' in hashmap 'hashmap';
+ * Find a value matching 'key' in hashmap 'hashmap';
  * if found, set '*valuep' to its value. (If 'valuep' is NULL,
  * then simply return SUCCESS or NOTFOUND to indicate whether the
  * key exists in the hashmap.)
@@ -74,7 +78,7 @@ isc_hashmap_add(isc_hashmap_t *hashmap, const uint32_t hashval,
  * Requires:
  * \li	'hashmap' is a valid hashmap
  * \li	'hashval' is a precomputed hash value of 'key'
- * \li	'key' is non-null key of size 'keysize'
+ * \li	'key' is non-NULL
  *
  * Returns:
  * \li	#ISC_R_SUCCESS		-- success
@@ -167,17 +171,6 @@ isc_hashmap_iter_delcurrent_next(isc_hashmap_iter_t *it);
  */
 void
 isc_hashmap_iter_current(isc_hashmap_iter_t *it, void **valuep);
-
-/*%
- * Set 'key' to the current key for the value under the iterator
- *
- * Requires:
- * \li	'it' is non NULL.
- * \li   'key' is non NULL and '*key' is NULL.
- * \li	'keysize' is non NULL.
- */
-void
-isc_hashmap_iter_currentkey(isc_hashmap_iter_t *it, const unsigned char **key);
 
 /*%
  * Returns the number of items in the hashmap.
