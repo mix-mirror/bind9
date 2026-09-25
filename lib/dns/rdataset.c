@@ -650,8 +650,11 @@ dns_rdataset_trimttl(dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset,
 		ttl = rrsig->timeexpire - now;
 	}
 
-	ttl = ISC_MIN(ISC_MIN(rdataset->ttl, sigrdataset->ttl),
-		      ISC_MIN(rrsig->originalttl, ttl));
+	/*
+	 * RRSIG original TTL is deliberately ignored so that min-cache-ttl
+	 * can extend validated data up to signature expiration.
+	 */
+	ttl = ISC_MIN(ISC_MIN(rdataset->ttl, sigrdataset->ttl), ttl);
 	rdataset->ttl = ttl;
 	sigrdataset->ttl = ttl;
 }

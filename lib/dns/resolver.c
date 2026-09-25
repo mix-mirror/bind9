@@ -6134,6 +6134,16 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_name_t *name,
 	return result;
 }
 
+static void
+clamp_cache_ttl(dns_view_t *view, dns_rdataset_t *rdataset) {
+	if (rdataset->ttl > view->maxcachettl) {
+		rdataset->ttl = view->maxcachettl;
+	}
+	if (rdataset->ttl < view->mincachettl) {
+		rdataset->ttl = view->mincachettl;
+	}
+}
+
 static isc_result_t
 cache_name(fetchctx_t *fctx, dns_name_t *name, dns_message_t *message,
 	   dns_adbaddrinfo_t *addrinfo, isc_stdtime_t now) {
@@ -6272,19 +6282,7 @@ cache_name(fetchctx_t *fctx, dns_name_t *name, dns_message_t *message,
 			evict_cname_other(fctx, node);
 		}
 
-		/*
-		 * Enforce the configure maximum cache TTL.
-		 */
-		if (rdataset->ttl > res->view->maxcachettl) {
-			rdataset->ttl = res->view->maxcachettl;
-		}
-
-		/*
-		 * Enforce configured minimum cache TTL.
-		 */
-		if (rdataset->ttl < res->view->mincachettl) {
-			rdataset->ttl = res->view->mincachettl;
-		}
+		clamp_cache_ttl(res->view, rdataset);
 
 		/*
 		 * Mark the rdataset as being prefetch eligible.
@@ -6343,6 +6341,7 @@ cache_name(fetchctx_t *fctx, dns_name_t *name, dns_message_t *message,
 			 * Normalize the rdataset and sigrdataset TTLs.
 			 */
 			if (sigrdataset != NULL) {
+				clamp_cache_ttl(res->view, sigrdataset);
 				rdataset->ttl = ISC_MIN(rdataset->ttl,
 							sigrdataset->ttl);
 				sigrdataset->ttl = rdataset->ttl;
