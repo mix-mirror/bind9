@@ -1859,10 +1859,16 @@ release:
     - chmod +x "/tmp/${CI_JOB_NAME}.sh"
     - /bin/sh -c "set -e -x; ${SSH_SCRIPT_RUNNER_PRE}"
     - echo -e "\e[31m*** Sleeping until /tmp/${CI_JOB_NAME}.sh is executed over SSH... ⌛\e[0m"
+    - if [ -n "${SSH_RUN_HINT}" ]; then echo -e "${SSH_RUN_HINT}"; fi
     - while [ "$(cat "/tmp/${CI_JOB_NAME}-done")" != "${CI_COMMIT_TAG}" ]; do sleep 10; done
     - /bin/sh -c "set -e -x; ${SSH_SCRIPT_RUNNER_POST}"
     - cp "/tmp/${CI_JOB_NAME}.log" "${CI_PROJECT_DIR}/${CI_JOB_NAME}-${CI_COMMIT_TAG}.log"
     - rm -f "/tmp/${CI_JOB_NAME}.log" "/tmp/${CI_JOB_NAME}-done" "/tmp/${CI_JOB_NAME}.sh"
+
+# SSH-confirmed jobs hint
+
+.ssh-confirmed-jobs-hint: &ssh_confirmed_jobs_hint
+  SSH_RUN_HINT: 'Run this command to proceed:\n\033[1mssh-agent ssh bind9-confirm-${CI_JOB_NAME}\033[0m\nFor more context check the docs at https://gitlab.isc.org/isc-private/bind9/-/wikis/SSH-confirmed-jobs\n'
 
 # Job signing the source tarballs in the release directory
 
@@ -1899,6 +1905,7 @@ staging:
     name: staging
     action: access
   variables:
+    <<: *ssh_confirmed_jobs_hint
     RELEASE_TARBALL: bind-${CI_COMMIT_TAG}-release.tar.gz
     SSH_SCRIPT_RUNNER_PRE: |-
       mv "${RELEASE_TARBALL}" "/tmp/${RELEASE_TARBALL}"
@@ -1925,6 +1932,7 @@ publish-private:
     name: staging
     action: access
   variables:
+    <<: *ssh_confirmed_jobs_hint
     SSH_SCRIPT_CLIENT: |-
       ssh "${STAGING_USER_ACTIONS}@${STAGING_HOST}" "publish-private ${CI_COMMIT_TAG}"
     SSH_SCRIPT_RUNNER_POST: |-
@@ -1952,6 +1960,7 @@ publish:
     - SCHEDULED_PUBLICATION="$(curl -m 5 -s "https://gitlab.isc.org/isc-projects/bind9-qa/-/raw/main/releng/metadata.json" | jq -r ".schedule.public")"
     - if [ -z "${FORCE_PUBLICATION}" ] && [ "${TODAY}" != "${SCHEDULED_PUBLICATION}" ]; then echo "Unscheduled publication denied; publication is scheduled for ${SCHEDULED_PUBLICATION}"; exit 1; fi
   variables:
+    <<: *ssh_confirmed_jobs_hint
     SSH_SCRIPT_CLIENT: |-
       ssh "${STAGING_USER_ACTIONS}@${STAGING_HOST}" "publish ${CI_COMMIT_TAG}"
   artifacts:
