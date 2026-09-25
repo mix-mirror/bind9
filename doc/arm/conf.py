@@ -9,16 +9,14 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import sys
-import re
-
 from pathlib import Path
-from typing import List, Tuple
+
+import re
+import sys
 
 from docutils import nodes
 from docutils.nodes import Node, system_message
 from docutils.parsers.rst import roles
-
 from sphinx import addnodes
 
 try:
@@ -48,7 +46,7 @@ class CVERefRole(ReferenceRole):
         self.base_url = base_url
         super().__init__()
 
-    def run(self) -> Tuple[List[Node], List[system_message]]:
+    def run(self) -> tuple[list[Node], list[system_message]]:
         cve_identifier = "(CVE-%s)" % self.target
 
         target_id = "index-%s" % self.env.new_serialno("index")
@@ -84,7 +82,7 @@ class GitLabRefRole(ReferenceRole):
         self.base_url = base_url
         super().__init__()
 
-    def run(self) -> Tuple[List[Node], List[system_message]]:
+    def run(self) -> tuple[list[Node], list[system_message]]:
         gl_identifier = "[GL %s]" % self.target
 
         target_id = "index-%s" % self.env.new_serialno("index")

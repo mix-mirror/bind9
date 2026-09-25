@@ -9,11 +9,11 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
+from pathlib import Path
+
 import json
 import os
 import sys
-
-from pathlib import Path
 
 #
 # Configuration file for the Sphinx documentation builder.
