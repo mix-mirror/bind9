@@ -1228,9 +1228,18 @@ isc_crypto_fips_enable(void) {
 }
 #endif
 
+/*
+ * OPENSSL_cleanup() in AWS-LC does nothing, so the memory allocated by the
+ * library is never freed, which is not compatible with BIND 9's memory leak
+ * detection code; keep the destroy check disabled there.
+ */
 void
 isc__crypto_setdestroycheck(bool check) {
+#ifdef OPENSSL_IS_AWSLC
+	UNUSED(check);
+#else  /* OPENSSL_IS_AWSLC */
 	isc_mem_setdestroycheck(isc__crypto_mctx, check);
+#endif /* OPENSSL_IS_AWSLC */
 }
 
 void
