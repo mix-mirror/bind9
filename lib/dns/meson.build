@@ -135,6 +135,7 @@ dns_srcset.add(
         'qp.c',
         'qpcache.c',
         'qpzone.c',
+        'qpzone/prio-treap.c',
         'rcode.c',
         'rdata.c',
         'rdatalist.c',

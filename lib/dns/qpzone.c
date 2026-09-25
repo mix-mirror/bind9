@@ -22,8 +22,6 @@
 #include <isc/async.h>
 #include <isc/atomic.h>
 #include <isc/file.h>
-#include <isc/hashmap.h>
-#include <isc/heap.h>
 #include <isc/hex.h>
 #include <isc/log.h>
 #include <isc/mem.h>
@@ -86,7 +84,6 @@
 	((qpdb) != NULL && (qpdb)->common.impmagic == QPZONE_DB_MAGIC)
 
 typedef struct qpzonedb qpzonedb_t;
-typedef struct qpznode qpznode_t;
 
 typedef struct qpzone_bucket {
 	/* Per-bucket lock. */
@@ -164,22 +161,8 @@ typedef struct qpz_heap {
 	isc_refcount_t references;
 	/* Locks the data in this struct */
 	isc_mutex_t lock;
-	isc_heap_t *heap;
-	isc_hashmap_t *hashmap;
+	qpz_prio_t *tree;
 } qpz_heap_t;
-
-/* A copy of scheduling state, independent of an entry's lifetime. */
-typedef struct qpz_resignstate {
-	int64_t resign;
-	bool scheduled;
-} qpz_resignstate_t;
-
-typedef struct qpz_resign {
-	qpznode_t *node;
-	int64_t resign;
-	dns_typepair_t typepair;
-	unsigned int heap_index;
-} qpz_resign_t;
 
 ISC_REFCOUNT_STATIC_DECL(qpz_heap);
 
@@ -355,31 +338,6 @@ qpz_resigned_destroy(isc_mem_t *mctx, qpz_resigned_t **resignedp) {
 	*resignedp = NULL;
 	qpznode_unref(resigned->node);
 	isc_mem_put(mctx, resigned, sizeof(qpz_resigned_t));
-}
-
-/*%
- * Constructor and destructor for qpz_resign_t
- */
-static qpz_resign_t *
-qpz_resign_new(isc_mem_t *mctx, qpznode_t *node, dns_typepair_t typepair,
-	       int64_t resign) {
-	qpz_resign_t *elem = isc_mem_get(mctx, sizeof(qpz_resign_t));
-	*elem = (qpz_resign_t){
-		.node = node,
-		.resign = resign,
-		.typepair = typepair,
-		.heap_index = 0,
-	};
-	qpznode_ref(node);
-	return elem;
-}
-
-static void
-qpz_resign_destroy(isc_mem_t *mctx, qpz_resign_t **elemp) {
-	qpz_resign_t *elem = *elemp;
-	*elemp = NULL;
-	qpznode_unref(elem->node);
-	isc_mem_put(mctx, elem, sizeof(qpz_resign_t));
 }
 
 /* QP trie methods */
@@ -667,79 +625,15 @@ resign_sooner_values(int64_t lhs_resign, dns_typepair_t lhs_typepair,
 	       (lhs_resign == rhs_resign && lhs_is_soa < rhs_is_soa);
 }
 
-/* Prefer non-SOA RRsets when signing times are equal. */
-static bool
-resign_sooner(void *v1, void *v2) {
-	qpz_resign_t *elem1 = v1;
-	qpz_resign_t *elem2 = v2;
-
-	return resign_sooner_values(elem1->resign, elem1->typepair,
-				    elem2->resign, elem2->typepair);
-}
-
-/*%
- * This function sets the heap index into the qpz_resign_t.
- */
-static void
-set_index(void *what, unsigned int idx) {
-	qpz_resign_t *elem = what;
-
-	elem->heap_index = idx;
-}
-
-/*%
- * Hashmap matching function for qpz_resign_t entries.
- * Matches based on RRset typepair and node pointer.
- */
-static bool
-resign_match(void *elem_ptr, const void *key) {
-	qpz_resign_t *elem = elem_ptr;
-	const qpz_resign_t *search_elem = key;
-
-	return elem->typepair == search_elem->typepair &&
-	       elem->node == search_elem->node;
-}
-
-/* All scheduling entries are identified by node and typepair. */
-static uint32_t
-resign_hash(qpznode_t *node, dns_typepair_t typepair) {
-	uintptr_t nodeptr = (uintptr_t)node;
-	return isc_hash32(&nodeptr, sizeof(nodeptr), true) ^
-	       isc_hash32(&typepair, sizeof(typepair), true);
-}
-
 /* Insert or replace an entry atomically, returning its previous state. */
 static qpz_resignstate_t
 resign_register(qpz_heap_t *heap, qpznode_t *node, dns_typepair_t typepair,
 		int64_t resign) {
-	qpz_resign_t *elem = qpz_resign_new(heap->mctx, node, typepair, resign);
-	qpz_resign_t *found = NULL;
-	qpz_resignstate_t previous = { 0 };
-
 	LOCK(&heap->lock);
-	isc_result_t result =
-		isc_hashmap_add(heap->hashmap, resign_hash(node, typepair),
-				resign_match, elem, elem, (void **)&found);
-	switch (result) {
-	case ISC_R_SUCCESS:
-		isc_heap_insert(heap->heap, elem);
-		break;
-	case ISC_R_EXISTS:
-		INSIST(found != NULL);
-		qpz_resign_destroy(heap->mctx, &elem);
-		previous = (qpz_resignstate_t){
-			.resign = found->resign,
-			.scheduled = true,
-		};
-		found->resign = resign;
-		if (resign < previous.resign) {
-			isc_heap_increased(heap->heap, found->heap_index);
-		} else if (resign > previous.resign) {
-			isc_heap_decreased(heap->heap, found->heap_index);
-		}
-		break;
-	default:
-		UNREACHABLE();
+	qpz_resignstate_t previous = qpz_prio_set(heap->tree, node, typepair,
+						  resign);
+	if (!previous.scheduled) {
+		qpznode_ref(node);
 	}
 	UNLOCK(&heap->lock);
 	return previous;
@@ -748,22 +642,11 @@ resign_register(qpz_heap_t *heap, qpznode_t *node, dns_typepair_t typepair,
 /* Remove an entry atomically, returning its previous state. */
 static qpz_resignstate_t
 resign_unregister(qpz_heap_t *heap, qpznode_t *node, dns_typepair_t typepair) {
-	qpz_resign_t *elem = NULL;
-	qpz_resign_t key = { .node = node, .typepair = typepair };
-	uint32_t hashval = resign_hash(node, typepair);
-	qpz_resignstate_t previous = { 0 };
-
 	LOCK(&heap->lock);
-	isc_result_t result = isc_hashmap_find(
-		heap->hashmap, hashval, resign_match, &key, (void **)&elem);
-	if (result == ISC_R_SUCCESS) {
-		previous = (qpz_resignstate_t){
-			.resign = elem->resign,
-			.scheduled = true,
-		};
-		isc_heap_delete(heap->heap, elem->heap_index);
-		isc_hashmap_delete(heap->hashmap, hashval, resign_match, elem);
-		qpz_resign_destroy(heap->mctx, &elem);
+	qpz_resignstate_t previous = qpz_prio_delete(heap->tree, node,
+						     typepair);
+	if (previous.scheduled) {
+		qpznode_unref(node);
 	}
 	UNLOCK(&heap->lock);
 	return previous;
@@ -774,13 +657,13 @@ static isc_result_t
 resign_first(qpz_heap_t *heap, isc_stdtime_t *resign, dns_name_t *foundname,
 	     dns_typepair_t *typepair) {
 	isc_result_t result = ISC_R_NOTFOUND;
+	qpznode_t *node = NULL;
+	int64_t time;
 
 	LOCK(&heap->lock);
-	qpz_resign_t *elem = isc_heap_element(heap->heap, 1);
-	if (elem != NULL) {
-		*resign = (uint32_t)elem->resign;
-		dns_name_copy(&elem->node->name, foundname);
-		*typepair = elem->typepair;
+	if (qpz_prio_first(heap->tree, &node, &time, typepair)) {
+		*resign = (uint32_t)time;
+		dns_name_copy(&node->name, foundname);
 		result = ISC_R_SUCCESS;
 	}
 	UNLOCK(&heap->lock);
@@ -795,10 +678,8 @@ new_qpz_heap(isc_mem_t *mctx) {
 	};
 
 	isc_mutex_init(&new_heap->lock);
-	isc_heap_create(mctx, resign_sooner, set_index, 0, &new_heap->heap);
+	new_heap->tree = qpz_prio_create(mctx);
 	isc_mem_attach(mctx, &new_heap->mctx);
-
-	isc_hashmap_create(mctx, 1u, &new_heap->hashmap);
 
 	return new_heap;
 }
@@ -823,23 +704,14 @@ resign_rollback(qpzonedb_t *qpdb, qpznode_t *node, qpz_version_t *version,
 }
 
 static void
-qpz_heap_destroy(qpz_heap_t *qpheap) {
-	/* Clean up hashmap entries */
-	isc_hashmap_iter_t *iter = NULL;
-	isc_hashmap_iter_create(qpheap->hashmap, &iter);
-	for (isc_result_t result = isc_hashmap_iter_first(iter);
-	     result == ISC_R_SUCCESS; result = isc_hashmap_iter_next(iter))
-	{
-		qpz_resign_t *elem = NULL;
-		isc_hashmap_iter_current(iter, (void **)&elem);
-		/* Release the node reference and deallocate */
-		qpz_resign_destroy(qpheap->mctx, &elem);
-	}
-	isc_hashmap_iter_destroy(&iter);
-	isc_hashmap_destroy(&qpheap->hashmap);
+resign_release(qpznode_t *node) {
+	qpznode_unref(node);
+}
 
+static void
+qpz_heap_destroy(qpz_heap_t *qpheap) {
+	qpz_prio_destroy(&qpheap->tree, resign_release);
 	isc_mutex_destroy(&qpheap->lock);
-	isc_heap_destroy(&qpheap->heap);
 	isc_mem_putanddetach(&qpheap->mctx, qpheap, sizeof(*qpheap));
 }
 

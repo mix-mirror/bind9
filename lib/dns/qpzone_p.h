@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include <isc/heap.h>
 #include <isc/rwlock.h>
 #include <isc/urcu.h>
 
@@ -21,6 +20,38 @@
 #include <dns/qp.h>
 #include <dns/rdatavec.h>
 #include <dns/types.h>
+
+typedef struct qpznode qpznode_t;
+typedef struct qpz_prio qpz_prio_t;
+
+/* A copy of scheduling state, independent of an entry's lifetime. */
+typedef struct qpz_resignstate {
+	int64_t resign;
+	bool scheduled;
+} qpz_resignstate_t;
+
+/*
+ * Priority treap. The caller serializes all access and retains one
+ * node reference per stored identity. Updates reuse their existing entry.
+ * Allocation follows isc_mem's fatal-on-OOM contract.
+ */
+qpz_prio_t *
+qpz_prio_create(isc_mem_t *mctx);
+
+/* Release each stored node, then free the tree. Requires exclusive access. */
+void
+qpz_prio_destroy(qpz_prio_t **treep, void (*release)(qpznode_t *));
+
+qpz_resignstate_t
+qpz_prio_set(qpz_prio_t *tree, qpznode_t *node, dns_typepair_t typepair,
+	     int64_t resign);
+qpz_resignstate_t
+qpz_prio_delete(qpz_prio_t *tree, qpznode_t *node, dns_typepair_t typepair);
+
+/* Copy the minimum, or return false without changing the outputs if empty. */
+bool
+qpz_prio_first(const qpz_prio_t *tree, qpznode_t **node, int64_t *resign,
+	       dns_typepair_t *typepair);
 
 struct dns_glue {
 	struct dns_glue *next;

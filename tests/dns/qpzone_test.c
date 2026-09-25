@@ -393,8 +393,6 @@ ISC_RUN_TEST_IMPL(setownercase) {
 ISC_RUN_TEST_IMPL(resign_sooner_values) {
 	dns_typepair_t soa = DNS_SIGTYPEPAIR(dns_rdatatype_soa);
 	dns_typepair_t other = DNS_SIGTYPEPAIR(dns_rdatatype_a);
-	qpz_resign_t scheduled_elem = { .typepair = other, .resign = 20 };
-	qpz_resign_t later_elem = { .typepair = other, .resign = 30 };
 
 	UNUSED(state);
 
@@ -406,9 +404,6 @@ ISC_RUN_TEST_IMPL(resign_sooner_values) {
 
 	assert_false(resign_sooner_values(10, soa, 10, soa));
 	assert_false(resign_sooner_values(10, other, 10, other));
-
-	assert_true(resign_sooner(&scheduled_elem, &later_elem));
-	assert_false(resign_sooner(&later_elem, &scheduled_elem));
 }
 
 /* Exercise replacement, heap reordering, and copied previous state. */
@@ -510,7 +505,6 @@ ISC_RUN_TEST_IMPL(unscheduled_resign) {
 		assert_int_equal(result, ISC_R_SUCCESS);
 	}
 
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	dns_fixedname_init(&fixed);
 	/*
 	 * A rolled-back subtraction must not register an ordinary header that
@@ -523,10 +517,6 @@ ISC_RUN_TEST_IMPL(unscheduled_resign) {
 					  DNS_DIFFOP_DEL);
 		assert_int_equal(result, ISC_R_SUCCESS);
 	}
-
-	LOCK(&qpdb->heap->lock);
-	assert_null(isc_heap_element(qpdb->heap->heap, 1));
-	UNLOCK(&qpdb->heap->lock);
 
 	result = dns_db_getsigningtime(db, &resign, dns_fixedname_name(&fixed),
 				       &typepair);

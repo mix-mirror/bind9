@@ -33,6 +33,7 @@ dns_tests = [
     'nsec3',
     'nsec3param',
     'private',
+    'prio-treap',
     'qp',
     'qpdb',
     'qpmulti',
