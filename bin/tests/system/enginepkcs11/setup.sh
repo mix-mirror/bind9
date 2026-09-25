@@ -17,7 +17,8 @@
 set -e
 
 PWD=$(pwd)
-PIN=$(cat ../_common/pin)
+SO_PIN=$(cat ../_common/so_pin)
+HSM_PIN=$(cat ../_common/hsm_pin)
 
 keygen() {
   type="$1"
@@ -27,7 +28,7 @@ keygen() {
 
   label="${id}-${zone}"
   p11id=$(echo "${label}" | openssl sha1 -r | awk '{print $1}')
-  OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --token-label "kryoptic-enginepkcs11" -l -k --key-type $type:$bits --label "${label}" --id "${p11id}" --pin $PIN >pkcs11-tool.out.$zone.$id 2>pkcs11-tool.err.$zone.$id || return 1
+  OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --token-label "kryoptic-enginepkcs11" -l -k --key-type $type:$bits --label "${label}" --id "${p11id}" --pin $HSM_PIN >pkcs11-tool.out.$zone.$id 2>pkcs11-tool.err.$zone.$id || return 1
 }
 
 keyfromlabel() {
@@ -37,14 +38,14 @@ keyfromlabel() {
   dir="$4"
   shift 4
 
-  OPENSSL_CONF="${PWD}/openssl_pin.cnf" KRYOPTIC_CONF=$KRYOPTIC_CONF $KEYFRLAB -K $dir -a $alg -y -l "pkcs11:token=kryoptic-enginepkcs11;object=${id}-${zone};pin-source=$PWD/../_common/pin" "$@" $zone >>keyfromlabel.out.$zone.$id 2>keyfromlabel.err.$zone.$id || return 1
+  OPENSSL_CONF="${PWD}/openssl_pin.cnf" KRYOPTIC_CONF=$KRYOPTIC_CONF $KEYFRLAB -K $dir -a $alg -y -l "pkcs11:token=kryoptic-enginepkcs11;object=${id}-${zone};pin-source=$PWD/../_common/hsm_pin" "$@" $zone >>keyfromlabel.out.$zone.$id 2>keyfromlabel.err.$zone.$id || return 1
   cat keyfromlabel.out.$zone.$id
 }
 
 mkdir ns1/keys
 export KRYOPTIC_CONF=${PWD}/ns1/kryoptic.toml
-OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-token --label "kryoptic-enginepkcs11" --so-pin $PIN
-OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-pin --login --login-type so --so-pin $PIN --pin $PIN
+OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-token --label "kryoptic-enginepkcs11" --so-pin $SO_PIN
+OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-pin --login --login-type so --so-pin $SO_PIN --pin $HSM_PIN
 
 dir="ns1"
 infile="${dir}/template.db.in"
@@ -178,8 +179,8 @@ done
 
 mkdir ns2/keys
 export KRYOPTIC_CONF=${PWD}/ns2/kryoptic.toml
-OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-token --label "kryoptic-enginepkcs11" --so-pin $PIN
-OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-pin --login --login-type so --so-pin $PIN --pin $PIN
+OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-token --label "kryoptic-enginepkcs11" --so-pin $SO_PIN
+OPENSSL_CONF= pkcs11-tool --module $BIND9_TEST_KRYOPTIC_MODULE --init-pin --login --login-type so --so-pin $SO_PIN --pin $HSM_PIN
 
 dir="ns2"
 infile="${dir}/template.db.in"

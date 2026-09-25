@@ -71,7 +71,7 @@ pytestmark = [
 def bootstrap() -> dict[str, Any]:
     templates = isctest.template.TemplateEngine(".")
 
-    pin_path = Path.cwd().parent.joinpath("_common", "pin").resolve()
+    pin_path = Path.cwd().parent.joinpath("_common", "hsm_pin").resolve()
 
     database = Path.cwd().joinpath("ns1", "kryoptic.db").resolve()
     templates.render("ns1/kryoptic.toml", {"database": str(database)})

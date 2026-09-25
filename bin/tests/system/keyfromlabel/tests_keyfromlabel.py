@@ -31,7 +31,6 @@ pytestmark = [
             "K*",
             "dsset-*",
             "keyfromlabel.out.*",
-            "pin",
             "pkcs11-tool.out.*",
             "signer.out.*",
             "kryoptic.db",
@@ -41,11 +40,17 @@ pytestmark = [
     ),
 ]
 
-HSMPIN = "1234"
-SOPIN = "123456"
+HSMPIN = None
+SOPIN = None
 
 
 def bootstrap() -> dict[str, Any]:
+    global HSMPIN  # pylint: disable=global-statement
+    HSMPIN = Path.cwd().parent.joinpath("_common", "hsm_pin").read_text()
+
+    global SOPIN  # pylint: disable=global-statement
+    SOPIN = Path.cwd().parent.joinpath("_common", "so_pin").read_text()
+
     templates = isctest.template.TemplateEngine(".")
 
     database = Path.cwd() / "kryoptic.db"
@@ -55,7 +60,7 @@ def bootstrap() -> dict[str, Any]:
         "openssl.cnf",
         {
             "pkcs11_module_path": os.environ["BIND9_TEST_KRYOPTIC_MODULE"],
-            "pin_path": Path.cwd() / "pin",
+            "pin_path": Path.cwd().parent.joinpath("_common", "hsm_pin").resolve(),
         },
     )
 
@@ -64,11 +69,11 @@ def bootstrap() -> dict[str, Any]:
 
 @pytest.fixture(autouse=True)
 def token_init_and_cleanup():
-    token_env = {"KRYOPTIC_CONF": Path.cwd().joinpath("kryoptic.toml").as_posix()}
-
-    # Create pin file for the $KEYFRLAB command
-    with open("pin", "w", encoding="utf-8") as pinfile:
-        pinfile.write(HSMPIN)
+    token_env = {
+        **os.environ,
+        "OPENSSL_CONF": "",
+        "KRYOPTIC_CONF": Path.cwd().joinpath("kryoptic.toml").as_posix(),
+    }
 
     token_init_command = [
         "pkcs11-tool",
@@ -100,11 +105,11 @@ def token_init_and_cleanup():
         assert "Token successfully initialized\n" == cmd.out
         cmd = isctest.run.cmd(token_pin_init_command, env=token_env)
         assert "User PIN successfully initialized\n" == cmd.out
-        yield
-    finally:
         database = Path.cwd() / "kryoptic.db"
         assert database.exists()
-        database.unlink()
+        yield
+    finally:
+        database.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize(
@@ -136,6 +141,7 @@ def token_init_and_cleanup():
 )
 def test_keyfromlabel(alg_name, alg_type, alg_bits):
     test_env = {
+        **os.environ,
         "OPENSSL_CONF": Path.cwd().joinpath("openssl.cnf").as_posix(),
         "KRYOPTIC_CONF": Path.cwd().joinpath("kryoptic.toml").as_posix(),
     }
@@ -175,7 +181,7 @@ def test_keyfromlabel(alg_name, alg_type, alg_bits):
             alg_name,
             "-y",
             "-l",
-            f"pkcs11:token=kryoptic-keyfromlabel;object={key_id}-{zone};pin-source=pin",
+            f"pkcs11:token=kryoptic-keyfromlabel;object={key_id}-{zone};pin-source=../_common/hsm_pin",
             *key_flag,
             zone,
         ]

@@ -9,7 +9,7 @@ options {
 
 key-store "hsm" {
 	directory ".";
-	pkcs11-uri "pkcs11:token=kryoptic-enginepkcs11;pin-value={%- include "_common/pin" -%}";
+	pkcs11-uri "pkcs11:token=kryoptic-enginepkcs11;pin-value={%- include "_common/hsm_pin" -%}";
 };
 
 key-store "pin" {
