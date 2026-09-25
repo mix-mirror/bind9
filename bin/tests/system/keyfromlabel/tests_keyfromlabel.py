@@ -46,10 +46,12 @@ SOPIN = None
 
 def bootstrap() -> dict[str, Any]:
     global HSMPIN  # pylint: disable=global-statement
-    HSMPIN = Path.cwd().parent.joinpath("_common", "hsm_pin").read_text()
+    HSMPIN = (
+        Path.cwd().parent.joinpath("_common", "hsm_pin").read_text(encoding="utf-8")
+    )
 
     global SOPIN  # pylint: disable=global-statement
-    SOPIN = Path.cwd().parent.joinpath("_common", "so_pin").read_text()
+    SOPIN = Path.cwd().parent.joinpath("_common", "so_pin").read_text(encoding="utf-8")
 
     templates = isctest.template.TemplateEngine(".")
 
