@@ -29,24 +29,23 @@
 #
 ############################################################################
 
-from __future__ import print_function
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 
+from subprocess import PIPE, Popen
+
+import collections
+import contextlib
+import datetime
+import errno
+import glob
+import itertools
 import locale
-import re
 import os
 import os.path
+import re
 import sys
-import glob
 import textwrap
-import datetime
-import collections
 import traceback
-import contextlib
-import itertools
-import errno
-
-from subprocess import Popen, PIPE
 
 try:
     import pystache
@@ -96,21 +95,23 @@ if WIN32 and not PY3:
     ## compatibility with python 2.7 under windows about sending unicode
     ## command-line
 
+    from ctypes import (
+        Structure,
+        WinError,
+        byref,
+        c_char_p,
+        c_void_p,
+        c_wchar,
+        c_wchar_p,
+        sizeof,
+        windll,
+    )
+    from ctypes.wintypes import BOOL, BYTE, DWORD, HANDLE, LPVOID, LPWSTR, WORD
+
     import ctypes
     import subprocess
+
     import _subprocess
-    from ctypes import (
-        byref,
-        windll,
-        c_char_p,
-        c_wchar_p,
-        c_void_p,
-        Structure,
-        sizeof,
-        c_wchar,
-        WinError,
-    )
-    from ctypes.wintypes import BYTE, WORD, LPWSTR, BOOL, DWORD, LPVOID, HANDLE
 
     ##
     ## Types
