@@ -411,6 +411,77 @@ ISC_RUN_TEST_IMPL(resign_sooner_values) {
 	assert_false(resign_sooner(&later_elem, &scheduled_elem));
 }
 
+/* Exercise replacement, heap reordering, and copied previous state. */
+ISC_RUN_TEST_IMPL(resign_heap) {
+	dns_db_t *db = NULL;
+	dns_dbnode_t *node = NULL;
+	dns_typepair_t a = DNS_SIGTYPEPAIR(dns_rdatatype_a);
+	dns_typepair_t aaaa = DNS_SIGTYPEPAIR(dns_rdatatype_aaaa);
+	dns_typepair_t soa = DNS_SIGTYPEPAIR(dns_rdatatype_soa);
+	struct {
+		dns_typepair_t typepair;
+		bool remove;
+		int64_t resign;
+		qpz_resignstate_t previous;
+		dns_typepair_t first_typepair; /* Zero means empty. */
+		isc_stdtime_t first_resign;
+	} steps[] = {
+		{ a, false, 100, { 0, false }, a, 100 },
+		{ aaaa, false, 200, { 0, false }, a, 100 },
+		{ soa, false, 100, { 0, false }, a, 100 },
+		{ aaaa, false, 50, { 200, true }, aaaa, 50 },
+		{ aaaa, false, 300, { 50, true }, a, 100 },
+		{ a, false, 400, { 100, true }, soa, 100 },
+		{ soa, false, 100, { 100, true }, soa, 100 },
+		{ soa, true, 0, { 100, true }, aaaa, 300 },
+		{ soa, true, 0, { 0, false }, aaaa, 300 },
+		{ aaaa, true, 0, { 300, true }, a, 400 },
+		{ a, true, 0, { 400, true }, 0, 0 },
+	};
+
+	UNUSED(state);
+	assert_int_equal(dns__qpzone_create(isc_g_mctx, &example_org_name,
+					    dns_dbtype_zone, dns_rdataclass_in,
+					    0, NULL, NULL, &db),
+			 ISC_R_SUCCESS);
+	assert_int_equal(dns_db_findnode(db, &example_org_name, true, &node),
+			 ISC_R_SUCCESS);
+	qpz_heap_t *heap = ((qpzonedb_t *)db)->heap;
+
+	for (size_t i = 0; i < ARRAY_SIZE(steps); i++) {
+		qpz_resignstate_t previous;
+		if (steps[i].remove) {
+			previous = resign_unregister(heap, (qpznode_t *)node,
+						     steps[i].typepair);
+		} else {
+			previous = resign_register(heap, (qpznode_t *)node,
+						   steps[i].typepair,
+						   steps[i].resign);
+		}
+		assert_int_equal(previous.scheduled,
+				 steps[i].previous.scheduled);
+		assert_int_equal(previous.resign, steps[i].previous.resign);
+
+		dns_fixedname_t fixed;
+		dns_typepair_t typepair;
+		isc_stdtime_t resign;
+		isc_result_t result =
+			resign_first(heap, &resign,
+				     dns_fixedname_initname(&fixed), &typepair);
+		if (steps[i].first_typepair == 0) {
+			assert_int_equal(result, ISC_R_NOTFOUND);
+		} else {
+			assert_int_equal(result, ISC_R_SUCCESS);
+			assert_int_equal(typepair, steps[i].first_typepair);
+			assert_int_equal(resign, steps[i].first_resign);
+			assert_true(dns_name_equal(dns_fixedname_name(&fixed),
+						   &example_org_name));
+		}
+	}
+	dns_db_detachnode(&node);
+	dns_db_detach(&db);
+}
+
 ISC_RUN_TEST_IMPL(unscheduled_resign) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
@@ -1035,6 +1106,7 @@ ISC_TEST_LIST_START
 ISC_TEST_ENTRY(ownercase)
 ISC_TEST_ENTRY(setownercase)
 ISC_TEST_ENTRY(resign_sooner_values)
+ISC_TEST_ENTRY(resign_heap)
 ISC_TEST_ENTRY(unscheduled_resign)
 ISC_TEST_ENTRY(resign_rollback)
 ISC_TEST_ENTRY(resign_rollback_diff)
