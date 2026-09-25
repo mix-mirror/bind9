@@ -166,6 +166,7 @@ dns_srcset.add(
         'validator.c',
         'view.c',
         'zone.c',
+        'zone/viewname.c',
         'zonefetch.c',
         'zonemgr.c',
         'zoneproperties.c',
