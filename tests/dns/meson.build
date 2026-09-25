@@ -53,6 +53,7 @@ dns_tests = [
     'vecheader',
     'zonefile',
     'zonemgr',
+    'zoneverify',
     'zt',
 ]
 

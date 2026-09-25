@@ -4232,7 +4232,9 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 			CLEANUP(DNS_R_BADZONE);
 		}
 
-		CHECK(dns_zone_verifydb(zone, db, NULL));
+		if (zone->type == dns_zone_mirror) {
+			CHECK(dns_zone_verifydb(zone->view, db, NULL));
+		}
 
 		if (zone->db != NULL) {
 			unsigned int oldsoacount;
@@ -20704,21 +20706,35 @@ dns_zone_isloaded(dns_zone_t *zone) {
 	return DNS_ZONE_FLAG(zone, DNS_ZONEFLG_LOADED);
 }
 
+static void
+db_namerd_tostr(dns_db_t *db, dns_view_t *view, char *buf, size_t length) {
+	char originbuf[DNS_NAME_FORMATSIZE];
+	char classbuf[DNS_RDATACLASS_FORMATSIZE];
+	const char *viewname = "";
+
+	dns_name_format(dns_db_origin(db), originbuf, sizeof(originbuf));
+	dns_rdataclass_format(dns_db_class(db), classbuf, sizeof(classbuf));
+	if (view != NULL && strcmp(view->name, "_bind") != 0 &&
+	    strcmp(view->name, "_default") != 0)
+	{
+		viewname = view->name;
+	}
+	snprintf(buf, length, "%s/%s%s%s", originbuf, classbuf,
+		 viewname[0] != '\0' ? "/" : "", viewname);
+}
+
 isc_result_t
-dns_zone_verifydb(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver) {
+dns_zone_verifydb(dns_view_t *view, dns_db_t *db, dns_dbversion_t *ver) {
 	dns_dbversion_t *version = NULL;
 	dns_keytable_t *secroots = NULL;
 	isc_result_t result;
 	dns_name_t *origin;
+	char name[1024];
 
-	REQUIRE(DNS_ZONE_VALID(zone));
+	REQUIRE(view == NULL || DNS_VIEW_VALID(view));
 	REQUIRE(db != NULL);
 
-	ENTER;
-
-	if (dns_zone_gettype(zone) != dns_zone_mirror) {
-		return ISC_R_SUCCESS;
-	}
+	db_namerd_tostr(db, view, name, sizeof(name));
 
 	if (ver == NULL) {
 		dns_db_currentversion(db, &version);
@@ -20726,14 +20742,14 @@ dns_zone_verifydb(dns_zone_t *zone, dns_db_t *db, dns_dbversion_t *ver) {
 		version = ver;
 	}
 
-	if (zone->view != NULL) {
-		result = dns_view_getsecroots(zone->view, &secroots);
+	if (view != NULL) {
+		result = dns_view_getsecroots(view, &secroots);
 		CHECK(result);
 	}
 
 	origin = dns_db_origin(db);
-	result = dns_zoneverify_dnssec(zone, db, version, origin, secroots,
-				       zone->mctx, true, false, dnssec_report);
+	result = dns_zoneverify_dnssec(name, db, version, origin, secroots,
+				       db->mctx, true, false, dnssec_report);
 
 cleanup:
 	if (secroots != NULL) {
@@ -20745,8 +20761,10 @@ cleanup:
 	}
 
 	if (result != ISC_R_SUCCESS) {
-		dnssec_log(zone, ISC_LOG_ERROR, "zone verification failed: %s",
-			   isc_result_totext(result));
+		isc_log_write(DNS_LOGCATEGORY_DNSSEC, DNS_LOGMODULE_ZONE,
+			      ISC_LOG_ERROR,
+			      "zone %s: zone verification failed: %s", name,
+			      isc_result_totext(result));
 		result = DNS_R_VERIFYFAILURE;
 	}
 
