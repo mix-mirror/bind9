@@ -503,8 +503,12 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "check that named-checkconf -z handles in-view ($n)"
 ret=0
-$CHECKCONF -z in-view-good.conf >checkconf.out$n 2>&1 || ret=1
-grep "zone shared.example/IN: loaded serial" <checkconf.out$n >/dev/null || ret=1
+# The successful load message may be logged only at debug level. Use -d to
+# confirm the primary zone was selected, and the exit status to confirm that
+# loading it and processing its in-view reference succeeded.
+$CHECKCONF -d -z in-view-good.conf >checkconf.out$n 2>&1 || ret=1
+grep -F 'loading "shared.example" from "shared.example.db" class "IN"' \
+  <checkconf.out$n >/dev/null || ret=1
 if [ $ret -ne 0 ]; then
   echo_i "failed"
   ret=1
