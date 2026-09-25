@@ -886,10 +886,15 @@ dns_db_getsize(dns_db_t *db, dns_dbversion_t *version, uint64_t *records,
 
 isc_result_t
 dns_db_setsigningtime(dns_db_t *db, dns_dbnode_t *node,
-		      dns_rdataset_t *rdataset, isc_stdtime_t resign) {
+		      dns_dbversion_t *version, dns_rdataset_t *rdataset,
+		      isc_stdtime_t resign) {
+	REQUIRE(DNS_DB_VALID(db));
+	REQUIRE(dns_db_iszone(db));
+	REQUIRE(version != NULL);
+
 	if (db->methods->setsigningtime != NULL) {
-		return (db->methods->setsigningtime)(db, node, rdataset,
-						     resign);
+		return (db->methods->setsigningtime)(db, node, version,
+						     rdataset, resign);
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }

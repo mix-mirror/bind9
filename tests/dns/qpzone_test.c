@@ -269,6 +269,9 @@ apply_dns_update(dns_db_t *db, dns_dbversion_t *version, const dns_name_t *name,
 	dns_rdatalist_init(&rdatalist);
 	rdatalist.ttl = ttl;
 	rdatalist.type = rdtype;
+	if (rdtype == dns_rdatatype_rrsig || rdtype == dns_rdatatype_sig) {
+		rdatalist.covers = dns_rdata_covers(&rdata);
+	}
 	rdatalist.rdclass = rdclass;
 	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
 
@@ -390,17 +393,8 @@ ISC_RUN_TEST_IMPL(setownercase) {
 ISC_RUN_TEST_IMPL(resign_sooner_values) {
 	dns_typepair_t soa = DNS_SIGTYPEPAIR(dns_rdatatype_soa);
 	dns_typepair_t other = DNS_SIGTYPEPAIR(dns_rdatatype_a);
-	dns_vecheader_t scheduled = {
-		.attributes = DNS_VECHEADERATTR_RESIGN,
-		.typepair = other,
-		.resign = 20,
-	};
-	dns_vecheader_t unscheduled = {
-		.typepair = other,
-		.resign = 0,
-	};
-	qpz_resign_t scheduled_elem = { .header = &scheduled };
-	qpz_resign_t unscheduled_elem = { .header = &unscheduled };
+	qpz_resign_t scheduled_elem = { .typepair = other, .resign = 20 };
+	qpz_resign_t later_elem = { .typepair = other, .resign = 30 };
 
 	UNUSED(state);
 
@@ -413,16 +407,14 @@ ISC_RUN_TEST_IMPL(resign_sooner_values) {
 	assert_false(resign_sooner_values(10, soa, 10, soa));
 	assert_false(resign_sooner_values(10, other, 10, other));
 
-	assert_true(resign_sooner(&scheduled_elem, &unscheduled_elem));
-	assert_false(resign_sooner(&unscheduled_elem, &scheduled_elem));
+	assert_true(resign_sooner(&scheduled_elem, &later_elem));
+	assert_false(resign_sooner(&later_elem, &scheduled_elem));
 }
 
 ISC_RUN_TEST_IMPL(unscheduled_resign) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_fixedname_t fixed;
-	dns_rdataset_t rdataset;
 	dns_typepair_t typepair;
 	isc_stdtime_t resign;
 
@@ -447,39 +439,8 @@ ISC_RUN_TEST_IMPL(unscheduled_resign) {
 		assert_int_equal(result, ISC_R_SUCCESS);
 	}
 
-	/*
-	 * Deliberately insert an ordinary header into the resigning heap to
-	 * verify that the defensive checks do not expose it as scheduled.
-	 */
-	result = dns_db_findnode(db, &example_org_name, false, &node);
-	assert_int_equal(result, ISC_R_SUCCESS);
-
-	dns_rdataset_init(&rdataset);
-	result = dns_db_findrdataset(db, node, NULL, dns_rdatatype_aaaa, 0, 0,
-				     &rdataset, NULL);
-	assert_int_equal(result, ISC_R_SUCCESS);
-
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	dns_vecheader_t *header = dns_vecheader_getheader(&rdataset);
-	LOCK(&qpdb->heap->lock);
-	resign_register(qpdb->heap, (qpznode_t *)node, header);
-	UNLOCK(&qpdb->heap->lock);
-
 	dns_fixedname_init(&fixed);
-	result = dns_db_getsigningtime(db, &resign, dns_fixedname_name(&fixed),
-				       &typepair);
-	assert_int_equal(result, ISC_R_NOTFOUND);
-
-	LOCK(&qpdb->heap->lock);
-	result = resign_unregister(qpdb->heap, (qpznode_t *)node, header);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	result = resign_unregister(qpdb->heap, (qpznode_t *)node, header);
-	assert_int_equal(result, ISC_R_NOTFOUND);
-	UNLOCK(&qpdb->heap->lock);
-
-	dns_rdataset_disassociate(&rdataset);
-	dns_db_detachnode(&node);
-
 	/*
 	 * A rolled-back subtraction must not register an ordinary header that
 	 * was not in the resigning heap before the transaction.
@@ -707,6 +668,174 @@ ISC_RUN_TEST_IMPL(diffop_addresign) {
 	assert_null(db);
 }
 
+/* Check the public scheduling result, including its RRset identity. */
+static void
+check_signingtime(dns_db_t *db, isc_stdtime_t expected) {
+	dns_fixedname_t fixed;
+	dns_typepair_t typepair;
+	isc_stdtime_t resign;
+	isc_result_t result = dns_db_getsigningtime(
+		db, &resign, dns_fixedname_initname(&fixed), &typepair);
+	if (expected == 0) {
+		assert_int_equal(result, ISC_R_NOTFOUND);
+	} else {
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_int_equal(resign, expected);
+		assert_int_equal(typepair, DNS_SIGTYPEPAIR(dns_rdatatype_a));
+		assert_true(dns_name_equal(dns_fixedname_name(&fixed),
+					   &example_org_name));
+	}
+}
+
+static void
+update_signature(dns_db_t *db, dns_dbversion_t *version, dns_rdata_t *rdata,
+		 dns_diffop_t op, bool use_diff) {
+	if (use_diff) {
+		dns_diff_t diff;
+		dns_difftuple_t *tuple = NULL;
+		dns_diff_init(isc_g_mctx, &diff);
+		dns_difftuple_create(isc_g_mctx, op, &example_org_name, 300,
+				     rdata, &tuple);
+		dns_diff_append(&diff, &tuple);
+		assert_int_equal(dns_diff_apply(&diff, db, version),
+				 ISC_R_SUCCESS);
+		dns_diff_clear(&diff);
+		return;
+	}
+	isc_result_t result = apply_dns_update(
+		db, version, &example_org_name, dns_rdatatype_rrsig,
+		dns_rdataclass_in, 300, rdata->data, rdata->length, op);
+	assert_true(result == ISC_R_SUCCESS || result == DNS_R_NXRRSET);
+}
+
+static void
+test_resign_rollback(bool use_diff) {
+	dns_db_t *db = NULL;
+	dns_dbversion_t *reader = NULL;
+	dns_dbnode_t *node = NULL;
+	dns_rdataset_t held;
+	dns_rdata_t rdata[2] = { DNS_RDATA_INIT, DNS_RDATA_INIT };
+	unsigned char wire[2][512];
+	dns_rdata_rrsig_t sig = rrsig_test_data1;
+	isc_stdtime_t early = sig.timeexpire;
+	isc_stdtime_t late = early + 3600;
+
+	for (size_t i = 0; i < 2; i++) {
+		isc_buffer_t buffer;
+		sig.timeexpire = i == 0 ? early : late;
+		isc_buffer_init(&buffer, wire[i], sizeof(wire[i]));
+		assert_int_equal(dns_rdata_fromstruct(
+					 &rdata[i], dns_rdataclass_in,
+					 dns_rdatatype_rrsig, &sig, &buffer),
+				 ISC_R_SUCCESS);
+	}
+	assert_int_equal(dns__qpzone_create(isc_g_mctx, &example_org_name,
+					    dns_dbtype_zone, dns_rdataclass_in,
+					    0, NULL, NULL, &db),
+			 ISC_R_SUCCESS);
+
+	/* An aborted insertion restores absence. */
+	WITH_NEWVERSION(db, version, false) {
+		update_signature(db, version, &rdata[0], DNS_DIFFOP_ADDRESIGN,
+				 use_diff);
+		check_signingtime(db, early);
+	}
+	check_signingtime(db, 0);
+	WITH_NEWVERSION(db, version, true) {
+		update_signature(db, version, &rdata[0], DNS_DIFFOP_ADDRESIGN,
+				 use_diff);
+	}
+	check_signingtime(db, early);
+
+	/* Keep both an old version and its header alive across updates. */
+	dns_db_currentversion(db, &reader);
+	assert_int_equal(dns_db_findnode(db, &example_org_name, false, &node),
+			 ISC_R_SUCCESS);
+	dns_rdataset_init(&held);
+	assert_int_equal(dns_db_findrdataset(db, node, reader,
+					     dns_rdatatype_rrsig,
+					     dns_rdatatype_a, 0, &held, NULL),
+			 ISC_R_SUCCESS);
+
+	/* Repeated replacement and removal must restore the original time. */
+	WITH_NEWVERSION(db, version, false) {
+		update_signature(db, version, &rdata[1], DNS_DIFFOP_ADDRESIGN,
+				 use_diff);
+		update_signature(db, version, &rdata[0], DNS_DIFFOP_DELRESIGN,
+				 use_diff);
+		check_signingtime(db, late);
+		update_signature(db, version, &rdata[0], DNS_DIFFOP_ADDRESIGN,
+				 use_diff);
+		check_signingtime(db, early);
+		update_signature(db, version, &rdata[0], DNS_DIFFOP_DELRESIGN,
+				 use_diff);
+		check_signingtime(db, late);
+		update_signature(db, version, &rdata[1], DNS_DIFFOP_DELRESIGN,
+				 use_diff);
+		check_signingtime(db, 0);
+		update_signature(db, version, &rdata[1], DNS_DIFFOP_ADDRESIGN,
+				 use_diff);
+		check_signingtime(db, late);
+
+		/* Disabling the schedule without deleting the RRset is
+		 * undoable. */
+		dns_rdataset_t current;
+		dns_rdataset_init(&current);
+		assert_int_equal(dns_db_findrdataset(
+					 db, node, version, dns_rdatatype_rrsig,
+					 dns_rdatatype_a, 0, &current, NULL),
+				 ISC_R_SUCCESS);
+		assert_int_equal(
+			dns_db_setsigningtime(db, node, version, &current, 0),
+			ISC_R_SUCCESS);
+		check_signingtime(db, 0);
+		dns_rdataset_disassociate(&current);
+	}
+	check_signingtime(db, early);
+
+	/* A committed replacement survives cleanup of the older headers. */
+	WITH_NEWVERSION(db, version, true) {
+		update_signature(db, version, &rdata[1], DNS_DIFFOP_ADDRESIGN,
+				 use_diff);
+		update_signature(db, version, &rdata[0], DNS_DIFFOP_DELRESIGN,
+				 use_diff);
+	}
+	check_signingtime(db, late);
+	dns_rdataset_disassociate(&held);
+	dns_db_detachnode(&node);
+	dns_db_closeversion(db, &reader, false);
+	check_signingtime(db, late);
+
+	/* Whole-RRset deletion participates in scheduling rollback too. */
+	assert_int_equal(dns_db_findnode(db, &example_org_name, false, &node),
+			 ISC_R_SUCCESS);
+	WITH_NEWVERSION(db, version, false) {
+		assert_int_equal(dns_db_deleterdataset(db, node, version,
+						       dns_rdatatype_rrsig,
+						       dns_rdatatype_a),
+				 ISC_R_SUCCESS);
+		check_signingtime(db, 0);
+	}
+	check_signingtime(db, late);
+	WITH_NEWVERSION(db, version, true) {
+		update_signature(db, version, &rdata[1], DNS_DIFFOP_DELRESIGN,
+				 use_diff);
+	}
+	check_signingtime(db, 0);
+	dns_db_detachnode(&node);
+	dns_db_detach(&db);
+}
+
+ISC_RUN_TEST_IMPL(resign_rollback) {
+	UNUSED(state);
+	test_resign_rollback(false);
+}
+
+ISC_RUN_TEST_IMPL(resign_rollback_diff) {
+	UNUSED(state);
+	test_resign_rollback(true);
+}
+
 /*
  * Add a single record to the database in a new version.
  */
@@ -907,6 +1036,8 @@ ISC_TEST_ENTRY(ownercase)
 ISC_TEST_ENTRY(setownercase)
 ISC_TEST_ENTRY(resign_sooner_values)
 ISC_TEST_ENTRY(unscheduled_resign)
+ISC_TEST_ENTRY(resign_rollback)
+ISC_TEST_ENTRY(resign_rollback_diff)
 ISC_TEST_ENTRY(diffop_add_sub)
 ISC_TEST_ENTRY(wildcard_foundname)
 ISC_TEST_ENTRY(wildcard_delegation_foundname)

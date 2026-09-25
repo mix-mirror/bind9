@@ -118,7 +118,9 @@ typedef ISC_LIST(qpz_changed_t) qpz_changedlist_t;
 
 typedef struct qpz_resigned {
 	qpznode_t *node;
-	dns_vecheader_t *header;
+	int64_t resign;
+	dns_typepair_t typepair;
+	bool scheduled;
 	ISC_LINK(struct qpz_resigned) link;
 } qpz_resigned_t;
 
@@ -168,7 +170,8 @@ typedef struct qpz_heap {
 
 typedef struct qpz_resign {
 	qpznode_t *node;
-	dns_vecheader_t *header;
+	int64_t resign;
+	dns_typepair_t typepair;
 	unsigned int heap_index;
 } qpz_resign_t;
 
@@ -326,15 +329,17 @@ qpz_changed_new(isc_mem_t *mctx, qpznode_t *node DNS__DB_FLARG) {
  * Constructor and destructor for qpz_resigned_t
  */
 static qpz_resigned_t *
-qpz_resigned_new(isc_mem_t *mctx, qpznode_t *node, dns_vecheader_t *header) {
-	qpz_resigned_t *resigned = isc_mem_get(mctx, sizeof(qpz_resigned_t));
+qpz_resigned_new(isc_mem_t *mctx, qpznode_t *node, dns_typepair_t typepair,
+		 bool scheduled, int64_t resign) {
+	qpz_resigned_t *resigned = isc_mem_get(mctx, sizeof(*resigned));
 	*resigned = (qpz_resigned_t){
 		.node = node,
-		.header = header,
+		.resign = resign,
+		.typepair = typepair,
+		.scheduled = scheduled,
 		.link = ISC_LINK_INITIALIZER,
 	};
 	qpznode_ref(node);
-	dns_vecheader_ref(header);
 	return resigned;
 }
 
@@ -343,7 +348,6 @@ qpz_resigned_destroy(isc_mem_t *mctx, qpz_resigned_t **resignedp) {
 	qpz_resigned_t *resigned = *resignedp;
 	*resignedp = NULL;
 	qpznode_unref(resigned->node);
-	dns_vecheader_unref(resigned->header);
 	isc_mem_put(mctx, resigned, sizeof(qpz_resigned_t));
 }
 
@@ -351,15 +355,16 @@ qpz_resigned_destroy(isc_mem_t *mctx, qpz_resigned_t **resignedp) {
  * Constructor and destructor for qpz_resign_t
  */
 static qpz_resign_t *
-qpz_resign_new(isc_mem_t *mctx, qpznode_t *node, dns_vecheader_t *header) {
+qpz_resign_new(isc_mem_t *mctx, qpznode_t *node, dns_typepair_t typepair,
+	       int64_t resign) {
 	qpz_resign_t *elem = isc_mem_get(mctx, sizeof(qpz_resign_t));
 	*elem = (qpz_resign_t){
 		.node = node,
-		.header = header,
+		.resign = resign,
+		.typepair = typepair,
 		.heap_index = 0,
 	};
 	qpznode_ref(node);
-	dns_vecheader_ref(header);
 	return elem;
 }
 
@@ -368,7 +373,6 @@ qpz_resign_destroy(isc_mem_t *mctx, qpz_resign_t **elemp) {
 	qpz_resign_t *elem = *elemp;
 	*elemp = NULL;
 	qpznode_unref(elem->node);
-	dns_vecheader_unref(elem->header);
 	isc_mem_put(mctx, elem, sizeof(qpz_resign_t));
 }
 
@@ -657,24 +661,14 @@ resign_sooner_values(int64_t lhs_resign, dns_typepair_t lhs_typepair,
 	       (lhs_resign == rhs_resign && lhs_is_soa < rhs_is_soa);
 }
 
-static int64_t
-resign_effective_time(const dns_vecheader_t *header) {
-	return RESIGN(header) ? header->resign : INT64_MAX;
-}
-
-/*%
- * Return which RRset should be resigned sooner.  If the RRsets have the
- * same signing time, prefer the other RRset over the SOA RRset.  Headers
- * which are not scheduled for resigning sort after every scheduled header.
- */
+/* Prefer non-SOA RRsets when signing times are equal. */
 static bool
 resign_sooner(void *v1, void *v2) {
 	qpz_resign_t *elem1 = v1;
 	qpz_resign_t *elem2 = v2;
 
-	return resign_sooner_values(
-		resign_effective_time(elem1->header), elem1->header->typepair,
-		resign_effective_time(elem2->header), elem2->header->typepair);
+	return resign_sooner_values(elem1->resign, elem1->typepair,
+				    elem2->resign, elem2->typepair);
 }
 
 /*%
@@ -689,92 +683,63 @@ set_index(void *what, unsigned int idx) {
 
 /*%
  * Hashmap matching function for qpz_resign_t entries.
- * Matches based on header and node pointers.
+ * Matches based on RRset typepair and node pointer.
  */
 static bool
 resign_match(void *elem_ptr, const void *key) {
 	qpz_resign_t *elem = elem_ptr;
 	const qpz_resign_t *search_elem = key;
 
-	return elem->header == search_elem->header &&
+	return elem->typepair == search_elem->typepair &&
 	       elem->node == search_elem->node;
 }
 
-/*%
- * Generate hash value for a heap element based on header pointer.
- */
+/* All scheduling entries are identified by node and typepair. */
 static uint32_t
-resign_hash(dns_vecheader_t *header) {
-	uintptr_t headerptr = (uintptr_t)header;
-	return isc_hash32(&headerptr, sizeof(headerptr), true);
+resign_hash(qpznode_t *node, dns_typepair_t typepair) {
+	uintptr_t nodeptr = (uintptr_t)node;
+	return isc_hash32(&nodeptr, sizeof(nodeptr), true) ^
+	       isc_hash32(&typepair, sizeof(typepair), true);
 }
 
-/*%
- * Find an element in the heap/hashmap by header and node.
- * Returns ISC_R_SUCCESS if found, ISC_R_NOTFOUND if not found.
- * If found, *found_elem will point to the element.
- * Assumes heap lock is already held.
- */
+/* The caller holds the heap lock. */
 static isc_result_t
-resign_lookup(qpz_heap_t *heap, dns_vecheader_t *header, qpznode_t *node,
+resign_lookup(qpz_heap_t *heap, qpznode_t *node, dns_typepair_t typepair,
 	      qpz_resign_t **found_elem) {
-	qpz_resign_t search_elem = {
-		.header = header,
-		.node = node,
-	};
-	uint32_t hashval = resign_hash(header);
-
-	return isc_hashmap_find(heap->hashmap, hashval, resign_match,
-				&search_elem, (void **)found_elem);
+	qpz_resign_t key = { .node = node, .typepair = typepair };
+	return isc_hashmap_find(heap->hashmap, resign_hash(node, typepair),
+				resign_match, &key, (void **)found_elem);
 }
 
-/*%
- * Add an element to the heap/hashmap.
- * Assumes heap lock is already held.
- */
+/* The caller holds the heap lock. */
 static void
-resign_register(qpz_heap_t *heap, qpznode_t *node, dns_vecheader_t *header) {
-	qpz_resign_t *elem = qpz_resign_new(heap->mctx, node, header);
-	uint32_t hashval = resign_hash(header);
-
-	/* Verify invariant: element should not already be in hashmap */
-	isc_result_t result = isc_hashmap_add(heap->hashmap, hashval,
+resign_register(qpz_heap_t *heap, qpznode_t *node, dns_typepair_t typepair,
+		int64_t resign) {
+	qpz_resign_t *elem = qpz_resign_new(heap->mctx, node, typepair, resign);
+	isc_result_t result = isc_hashmap_add(heap->hashmap,
+					      resign_hash(node, typepair),
 					      resign_match, elem, elem, NULL);
 	INSIST(result == ISC_R_SUCCESS);
-
 	isc_heap_insert(heap->heap, elem);
 }
 
-/*%
- * Remove an element from the heap/hashmap.
- * Returns ISC_R_SUCCESS if the element was removed, or ISC_R_NOTFOUND if it
- * was not registered.
- * Assumes heap lock is already held.
+/*
+ * Remove an entry, optionally returning its signing time for rollback.
+ * The caller holds the heap lock.
  */
 static isc_result_t
-resign_unregister(qpz_heap_t *heap, qpznode_t *node, dns_vecheader_t *header) {
-	if (header == NULL) {
-		return ISC_R_NOTFOUND;
-	}
-
-	qpz_resign_t *found_elem = NULL;
-	uint32_t hashval = resign_hash(header);
-	qpz_resign_t search_elem = {
-		.header = header,
-		.node = node,
-	};
-	isc_result_t result = isc_hashmap_find(heap->hashmap, hashval,
-					       resign_match, &search_elem,
-					       (void **)&found_elem);
-
+resign_unregister(qpz_heap_t *heap, qpznode_t *node, dns_typepair_t typepair,
+		  int64_t *resignp) {
+	qpz_resign_t *elem = NULL;
+	isc_result_t result = resign_lookup(heap, node, typepair, &elem);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
-
-	isc_heap_delete(heap->heap, found_elem->heap_index);
-	isc_hashmap_delete(heap->hashmap, hashval, resign_match, found_elem);
-	qpz_resign_destroy(heap->mctx, &found_elem);
-
+	SET_IF_NOT_NULL(resignp, elem->resign);
+	isc_heap_delete(heap->heap, elem->heap_index);
+	isc_hashmap_delete(heap->hashmap, resign_hash(node, typepair),
+			   resign_match, elem);
+	qpz_resign_destroy(heap->mctx, &elem);
 	return ISC_R_SUCCESS;
 }
 
@@ -794,18 +759,22 @@ new_qpz_heap(isc_mem_t *mctx) {
 	return new_heap;
 }
 
+/*
+ * Record the previous scheduling state after a heap change. The caller still
+ * holds the node lock, preserving undo order for this RRset. Prepending makes
+ * rollback undo repeated changes in reverse order.
+ */
 static void
 resign_rollback(qpzonedb_t *qpdb, qpznode_t *node, qpz_version_t *version,
-		dns_vecheader_t *header DNS__DB_FLARG) {
-	if (header == NULL) {
-		return;
-	}
+		dns_typepair_t typepair, bool scheduled, int64_t resign) {
+	REQUIRE(version != NULL && version->qpdb == qpdb);
+	REQUIRE(version->writer);
 
-	qpz_resigned_t *resigned = qpz_resigned_new(((dns_db_t *)qpdb)->mctx,
-						    node, header);
-
+	qpz_resigned_t *saved = qpz_resigned_new(qpdb->common.mctx, node,
+						 typepair, scheduled, resign);
 	RWLOCK(&qpdb->lock, isc_rwlocktype_write);
-	ISC_LIST_APPEND(version->resigned_list, resigned, link);
+	REQUIRE(version == qpdb->future_version);
+	ISC_LIST_PREPEND(version->resigned_list, saved, link);
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_write);
 }
 
@@ -1021,7 +990,7 @@ first_existing_header(dns_vectop_t *top, uint32_t serial) {
 }
 
 static void
-clean_multiple_headers(qpz_heap_t *heap, qpznode_t *node, dns_vectop_t *top) {
+clean_multiple_headers(dns_vectop_t *top) {
 	uint32_t parent_serial = UINT32_MAX;
 
 	REQUIRE(top != NULL);
@@ -1032,9 +1001,6 @@ clean_multiple_headers(qpz_heap_t *heap, qpznode_t *node, dns_vectop_t *top) {
 
 		if (header->serial == parent_serial || IGNORE(header)) {
 			ISC_SLIST_PTR_REMOVE(p, header, next_header);
-			LOCK(&heap->lock);
-			(void)resign_unregister(heap, node, header);
-			UNLOCK(&heap->lock);
 			dns_vecheader_unref(header);
 		} else {
 			parent_serial = header->serial;
@@ -1044,8 +1010,7 @@ clean_multiple_headers(qpz_heap_t *heap, qpznode_t *node, dns_vectop_t *top) {
 }
 
 static bool
-clean_multiple_versions(qpz_heap_t *heap, qpznode_t *node, dns_vectop_t *top,
-			uint32_t least_serial) {
+clean_multiple_versions(dns_vectop_t *top, uint32_t least_serial) {
 	REQUIRE(top != NULL);
 
 	if (ISC_SLIST_EMPTY(top->headers)) {
@@ -1059,9 +1024,6 @@ clean_multiple_versions(qpz_heap_t *heap, qpznode_t *node, dns_vectop_t *top,
 		dns_vecheader_t *header = *p;
 		if (header->serial < least_serial) {
 			ISC_SLIST_PTR_REMOVE(p, header, next_header);
-			LOCK(&heap->lock);
-			(void)resign_unregister(heap, node, header);
-			UNLOCK(&heap->lock);
 			dns_vecheader_unref(header);
 		} else {
 			multiple = true;
@@ -1072,7 +1034,7 @@ clean_multiple_versions(qpz_heap_t *heap, qpznode_t *node, dns_vectop_t *top,
 }
 
 static void
-clean_zone_node(qpz_heap_t *heap, qpznode_t *node, uint32_t least_serial) {
+clean_zone_node(qpznode_t *node, uint32_t least_serial) {
 	bool still_dirty = false;
 
 	/*
@@ -1090,7 +1052,7 @@ clean_zone_node(qpz_heap_t *heap, qpznode_t *node, uint32_t least_serial) {
 		 * with the same serial number, or that have the IGNORE
 		 * attribute.
 		 */
-		clean_multiple_headers(heap, node, top);
+		clean_multiple_headers(top);
 
 		if (first_header(top) != NULL) {
 			/*
@@ -1102,7 +1064,7 @@ clean_zone_node(qpz_heap_t *heap, qpznode_t *node, uint32_t least_serial) {
 			 * less than least_serial too, but we cannot delete it
 			 * because it is the most recent version.
 			 */
-			still_dirty = clean_multiple_versions(heap, node, top,
+			still_dirty = clean_multiple_versions(top,
 							      least_serial);
 		}
 	}
@@ -1628,21 +1590,26 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 	}
 
 	/*
-	 * Commit/rollback re-signed headers.
+	 * Commit or undo scheduling changes, newest first.
 	 */
 	ISC_LIST_FOREACH(resigned_list, resigned, link) {
 		isc_rwlock_t *nlock = NULL;
 		isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-		dns_vecheader_t *header = resigned->header;
 		qpznode_t *resigned_node = resigned->node;
 
 		ISC_LIST_UNLINK(resigned_list, resigned, link);
 
 		nlock = qpzone_get_lock(resigned_node);
 		NODE_WRLOCK(nlock, &nlocktype);
-		if (rollback && !IGNORE(header)) {
+		if (rollback) {
 			LOCK(&qpdb->heap->lock);
-			resign_register(qpdb->heap, resigned_node, header);
+			(void)resign_unregister(qpdb->heap, resigned_node,
+						resigned->typepair, NULL);
+			if (resigned->scheduled) {
+				resign_register(qpdb->heap, resigned_node,
+						resigned->typepair,
+						resigned->resign);
+			}
 			UNLOCK(&qpdb->heap->lock);
 		}
 		qpz_resigned_destroy(db->mctx, &resigned);
@@ -1667,7 +1634,7 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 		}
 		bool has_erefs = qpznode_release(node DNS__DB_FILELINE);
 		if (!has_erefs) {
-			clean_zone_node(qpdb->heap, node, least_serial);
+			clean_zone_node(node, least_serial);
 		}
 
 		NODE_UNLOCK(nlock, &nlocktype);
@@ -1965,6 +1932,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		}
 	}
 
+	bool had_resign = header != NULL && RESIGN(header);
 	if (header != NULL) {
 		/*
 		 * If 'merge' is true and header isn't empty/nonexistent,
@@ -2035,13 +2003,6 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		INSIST(foundtop->typepair == newheader->typepair);
 
 		if (loading) {
-			if (RESIGN(newheader)) {
-				LOCK(&qpdb->heap->lock);
-				resign_register(qpdb->heap, node, newheader);
-				UNLOCK(&qpdb->heap->lock);
-				/* resigndelete not needed here */
-			}
-
 			/*
 			 * There are no other references to 'header' when
 			 * loading, so we MAY clean up 'header' now.
@@ -2054,26 +2015,8 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			maybe_update_recordsandsize(false, version, header,
 						    nodename->length);
 
-			LOCK(&qpdb->heap->lock);
-			(void)resign_unregister(qpdb->heap, node, header);
-			UNLOCK(&qpdb->heap->lock);
 			dns_vecheader_unref(header);
 		} else {
-			if (RESIGN(newheader)) {
-				isc_result_t unregister_result;
-
-				LOCK(&qpdb->heap->lock);
-				resign_register(qpdb->heap, node, newheader);
-				unregister_result = resign_unregister(
-					qpdb->heap, node, header);
-				UNLOCK(&qpdb->heap->lock);
-				if (unregister_result == ISC_R_SUCCESS) {
-					resign_rollback(
-						qpdb, node, version,
-						header DNS__DB_FLARG_PASS);
-				}
-			}
-
 			ISC_SLIST_PREPEND(foundtop->headers, newheader,
 					  next_header);
 
@@ -2094,20 +2037,6 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		if (!EXISTS(newheader)) {
 			dns_vecheader_unref(newheader);
 			return DNS_R_UNCHANGED;
-		}
-
-		if (RESIGN(newheader)) {
-			isc_result_t unregister_result;
-
-			LOCK(&qpdb->heap->lock);
-			resign_register(qpdb->heap, node, newheader);
-			unregister_result = resign_unregister(qpdb->heap, node,
-							      header);
-			UNLOCK(&qpdb->heap->lock);
-			if (unregister_result == ISC_R_SUCCESS) {
-				resign_rollback(qpdb, node, version,
-						header DNS__DB_FLARG_PASS);
-			}
 		}
 
 		if (foundtop != NULL) {
@@ -2136,10 +2065,6 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			if (qpdb->maxtypepername > 0 &&
 			    ntypes >= qpdb->maxtypepername)
 			{
-				LOCK(&qpdb->heap->lock);
-				(void)resign_unregister(qpdb->heap, node,
-							newheader);
-				UNLOCK(&qpdb->heap->lock);
 				dns_vecheader_unref(newheader);
 				return DNS_R_TOOMANYRECORDS;
 			}
@@ -2163,6 +2088,27 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 				ISC_SLIST_PREPEND(node->next_type, newtop,
 						  next_type);
 			}
+		}
+	}
+
+	if (had_resign || RESIGN(newheader)) {
+		int64_t old_resign = 0;
+		bool scheduled = EXISTS(newheader) && RESIGN(newheader);
+
+		LOCK(&qpdb->heap->lock);
+		isc_result_t unregister_result = resign_unregister(
+			qpdb->heap, node, newheader->typepair, &old_resign);
+		if (scheduled) {
+			resign_register(qpdb->heap, node, newheader->typepair,
+					newheader->resign);
+		}
+		UNLOCK(&qpdb->heap->lock);
+		if (!loading &&
+		    (unregister_result == ISC_R_SUCCESS || scheduled))
+		{
+			resign_rollback(
+				qpdb, node, version, newheader->typepair,
+				unregister_result == ISC_R_SUCCESS, old_resign);
 		}
 	}
 
@@ -2481,15 +2427,18 @@ getsize(dns_db_t *db, dns_dbversion_t *dbversion, uint64_t *records,
 }
 
 static isc_result_t
-setsigningtime(dns_db_t *db, dns_dbnode_t *dbnode, dns_rdataset_t *rdataset,
-	       isc_stdtime_t resign) {
+setsigningtime(dns_db_t *db, dns_dbnode_t *dbnode, dns_dbversion_t *dbversion,
+	       dns_rdataset_t *rdataset, isc_stdtime_t resign) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
 	qpznode_t *node = (qpznode_t *)dbnode;
+	qpz_version_t *version = (qpz_version_t *)dbversion;
 	dns_vecheader_t *header = NULL;
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = NULL;
 
 	REQUIRE(VALID_QPZONE(qpdb));
+	REQUIRE(version != NULL && version->qpdb == qpdb);
+	REQUIRE(version->writer);
 	REQUIRE(rdataset != NULL);
 	REQUIRE(rdataset->methods == &dns_rdatavec_rdatasetmethods);
 
@@ -2498,49 +2447,45 @@ setsigningtime(dns_db_t *db, dns_dbnode_t *dbnode, dns_rdataset_t *rdataset,
 	nlock = qpzone_get_lock(node);
 	NODE_WRLOCK(nlock, &nlocktype);
 
-	/*
-	 * Check if element is in the heap using hashmap lookup.
-	 */
+	/* Update the rdataset metadata as well as the independent schedule. */
+	if (resign != 0) {
+		header->resign = dns_time64_from32(resign);
+		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_RESIGN);
+	}
 	qpz_resign_t *found_elem = NULL;
-	isc_result_t find_result;
+	int64_t old_resign = 0;
+	int64_t new_resign = resign != 0 ? header->resign : 0;
+	bool changed = false;
 
 	LOCK(&qpdb->heap->lock);
-	find_result = resign_lookup(qpdb->heap, header, node, &found_elem);
-
+	isc_result_t find_result = resign_lookup(qpdb->heap, node,
+						 header->typepair, &found_elem);
 	if (find_result == ISC_R_SUCCESS) {
-		/* Element is in heap */
-		INSIST(RESIGN(header));
+		old_resign = found_elem->resign;
 		if (resign == 0) {
-			(void)resign_unregister(qpdb->heap, node, header);
-		} else {
-			int64_t old_resign = header->resign;
-			int64_t new_resign = dns_time64_from32(resign);
-
-			header->resign = new_resign;
-
-			if (resign_sooner_values(new_resign, header->typepair,
-						 old_resign, header->typepair))
-			{
+			(void)resign_unregister(qpdb->heap, node,
+						header->typepair, NULL);
+			changed = true;
+		} else if (new_resign != old_resign) {
+			found_elem->resign = new_resign;
+			if (new_resign < old_resign) {
 				isc_heap_increased(qpdb->heap->heap,
 						   found_elem->heap_index);
-			} else if (resign_sooner_values(
-					   old_resign, header->typepair,
-					   new_resign, header->typepair))
-			{
+			} else {
 				isc_heap_decreased(qpdb->heap->heap,
 						   found_elem->heap_index);
 			}
-			/* No heap adjustment needed if neither direction
-			 * indicates sooner */
+			changed = true;
 		}
 	} else if (resign != 0) {
-		/* Element not in heap, add it */
-		header->resign = dns_time64_from32(resign);
-		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_RESIGN);
-
-		resign_register(qpdb->heap, node, header);
+		resign_register(qpdb->heap, node, header->typepair, new_resign);
+		changed = true;
 	}
 	UNLOCK(&qpdb->heap->lock);
+	if (changed) {
+		resign_rollback(qpdb, node, version, header->typepair,
+				find_result == ISC_R_SUCCESS, old_resign);
+	}
 	NODE_UNLOCK(nlock, &nlocktype);
 	return ISC_R_SUCCESS;
 }
@@ -2549,10 +2494,6 @@ static isc_result_t
 getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *foundname,
 	       dns_typepair_t *typepair) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	qpz_resign_t *elem = NULL;
-	dns_vecheader_t *header = NULL;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = NULL;
 	isc_result_t result = ISC_R_NOTFOUND;
 
 	REQUIRE(VALID_QPZONE(qpdb));
@@ -2561,40 +2502,14 @@ getsigningtime(dns_db_t *db, isc_stdtime_t *resign, dns_name_t *foundname,
 	REQUIRE(typepair != NULL);
 
 	LOCK(&qpdb->heap->lock);
-	elem = isc_heap_element(qpdb->heap->heap, 1);
-	if (elem == NULL) {
-		UNLOCK(&qpdb->heap->lock);
-		return ISC_R_NOTFOUND;
-	}
-	nlock = qpzone_get_lock(elem->node);
-	UNLOCK(&qpdb->heap->lock);
-
-again:
-	NODE_RDLOCK(nlock, &nlocktype);
-
-	LOCK(&qpdb->heap->lock);
-	elem = isc_heap_element(qpdb->heap->heap, 1);
-
-	isc_rwlock_t *new_nlock = (elem != NULL) ? qpzone_get_lock(elem->node)
-						 : NULL;
-	if (new_nlock != NULL && new_nlock != nlock) {
-		UNLOCK(&qpdb->heap->lock);
-		NODE_UNLOCK(nlock, &nlocktype);
-
-		nlock = new_nlock;
-		goto again;
-	}
-
-	if (elem != NULL && RESIGN(elem->header)) {
-		header = elem->header;
-		*resign = (uint32_t)header->resign;
+	qpz_resign_t *elem = isc_heap_element(qpdb->heap->heap, 1);
+	if (elem != NULL) {
+		*resign = (uint32_t)elem->resign;
 		dns_name_copy(&elem->node->name, foundname);
-		*typepair = header->typepair;
+		*typepair = elem->typepair;
 		result = ISC_R_SUCCESS;
 	}
 	UNLOCK(&qpdb->heap->lock);
-	NODE_UNLOCK(nlock, &nlocktype);
-
 	return result;
 }
 
@@ -5146,9 +5061,6 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				&subresult);
 		}
 		if (result == ISC_R_SUCCESS) {
-			LOCK(&qpdb->heap->lock);
-			(void)resign_unregister(qpdb->heap, node, newheader);
-			UNLOCK(&qpdb->heap->lock);
 			dns_vecheader_unref(newheader);
 			newheader = subresult;
 			/*
@@ -5159,9 +5071,6 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				DNS_VECHEADER_SETATTR(newheader,
 						      DNS_VECHEADERATTR_RESIGN);
 				newheader->resign = header->resign;
-				LOCK(&qpdb->heap->lock);
-				resign_register(qpdb->heap, node, newheader);
-				UNLOCK(&qpdb->heap->lock);
 			}
 			/*
 			 * We have to set the serial since the rdatavec
@@ -5181,9 +5090,6 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			 * This subtraction would remove all of the rdata;
 			 * add a nonexistent header instead.
 			 */
-			LOCK(&qpdb->heap->lock);
-			(void)resign_unregister(qpdb->heap, node, newheader);
-			UNLOCK(&qpdb->heap->lock);
 			dns_vecheader_unref(newheader);
 			newheader = dns_vecheader_new(db->mctx);
 			newheader->ttl = 0;
@@ -5192,9 +5098,6 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				    DNS_VECHEADERATTR_NONEXISTENT);
 			newheader->serial = version->serial;
 		} else {
-			LOCK(&qpdb->heap->lock);
-			(void)resign_unregister(qpdb->heap, node, newheader);
-			UNLOCK(&qpdb->heap->lock);
 			dns_vecheader_unref(newheader);
 			goto unlock;
 		}
@@ -5209,23 +5112,33 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 
 		node->dirty = true;
 		changed->dirty = true;
-		isc_result_t unregister_result;
+		if (RESIGN(header) || RESIGN(newheader)) {
+			int64_t old_resign = 0;
+			bool scheduled = EXISTS(newheader) && RESIGN(newheader);
 
-		LOCK(&qpdb->heap->lock);
-		unregister_result = resign_unregister(qpdb->heap, node, header);
-		UNLOCK(&qpdb->heap->lock);
-		if (unregister_result == ISC_R_SUCCESS) {
-			resign_rollback(qpdb, node, version,
-					header DNS__DB_FLARG_PASS);
+			LOCK(&qpdb->heap->lock);
+			isc_result_t unregister_result = resign_unregister(
+				qpdb->heap, node, newheader->typepair,
+				&old_resign);
+			if (scheduled) {
+				resign_register(qpdb->heap, node,
+						newheader->typepair,
+						newheader->resign);
+			}
+			UNLOCK(&qpdb->heap->lock);
+			if (unregister_result == ISC_R_SUCCESS || scheduled) {
+				resign_rollback(qpdb, node, version,
+						newheader->typepair,
+						unregister_result ==
+							ISC_R_SUCCESS,
+						old_resign);
+			}
 		}
 	} else {
 		/*
 		 * The rdataset doesn't exist, so we don't need to do anything
 		 * to satisfy the deletion request.
 		 */
-		LOCK(&qpdb->heap->lock);
-		(void)resign_unregister(qpdb->heap, node, newheader);
-		UNLOCK(&qpdb->heap->lock);
 		dns_vecheader_unref(newheader);
 		if ((options & DNS_DBSUB_EXACT) != 0) {
 			result = DNS_R_NOTEXACT;
@@ -5668,7 +5581,8 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 		isc_stdtime_t resign;
 		resign = dns_rdataset_minresign(&ardataset);
 		dns_db_setsigningtime((dns_db_t *)qpdb, (dns_dbnode_t *)node,
-				      &ardataset, resign);
+				      (dns_dbversion_t *)version, &ardataset,
+				      resign);
 	}
 
 failure:
