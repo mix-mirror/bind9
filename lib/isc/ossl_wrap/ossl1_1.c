@@ -395,6 +395,20 @@ isc_ossl_wrap_generate_rsa_key(void (*callback)(int), size_t bit_size,
 	if (RSA_generate_key_ex(rsa, bit_size, e, cb) != 1) {
 		CLEANUP(OSSL_WRAP_ERROR("RSA_generate_key_ex"));
 	}
+
+	/*
+	 * AWS-LC silently rounds the key size down to a multiple of 128 bits;
+	 * reject such a key, as its size would not match the requested one.
+	 */
+	if ((size_t)RSA_bits(rsa) != bit_size) {
+		isc_log_write(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
+			      ISC_LOG_ERROR,
+			      "RSA key generation produced a %u-bit key "
+			      "instead of the requested %zu-bit one",
+			      RSA_bits(rsa), bit_size);
+		CLEANUP(ISC_R_NOTIMPLEMENTED);
+	}
+
 	*pkeyp = pkey;
 	pkey = NULL;
 	result = ISC_R_SUCCESS;

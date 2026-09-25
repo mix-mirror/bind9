@@ -158,7 +158,7 @@ def rsa1_properties(alg):
     return [
         f"ksk {lifetime['P10Y']} {alg} 2048 goal:omnipresent dnskey:rumoured krrsig:rumoured ds:hidden",
         f"zsk {lifetime['P5Y']} {alg} 2048 goal:omnipresent dnskey:rumoured zrrsig:rumoured",
-        f"zsk {lifetime['P1Y']} {alg} 2000 goal:omnipresent dnskey:rumoured zrrsig:rumoured",
+        f"zsk {lifetime['P1Y']} {alg} 3072 goal:omnipresent dnskey:rumoured zrrsig:rumoured",
     ]
 
 
