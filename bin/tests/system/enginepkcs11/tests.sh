@@ -79,7 +79,7 @@ for algtypebits in rsasha256:rsa:2048 rsasha512:rsa:2048 \
   n=$((n + 1))
   ret=0
   echo_i "Test zone signing was successful for $zone ($n)"
-  OPENSSL_CONF="../openssl.cnf" KRYOPTIC_CONF="kryoptic.toml" $VERIFY -z -o $zone "${zonefile}" >verify.out.$zone.$n 2>&1 || ret=1
+  OPENSSL_CONF="../openssl_pin.cnf" KRYOPTIC_CONF="kryoptic.toml" $VERIFY -z -o $zone "${zonefile}" >verify.out.$zone.$n 2>&1 || ret=1
   test "$ret" -eq 0 || echo_i "failed (dnssec-verify failed)"
   status=$((status + ret))
 
@@ -261,7 +261,7 @@ EOF
   n=$((n + 1))
   ret=0
   echo_i "Test dnssec-keygen for $zone ($n)"
-  OPENSSL_CONF="../openssl.cnf" KRYOPTIC_CONF="kryoptic.toml" $KEYGEN -k $alg -l named.conf $zone >keygen.out.$zone.$n || ret=1
+  OPENSSL_CONF="../openssl_pin.cnf" KRYOPTIC_CONF="kryoptic.toml" $KEYGEN -k $alg -l named.conf $zone >keygen.out.$zone.$n || ret=1
   check_keys $zone 2 || ret=1
   status=$((status + ret))
 

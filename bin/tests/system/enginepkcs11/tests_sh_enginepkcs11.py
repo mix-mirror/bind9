@@ -22,8 +22,8 @@ import isctest.template
 
 EXTRA_ARTIFACTS = pytest.mark.extra_artifacts(
     [
-        "pin",
         "openssl.cnf",
+        "openssl_pin.cnf",
         "dig.out.*",
         "dsset-*",
         "keyfromlabel.err.*",
@@ -71,21 +71,28 @@ pytestmark = [
 def bootstrap() -> dict[str, Any]:
     templates = isctest.template.TemplateEngine(".")
 
-    database = Path.cwd() / "ns1" / "kryoptic.db"
+    pin_path = Path.cwd().parent.joinpath("_common", "pin").resolve()
+
+    database = Path.cwd().joinpath("ns1", "kryoptic.db").resolve()
     templates.render("ns1/kryoptic.toml", {"database": str(database)})
 
-    database = Path.cwd() / "ns2" / "kryoptic.db"
+    database = Path.cwd().joinpath("ns2", "kryoptic.db").resolve()
     templates.render("ns2/kryoptic.toml", {"database": str(database)})
 
     templates.render(
         "openssl.cnf",
+        {"pkcs11_module_path": os.environ["BIND9_TEST_KRYOPTIC_MODULE"]},
+    )
+
+    templates.render(
+        "openssl_pin.cnf",
         {
             "pkcs11_module_path": os.environ["BIND9_TEST_KRYOPTIC_MODULE"],
-            "pin_path": Path.cwd() / "pin",
+            "pin_path": pin_path,
         },
     )
 
-    return {}
+    return {"pin_path": pin_path}
 
 
 # @pytest.mark.flaky(max_runs=5)  # GL#4605
