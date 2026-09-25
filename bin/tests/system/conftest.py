@@ -123,6 +123,11 @@ for _alg in get_algorithms.ALL_ALGORITHMS:
     _supported = get_algorithms.is_supported(_alg)
     os.environ[f"{_alg.name}_SUPPORTED"] = "1" if _supported else "0"
 
+# get_algorithms.py logs through the root logger, which implicitly attaches
+# a stderr handler to it; without removal, every test's debug log ends up
+# in the pytest output.
+isctest.log.avoid_duplicated_logs()
+
 # Algorithm numbers and DST identifiers only differ on newer branches.
 os.environ.setdefault(
     "DEFAULT_ALGORITHM_DST_NUMBER", os.environ["DEFAULT_ALGORITHM_NUMBER"]
