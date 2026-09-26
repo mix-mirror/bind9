@@ -111,7 +111,7 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 }
 
 static void
-cleanup_all_deadnodes(dns_db_t *db) {
+cleanup_all_deadnodes(dns_db_t *db, size_t maxcache) {
 	qpcache_t *qpdb = (qpcache_t *)db;
 	qpcache_ref(qpdb);
 	for (uint16_t locknum = 0; locknum < qpdb->buckets_count; locknum++) {
@@ -122,10 +122,15 @@ cleanup_all_deadnodes(dns_db_t *db) {
 	/*
 	 * NAMESPACE_NORMAL node/entry reclamation is deferred to an RCU
 	 * grace period (see dns_ht_tree_deletename()), so it doesn't show
-	 * up in isc_mem_inuse() immediately. Force it to complete before
-	 * the caller checks memory usage.
+	 * up in isc_mem_inuse() immediately. If memory usage would fail the
+	 * caller's limit check, wait for reclamation before checking again.
+	 * Otherwise, avoid a callback barrier on every insertion: thousands
+	 * of serial callback waits make these tests unnecessarily slow.
 	 */
-	rcu_barrier();
+	if (isc_mem_inuse(db->mctx) >= maxcache) {
+		rcu_quiescent_state();
+		rcu_barrier();
+	}
 }
 
 /*
@@ -321,6 +326,36 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 	isc_loopmgr_shutdown();
 }
 
+ISC_LOOP_TEST_IMPL(destroy_with_pending_entry) {
+	isc_mem_t *mctx = NULL;
+	dns_db_t *db = NULL;
+	dns_dbnode_t *node = NULL;
+	dns_fixedname_t fname;
+	dns_name_t *name = NULL;
+
+	isc_mem_create("test", &mctx);
+	db = servestale_setup(mctx, &fname, &name);
+	/* Also exercise destruction of a node still present in the table. */
+	servestale_addrdataset(db, name, isc_stdtime_now(), dns_rdatatype_a,
+			       "10.53.0.1", 3600, dns_trust_answer);
+	dns_test_namefromstring("empty.example.com.", &fname);
+
+	/* Keep the deleted entry's callback pending until after DB detach. */
+	rcu_read_lock();
+	isc_result_t result = dns_db_findnode(db, name, true, &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_db_detachnode(&node);
+	dns_db_detach(&db);
+	rcu_read_unlock();
+	rcu_quiescent_state();
+	rcu_barrier();
+
+	size_t inuse = isc_mem_inuse(mctx);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+	assert_int_equal(inuse, 0);
+}
+
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	size_t maxcache = 2097152U; /* 2MB - same as DNS_CACHE_MINSIZE */
 	size_t hiwater = maxcache - (maxcache >> 3); /* borrowed from cache.c */
@@ -360,7 +395,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054,
 					 DNS_RDATA_MAXLENGTH - 2, false);
-		cleanup_all_deadnodes(db);
+		cleanup_all_deadnodes(db, maxcache);
 		if (verbose) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
@@ -411,7 +446,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	 */
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 0, true);
-		cleanup_all_deadnodes(db);
+		cleanup_all_deadnodes(db, maxcache);
 		if (verbose) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
@@ -425,6 +460,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 }
 
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY_CUSTOM(destroy_with_pending_entry, setup_managers,
+		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(allrdatasets_expiredok_skips_deleted_header,

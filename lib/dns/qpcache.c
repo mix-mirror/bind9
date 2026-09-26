@@ -197,6 +197,8 @@ struct qpcache {
 	 */
 	isc_refcount_t references;
 
+	struct rcu_head rcu_head;
+
 	dns_stats_t *rrsetstats;
 	isc_stats_t *cachestats;
 
@@ -1846,7 +1848,8 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data) {
 }
 
 static void
-qpcache__destroy(qpcache_t *qpdb) {
+qpcache__destroy_rcu(struct rcu_head *rcu_head) {
+	qpcache_t *qpdb = caa_container_of(rcu_head, qpcache_t, rcu_head);
 	unsigned int i;
 	char buf[DNS_NAME_FORMATSIZE];
 
@@ -1891,6 +1894,17 @@ qpcache__destroy(qpcache_t *qpdb) {
 	isc_mem_putanddetach(&qpdb->common.mctx, qpdb,
 			     sizeof(*qpdb) + qpdb->buckets_count *
 						     sizeof(qpdb->buckets[0]));
+}
+
+static void
+qpcache__destroy(qpcache_t *qpdb) {
+	/*
+	 * Deleted hash entries still reference tree_normal until their RCU
+	 * callbacks run. ISC threads share a callback queue, so defer the
+	 * whole teardown behind those callbacks, including the tree's memory
+	 * context and the cache state used by node destruction.
+	 */
+	call_rcu(&qpdb->rcu_head, qpcache__destroy_rcu);
 }
 
 static void
