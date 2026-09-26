@@ -136,7 +136,6 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		.nitems = nitems,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.mctx = isc_mem_ref(mctx),
-		.lrulink = ISC_LINK_INITIALIZER,
 	};
 
 #if DNS_SLABHEADER_TRACE

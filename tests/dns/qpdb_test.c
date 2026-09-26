@@ -326,6 +326,85 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 	isc_loopmgr_shutdown();
 }
 
+/* Eviction operates on names, including all types stored at a name. */
+ISC_LOOP_TEST_IMPL(sieve_nodes) {
+	isc_mem_t *mctx = NULL;
+	dns_fixedname_t fname;
+	dns_name_t *name = NULL;
+	dns_dbnode_t *nodes[3] = { NULL, NULL, NULL };
+	const char *names[] = { "hot.example.", "cold.example.",
+				"new.example." };
+	isc_stdtime_t now = isc_stdtime_now();
+
+	isc_mem_create("test", &mctx);
+	dns_db_t *db = servestale_setup(mctx, &fname, &name);
+	qpcache_t *qpdb = (qpcache_t *)db;
+
+	for (size_t i = 0; i < 3; i++) {
+		dns_test_namefromstring(names[i], &fname);
+		assert_int_equal(dns_db_findnode(db, name, true, &nodes[i]),
+				 ISC_R_SUCCESS);
+		/*
+		 * Put the empty nodes in one bucket for deterministic eviction.
+		 */
+		((qpcnode_t *)nodes[i])->locknum = 0;
+		servestale_addrdataset(db, name, now, dns_rdatatype_a,
+				       "192.0.2.1", 3600, dns_trust_answer);
+		servestale_addrdataset(db, name, now, dns_rdatatype_aaaa,
+				       "2001:db8::1", 3600, dns_trust_answer);
+	}
+
+	qpcnode_t *hot = (qpcnode_t *)nodes[0];
+	qpcnode_t *cold = (qpcnode_t *)nodes[1];
+	qpcnode_t *newnode = (qpcnode_t *)nodes[2];
+	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
+	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
+	isc_rwlock_t *lock = &qpdb->buckets[0].lock;
+	NODE_WRLOCK(lock, &nlocktype);
+
+	/* A hit on one type gives the whole node a second chance. */
+	dns_slabheader_t *header = cds_list_first_entry(
+		&hot->headers, dns_slabheader_t, headers_link);
+	qpcache_hit(qpdb, header);
+	expire_lru_nodes(qpdb, newnode, 0, 1, &nlocktype,
+			 &tlocktype DNS__DB_FILELINE);
+	NODE_UNLOCK(lock, &nlocktype);
+
+	assert_true(cds_list_empty(&cold->headers));
+	assert_false(ISC_SIEVE_LINKED(cold, lrulink));
+	assert_false(cds_list_empty(&hot->headers));
+	assert_false(cds_list_empty(&newnode->headers));
+
+	/* The node being populated is protected even for a large purge. */
+	NODE_WRLOCK(lock, &nlocktype);
+	expire_lru_nodes(qpdb, newnode, 0, SIZE_MAX, &nlocktype,
+			 &tlocktype DNS__DB_FILELINE);
+	NODE_UNLOCK(lock, &nlocktype);
+	assert_false(cds_list_empty(&newnode->headers));
+	assert_true(cds_list_empty(&hot->headers));
+
+	/* An externally held empty node can be populated and evicted again. */
+	dns_test_namefromstring(names[1], &fname);
+	servestale_addrdataset(db, name, now, dns_rdatatype_a, "192.0.2.2",
+			       3600, dns_trust_answer);
+	assert_true(ISC_SIEVE_LINKED(cold, lrulink));
+	assert_int_equal(
+		dns_db_deleterdataset(db, nodes[1], NULL, dns_rdatatype_a, 0),
+		ISC_R_SUCCESS);
+	assert_false(ISC_SIEVE_LINKED(cold, lrulink));
+
+	for (size_t i = 0; i < 3; i++) {
+		dns_db_detachnode(&nodes[i]);
+	}
+	dns_db_detach(&db);
+	rcu_quiescent_state();
+	rcu_barrier();
+	size_t inuse = isc_mem_inuse(mctx);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+	assert_int_equal(inuse, 0);
+}
+
 ISC_LOOP_TEST_IMPL(destroy_with_pending_entry) {
 	isc_mem_t *mctx = NULL;
 	dns_db_t *db = NULL;
@@ -460,6 +539,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 }
 
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY_CUSTOM(sieve_nodes, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(destroy_with_pending_entry, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)

@@ -100,10 +100,6 @@ struct dns_slabheader {
 
 	uint16_t nitems;
 
-	/*% Used for SIEVE-LRU (cache) */
-	bool visited;
-	ISC_LINK(struct dns_slabheader) lrulink;
-
 	/*%
 	 * Flexible member indicates the address of the raw data
 	 * following this header.  This needs to be aligned to the
