@@ -105,7 +105,6 @@ dns_srcset.add(
         'forward.c',
         'gssapictx.c',
         'hmac_link.c',
-        'ht-tree.c',
         'ipkeylist.c',
         'iptable.c',
         'journal.c',

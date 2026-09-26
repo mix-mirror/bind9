@@ -21,6 +21,7 @@
 #include <isc/async.h>
 #include <isc/atomic.h>
 #include <isc/file.h>
+#include <isc/hash.h>
 #include <isc/hex.h>
 #include <isc/list.h>
 #include <isc/log.h>
@@ -59,7 +60,6 @@
 #include <dns/view.h>
 
 #include "db_p.h"
-#include "ht_tree_p.h"
 #include "qpcache_p.h"
 #include "rdataslab_p.h"
 
@@ -176,6 +176,19 @@ typedef struct qpcache_bucket {
 	};
 } qpcache_bucket_t;
 
+/* The normal-name index owns internal node references. */
+typedef struct qpcache_table {
+	isc_mem_t *mctx;
+	struct cds_lfht *ht;
+} qpcache_table_t;
+
+typedef struct qpcache_entry {
+	struct cds_lfht_node ht_node;
+	struct rcu_head rcu_head;
+	isc_mem_t *mctx;
+	qpcnode_t *node;
+} qpcache_entry_t;
+
 struct qpcache {
 	/* Unlocked. */
 	dns_db_t common;
@@ -201,8 +214,6 @@ struct qpcache {
 	 */
 	isc_refcount_t references;
 
-	struct rcu_head rcu_head;
-
 	dns_stats_t *rrsetstats;
 	isc_stats_t *cachestats;
 
@@ -216,9 +227,9 @@ struct qpcache {
 	 */
 	uint32_t serve_stale_refresh;
 
-	/* Locked by tree_lock. */
-	dns_ht_tree_t tree_normal;
-	dns_qp_t     *tree_nsec;
+	/* Normal-name lookups use RCU; the NSEC index uses tree_lock. */
+	qpcache_table_t table;
+	dns_qp_t *tree_nsec;
 
 	size_t buckets_count;
 	qpcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
@@ -258,6 +269,117 @@ ISC_REFCOUNT_STATIC_TRACE_DECL(qpcnode);
 #else
 ISC_REFCOUNT_STATIC_DECL(qpcnode);
 #endif
+
+/*
+ * The hash entries own their node and memory-context references, independently
+ * of the table and cache. Reclamation can therefore finish after cache
+ * teardown. Lookups, insertion, deletion and counting require an RCU read-side
+ * section; returned nodes remain valid within that section or under a node
+ * reference.
+ */
+static int
+entry_match(struct cds_lfht_node *ht_node, const void *key) {
+	qpcache_entry_t *entry = caa_container_of(ht_node, qpcache_entry_t,
+						  ht_node);
+	return dns_name_equal(&entry->node->name, key);
+}
+
+static void
+entry_destroy(struct rcu_head *rcu_head) {
+	qpcache_entry_t *entry = caa_container_of(rcu_head, qpcache_entry_t,
+						  rcu_head);
+	qpcnode_detach(&entry->node);
+	isc_mem_putanddetach(&entry->mctx, entry, sizeof(*entry));
+}
+
+static void
+table_init(isc_mem_t *mctx, qpcache_table_t *table) {
+	isc_mem_attach(mctx, &table->mctx);
+	/* Initial and minimum sizes must be powers of two. */
+	table->ht = cds_lfht_new(1 << 16, 1 << 10, 0,
+				 CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
+				 NULL);
+	INSIST(table->ht != NULL);
+}
+
+/* No application readers remain, but the resize worker may still be active. */
+static void
+table_destroy(qpcache_table_t *table) {
+	qpcache_entry_t *entry = NULL;
+	struct cds_lfht_iter iter;
+
+	rcu_read_lock();
+	cds_lfht_for_each_entry(table->ht, &iter, entry, ht_node) {
+		INSIST(cds_lfht_del(table->ht, &entry->ht_node) == 0);
+		call_rcu(&entry->rcu_head, entry_destroy);
+	}
+	rcu_read_unlock();
+	RUNTIME_CHECK(cds_lfht_destroy(table->ht, NULL) == 0);
+	isc_mem_detach(&table->mctx);
+}
+
+static isc_result_t
+table_find(qpcache_table_t *table, const dns_name_t *name, qpcnode_t **nodep) {
+	struct cds_lfht_iter iter;
+	uint32_t hash = isc_hash32(name->ndata, name->length, false);
+
+	cds_lfht_lookup(table->ht, hash, entry_match, name, &iter);
+	struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
+	if (ht_node == NULL) {
+		return ISC_R_NOTFOUND;
+	}
+	qpcache_entry_t *entry = caa_container_of(ht_node, qpcache_entry_t,
+						  ht_node);
+	*nodep = entry->node;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+table_insert(qpcache_table_t *table, qpcnode_t *node, qpcnode_t **existingp) {
+	const dns_name_t *name = &node->name;
+	uint32_t hash = isc_hash32(name->ndata, name->length, false);
+	qpcache_entry_t *entry = isc_mem_get(table->mctx, sizeof(*entry));
+	*entry = (qpcache_entry_t){ 0 };
+	isc_mem_attach(table->mctx, &entry->mctx);
+	qpcnode_attach(node, &entry->node);
+	cds_lfht_node_init(&entry->ht_node);
+
+	struct cds_lfht_node *ht_node = cds_lfht_add_unique(
+		table->ht, hash, entry_match, name, &entry->ht_node);
+	if (ht_node != &entry->ht_node) {
+		/* This entry was never published and needs no grace period. */
+		entry_destroy(&entry->rcu_head);
+		qpcache_entry_t *existing =
+			caa_container_of(ht_node, qpcache_entry_t, ht_node);
+		*existingp = existing->node;
+		return ISC_R_EXISTS;
+	}
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+table_delete(qpcache_table_t *table, const dns_name_t *name) {
+	struct cds_lfht_iter iter;
+	uint32_t hash = isc_hash32(name->ndata, name->length, false);
+
+	cds_lfht_lookup(table->ht, hash, entry_match, name, &iter);
+	struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
+	if (ht_node == NULL || cds_lfht_del(table->ht, ht_node) != 0) {
+		return ISC_R_NOTFOUND;
+	}
+	qpcache_entry_t *entry = caa_container_of(ht_node, qpcache_entry_t,
+						  ht_node);
+	call_rcu(&entry->rcu_head, entry_destroy);
+	return ISC_R_SUCCESS;
+}
+
+static size_t
+table_count(qpcache_table_t *table) {
+	long before, after;
+	unsigned long count;
+	cds_lfht_count_nodes(table->ht, &before, &count, &after);
+	return (size_t)count;
+}
 
 /*
  * Node methods forward declarations
@@ -317,20 +439,6 @@ static void
 qp_triename(void *uctx ISC_ATTR_UNUSED, char *buf, size_t size) {
 	snprintf(buf, size, "qpdb-lite");
 }
-
-/* Hashmap methods, for the NAMESPACE_NORMAL half of the cache. */
-static const dns_name_t *
-ht_name(void *uctx ISC_ATTR_UNUSED, void *pval,
-	uint32_t ival ISC_ATTR_UNUSED) {
-	qpcnode_t *data = pval;
-	return &data->name;
-}
-
-static dns_htmethods_t htmethods = {
-	qp_attach,
-	qp_detach,
-	ht_name,
-};
 
 static void
 rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
@@ -579,8 +687,7 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 			}
 		}
 		rcu_read_lock();
-		result = dns_ht_tree_deletename(&qpdb->tree_normal, &node->name,
-						NULL, NULL);
+		result = table_delete(&qpdb->table, &node->name);
 		rcu_read_unlock();
 		break;
 	case DNS_DBNAMESPACE_NSEC:
@@ -1326,8 +1433,7 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	 * Lookup the predecessor in the normal namespace.
 	 */
 	node = NULL;
-	RETERR(dns_ht_tree_getname(&search->qpdb->tree_normal, predecessor,
-				   (void **)&node, NULL));
+	RETERR(table_find(&search->qpdb->table, predecessor, &node));
 	dns_name_copy(&node->name, fname);
 
 	nlock = &search->qpdb->buckets[node->locknum].lock;
@@ -1453,8 +1559,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Search down from the root of the tree.
 	 */
-	result = dns_ht_tree_getname(&search.qpdb->tree_normal, name,
-				     (void **)&node, NULL);
+	result = table_find(&search.qpdb->table, name, &node);
 	if (result == ISC_R_SUCCESS && foundname != NULL) {
 		dns_name_copy(&node->name, foundname);
 	}
@@ -1472,9 +1577,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		dns_name_getlabelsequence(name, nlabels - suffixlabels,
 					  suffixlabels, ancestor);
 
-		tresult = dns_ht_tree_getname(&search.qpdb->tree_normal,
-					      ancestor, (void **)&encloser,
-					      NULL);
+		tresult = table_find(&search.qpdb->table, ancestor, &encloser);
 		if (tresult != ISC_R_SUCCESS) {
 			continue;
 		}
@@ -1875,8 +1978,7 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data) {
 }
 
 static void
-qpcache__destroy_rcu(struct rcu_head *rcu_head) {
-	qpcache_t *qpdb = caa_container_of(rcu_head, qpcache_t, rcu_head);
+qpcache__destroy(qpcache_t *qpdb) {
 	unsigned int i;
 	char buf[DNS_NAME_FORMATSIZE];
 
@@ -1890,7 +1992,7 @@ qpcache__destroy_rcu(struct rcu_head *rcu_head) {
 		}
 	}
 
-	dns_ht_tree_deinit(&qpdb->tree_normal);
+	table_destroy(&qpdb->table);
 	dns_qp_destroy(&qpdb->tree_nsec);
 
 	if (dns_name_dynamic(&qpdb->common.origin)) {
@@ -1931,17 +2033,6 @@ qpcache__destroy_rcu(struct rcu_head *rcu_head) {
 	isc_mem_putanddetach(&qpdb->common.mctx, qpdb,
 			     sizeof(*qpdb) + qpdb->buckets_count *
 						     sizeof(qpdb->buckets[0]));
-}
-
-static void
-qpcache__destroy(qpcache_t *qpdb) {
-	/*
-	 * Deleted hash entries still reference tree_normal until their RCU
-	 * callbacks run. ISC threads share a callback queue, so defer the
-	 * whole teardown behind those callbacks, including the tree's memory
-	 * context and the cache state used by node destruction.
-	 */
-	call_rcu(&qpdb->rcu_head, qpcache__destroy_rcu);
 }
 
 static void
@@ -2046,8 +2137,7 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 
 	rcu_read_lock();
 
-	result = dns_ht_tree_getname(&qpdb->tree_normal, name, (void **)&node,
-				     NULL);
+	result = table_find(&qpdb->table, name, &node);
 	if (result != ISC_R_SUCCESS) {
 		if (!create) {
 			rcu_read_unlock();
@@ -2055,8 +2145,7 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		}
 
 		qpcnode_t *newnode = new_qpcnode(qpdb, name, nspace);
-		result = dns_ht_tree_insert(&qpdb->tree_normal, newnode, 0,
-					    (void **)&node, NULL);
+		result = table_insert(&qpdb->table, newnode, &node);
 		if (result == ISC_R_EXISTS) {
 			/* Someone else inserted first; use theirs. */
 			qpcnode_unref(newnode);
@@ -2829,7 +2918,7 @@ nodecount(dns_db_t *db) {
 	REQUIRE(VALID_QPDB(qpdb));
 
 	rcu_read_lock();
-	count_normal = dns_ht_tree_count(&qpdb->tree_normal);
+	count_normal = table_count(&qpdb->table);
 	rcu_read_unlock();
 
 	TREE_RDLOCK(&qpdb->tree_lock, &tlocktype);
@@ -2896,7 +2985,7 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	/*
 	 * Make the qp tries.
 	 */
-	dns_ht_tree_init(mctx, &htmethods, qpdb, &qpdb->tree_normal);
+	table_init(mctx, &qpdb->table);
 	dns_qp_create(mctx, &qpmethods, qpdb, &qpdb->tree_nsec);
 
 	qpdb->common.magic = DNS_DB_MAGIC;

@@ -121,7 +121,7 @@ cleanup_all_deadnodes(dns_db_t *db, size_t maxcache) {
 
 	/*
 	 * NAMESPACE_NORMAL node/entry reclamation is deferred to an RCU
-	 * grace period (see dns_ht_tree_deletename()), so it doesn't show
+	 * grace period (see table_delete()), so it doesn't show
 	 * up in isc_mem_inuse() immediately. If memory usage would fail the
 	 * caller's limit check, wait for reclamation before checking again.
 	 * Otherwise, avoid a callback barrier on every insertion: thousands
@@ -405,6 +405,55 @@ ISC_LOOP_TEST_IMPL(sieve_nodes) {
 	assert_int_equal(inuse, 0);
 }
 
+/* Entry callbacks must not depend on either the table or the cache. */
+ISC_LOOP_TEST_IMPL(table_entries_outlive_cache) {
+	isc_mem_t *mctx = NULL;
+	dns_fixedname_t fname;
+	dns_name_t *name = NULL;
+
+	isc_mem_create("test", &mctx);
+	dns_db_t *db = servestale_setup(mctx, &fname, &name);
+	qpcache_t *qpdb = (qpcache_t *)db;
+	qpcache_table_t *table = isc_mem_get(mctx, sizeof(*table));
+	*table = (qpcache_table_t){ 0 };
+	table_init(mctx, table);
+	qpcnode_t *first = new_qpcnode(qpdb, name, DNS_DBNAMESPACE_NORMAL);
+	qpcnode_t *second = new_qpcnode(qpdb, name, DNS_DBNAMESPACE_NORMAL);
+	qpcnode_t *found = NULL;
+
+	rcu_read_lock();
+	assert_int_equal(table_insert(table, first, &found), ISC_R_SUCCESS);
+	assert_int_equal(table_insert(table, second, &found), ISC_R_EXISTS);
+	assert_ptr_equal(found, first);
+	assert_int_equal(isc_refcount_current(&second->references), 1);
+	assert_int_equal(table_count(table), 1);
+
+	assert_int_equal(table_delete(table, name), ISC_R_SUCCESS);
+	assert_int_equal(table_find(table, name, &found), ISC_R_NOTFOUND);
+	assert_int_equal(table_delete(table, name), ISC_R_NOTFOUND);
+	assert_int_equal(table_insert(table, second, &found), ISC_R_SUCCESS);
+	assert_int_equal(table_find(table, name, &found), ISC_R_SUCCESS);
+	assert_ptr_equal(found, second);
+	assert_int_equal(table_count(table), 1);
+
+	/* Only the entries now own these nodes. */
+	qpcnode_detach(&first);
+	qpcnode_detach(&second);
+	table_destroy(table);
+	isc_mem_put(mctx, table, sizeof(*table));
+	dns_db_detach(&db);
+	/* Both removed and shutdown entries are still awaiting reclamation. */
+	assert_true(isc_mem_inuse(mctx) > 0);
+	rcu_read_unlock();
+	rcu_quiescent_state();
+	rcu_barrier();
+
+	size_t inuse = isc_mem_inuse(mctx);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+	assert_int_equal(inuse, 0);
+}
+
 ISC_LOOP_TEST_IMPL(destroy_with_pending_entry) {
 	isc_mem_t *mctx = NULL;
 	dns_db_t *db = NULL;
@@ -539,6 +588,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 }
 
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY_CUSTOM(table_entries_outlive_cache, setup_managers,
+		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(sieve_nodes, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(destroy_with_pending_entry, setup_managers,
 		      teardown_managers)
