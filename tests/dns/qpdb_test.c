@@ -405,6 +405,77 @@ ISC_LOOP_TEST_IMPL(sieve_nodes) {
 	assert_int_equal(inuse, 0);
 }
 
+/* Force removal between finding a node and acquiring its external reference. */
+ISC_LOOP_TEST_IMPL(removed_node_cannot_reactivate) {
+	isc_mem_t *mctx = NULL;
+	dns_fixedname_t fname;
+	dns_name_t *name = NULL;
+	dns_dbnode_t *node = NULL;
+	qpcnode_t *candidate = NULL;
+
+	isc_mem_create("test", &mctx);
+	dns_db_t *db = servestale_setup(mctx, &fname, &name);
+	qpcache_t *qpdb = (qpcache_t *)db;
+	assert_int_equal(dns_db_findnode(db, name, true, &node), ISC_R_SUCCESS);
+
+	/* Model a lookup paused before reactivate_node() takes the bucket lock.
+	 */
+	rcu_read_lock();
+	assert_int_equal(table_find(&qpdb->table, name, &candidate),
+			 ISC_R_SUCCESS);
+	dns_db_detachnode(&node);
+	assert_true(candidate->removed);
+	assert_false(reactivate_node(qpdb, candidate,
+				     isc_rwlocktype_none DNS__DB_FILELINE));
+	assert_int_equal(isc_refcount_current(&candidate->erefs), 0);
+	assert_int_equal(dns_db_findnode(db, name, false, &node),
+			 ISC_R_NOTFOUND);
+
+	/* Retrying with create=true must acquire a new, indexed node. */
+	assert_int_equal(dns_db_findnode(db, name, true, &node), ISC_R_SUCCESS);
+	assert_ptr_not_equal(node, candidate);
+
+	/* An insertion that loses to an existing node has the same race. */
+	qpcnode_t *unused = new_qpcnode(qpdb, name, DNS_DBNAMESPACE_NORMAL);
+	assert_int_equal(table_insert(&qpdb->table, unused, &candidate),
+			 ISC_R_EXISTS);
+	qpcnode_detach(&unused);
+	assert_ptr_equal(node, candidate);
+	dns_db_detachnode(&node);
+	assert_false(reactivate_node(qpdb, candidate,
+				     isc_rwlocktype_none DNS__DB_FILELINE));
+	assert_int_equal(isc_refcount_current(&candidate->erefs), 0);
+
+	assert_int_equal(dns_db_findnode(db, name, true, &node), ISC_R_SUCCESS);
+	assert_ptr_not_equal(node, candidate);
+	rcu_read_unlock();
+
+	/* If acquisition wins, its reference prevents removal of the empty
+	 * node. */
+	candidate = (qpcnode_t *)node;
+	assert_true(reactivate_node(qpdb, candidate,
+				    isc_rwlocktype_none DNS__DB_FILELINE));
+	dns_db_detachnode(&node);
+	rcu_read_lock();
+	qpcnode_t *indexed = NULL;
+	assert_int_equal(table_find(&qpdb->table, name, &indexed),
+			 ISC_R_SUCCESS);
+	assert_ptr_equal(indexed, candidate);
+	rcu_read_unlock();
+
+	servestale_addrdataset(db, name, isc_stdtime_now(), dns_rdatatype_a,
+			       "192.0.2.1", 3600, dns_trust_answer);
+	node = (dns_dbnode_t *)candidate;
+	dns_db_detachnode(&node);
+	dns_db_detach(&db);
+	rcu_quiescent_state();
+	rcu_barrier();
+	size_t inuse = isc_mem_inuse(mctx);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+	assert_int_equal(inuse, 0);
+}
+
 /* Entry callbacks must not depend on either the table or the cache. */
 ISC_LOOP_TEST_IMPL(table_entries_outlive_cache) {
 	isc_mem_t *mctx = NULL;
@@ -588,6 +659,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 }
 
 ISC_TEST_LIST_START
+ISC_TEST_ENTRY_CUSTOM(removed_node_cannot_reactivate, setup_managers,
+		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(table_entries_outlive_cache, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(sieve_nodes, setup_managers, teardown_managers)

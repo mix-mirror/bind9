@@ -138,6 +138,9 @@ struct qpcnode {
 
 	struct cds_list_head headers;
 
+	/* Protected by the bucket lock; an unlinked node cannot be revived. */
+	bool removed;
+
 	/* SIEVE tracks all rdatasets at this name as one cache entry. */
 	ISC_LINK(qpcnode_t) lrulink;
 	bool visited;
@@ -650,6 +653,8 @@ qpcache_hit(qpcache_t *qpdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
  */
 
 /*
+ * The node's bucket write lock must be held.
+ *
  * tree_lock(write) must be held for a NAMESPACE_NSEC node, or a
  * NAMESPACE_NORMAL node with havensec set (since that also deletes
  * the node's NSEC-namespace companion). It is not required otherwise.
@@ -657,6 +662,11 @@ qpcache_hit(qpcache_t *qpdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
 static void
 delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 	isc_result_t result = ISC_R_UNEXPECTED;
+
+	INSIST(cds_list_empty(&node->headers));
+	INSIST(isc_refcount_current(&node->erefs) == 0);
+	INSIST(!node->removed);
+	node->removed = true;
 
 	if (isc_log_wouldlog(ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL))) {
 		char printname[DNS_NAME_FORMATSIZE];
@@ -733,16 +743,13 @@ qpcnode_erefs_increment(qpcache_t *qpdb, qpcnode_t *node,
 	}
 
 	/*
-	 * this is the first external reference to the node.
-	 *
-	 * we need to hold the node or tree lock (or, for a
-	 * NAMESPACE_NORMAL node, an RCU read-side section, which is
-	 * what protects it against a concurrent delete instead) to
-	 * avoid incrementing the reference count while also deleting
-	 * the node.
+	 * This is the first external reference. The bucket lock protects
+	 * normal-node membership while the reference is acquired; the tree
+	 * lock also suffices for NSEC nodes. RCU alone only protects storage.
 	 */
 	INSIST(nlocktype != isc_rwlocktype_none ||
-	       tlocktype != isc_rwlocktype_none || rcu_read_ongoing());
+	       (node->nspace == DNS_DBNAMESPACE_NSEC &&
+		tlocktype != isc_rwlocktype_none));
 
 	qpcache_ref(qpdb);
 }
@@ -750,6 +757,7 @@ qpcnode_erefs_increment(qpcache_t *qpdb, qpcnode_t *node,
 static void
 qpcnode_acquire(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t nlocktype,
 		isc_rwlocktype_t tlocktype DNS__DB_FLARG) {
+	INSIST(!node->removed);
 	qpcnode_ref(node);
 	qpcnode_erefs_increment(qpdb, node, nlocktype,
 				tlocktype DNS__DB_FLARG_PASS);
@@ -2082,23 +2090,25 @@ cleanup_deadnodes_cb(void *arg) {
 	qpcache_unref(qpdb);
 }
 /*
- * This function is assumed to be called when a node is newly referenced
- * and can be in the deadnode list.  In that case the node will be references
- * and cleanup_deadnodes() will remove it from the list when the cleaning
- * happens.
- * Note: while a new reference is gained in multiple places, there are only very
- * few cases where the node can be in the deadnode list (only empty nodes can
- * have been added to the list).
+ * Acquire a node found under RCU or the tree lock. An empty node may still
+ * be queued for cleanup, in which case acquiring a reference prevents its
+ * removal. If it has already been unlinked, RCU only protects its storage:
+ * the caller must retry lookup rather than acquire and repopulate it.
  */
-static void
+static bool
 reactivate_node(qpcache_t *qpdb, qpcnode_t *node,
 		isc_rwlocktype_t tlocktype ISC_ATTR_UNUSED DNS__DB_FLARG) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
 
 	NODE_RDLOCK(nlock, &nlocktype);
+	if (node->removed) {
+		NODE_UNLOCK(nlock, &nlocktype);
+		return false;
+	}
 	qpcnode_acquire(qpdb, node, nlocktype, tlocktype DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
+	return true;
 }
 
 static qpcnode_t *
@@ -2135,6 +2145,8 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 	isc_result_t result;
 	dns_namespace_t nspace = DNS_DBNAMESPACE_NORMAL;
 
+retry:
+	node = NULL;
 	rcu_read_lock();
 
 	result = table_find(&qpdb->table, name, &node);
@@ -2157,7 +2169,12 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		}
 	}
 
-	reactivate_node(qpdb, node, isc_rwlocktype_none DNS__DB_FLARG_PASS);
+	if (!reactivate_node(qpdb, node,
+			     isc_rwlocktype_none DNS__DB_FLARG_PASS))
+	{
+		rcu_read_unlock();
+		goto retry;
+	}
 
 	rcu_read_unlock();
 
@@ -3072,7 +3089,8 @@ reference_iter_node(qpc_dbit_t *qpdbiter DNS__DB_FLARG) {
 	}
 
 	INSIST(qpdbiter->tree_locked != isc_rwlocktype_none);
-	reactivate_node(qpdb, node, qpdbiter->tree_locked DNS__DB_FLARG_PASS);
+	RUNTIME_CHECK(reactivate_node(
+		qpdb, node, qpdbiter->tree_locked DNS__DB_FLARG_PASS));
 }
 
 static void
