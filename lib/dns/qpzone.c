@@ -283,6 +283,25 @@ qpzone_name_fromrelative(qpzonedb_t *qpdb, const dns_name_t *relative,
 	return dns_name_concatenate(relative, &qpdb->common.origin, name);
 }
 
+/*
+ * Give relative names a synthetic root label in the key, so the empty
+ * apex is recognized as an ancestor by the normal QP lookup rules.
+ */
+static size_t
+qpzone_key_fromname(dns_qpkey_t key, const dns_name_t *name,
+		    dns_namespace_t nspace) {
+	REQUIRE(!dns_name_isabsolute(name));
+
+	size_t keylen = dns_qpkey_fromname(key, name, nspace);
+	INSIST(keylen + 1 < sizeof(dns_qpkey_t));
+
+	/* Insert the separator after the namespace, preserving the sentinel. */
+	dns_qpshift_t separator = key[keylen]; /* SHIFT_NOBYTE */
+	memmove(key + 2, key + 1, keylen);
+	key[1] = separator;
+	return keylen + 1;
+}
+
 static isc_result_t
 qpzone_qp_getname(qpzonedb_t *qpdb, dns_qpreadable_t qpr,
 		  const dns_name_t *name, dns_namespace_t nspace, void **pval,
@@ -293,7 +312,9 @@ qpzone_qp_getname(qpzonedb_t *qpdb, dns_qpreadable_t qpr,
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
-	return dns_qp_getname(qpr, &relative, nspace, pval, ival);
+	dns_qpkey_t key;
+	size_t keylen = qpzone_key_fromname(key, &relative, nspace);
+	return dns_qp_getkey(qpr, key, keylen, pval, ival);
 }
 
 static isc_result_t
@@ -306,7 +327,9 @@ qpzone_qp_lookup(qpzonedb_t *qpdb, dns_qpreadable_t qpr, const dns_name_t *name,
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
-	return dns_qp_lookup(qpr, &relative, nspace, iter, chain, pval, ival);
+	dns_qpkey_t key;
+	size_t keylen = qpzone_key_fromname(key, &relative, nspace);
+	return dns_qp_lookupkey(qpr, key, keylen, iter, chain, pval, ival);
 }
 
 /*%
@@ -5909,7 +5932,7 @@ static size_t
 qp_makekey(dns_qpkey_t key, void *uctx ISC_ATTR_UNUSED, void *pval,
 	   uint32_t ival ISC_ATTR_UNUSED) {
 	qpznode_t *data = pval;
-	return dns_qpkey_fromname(key, &data->name, data->nspace);
+	return qpzone_key_fromname(key, &data->name, data->nspace);
 }
 
 static void

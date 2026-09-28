@@ -540,6 +540,20 @@ dns_qp_getname(dns_qpreadable_t qpr, const dns_name_t *name,
  */
 
 isc_result_t
+dns_qp_lookupkey(dns_qpreadable_t qpr, const dns_qpkey_t search_key,
+		 size_t search_keylen, dns_qpiter_t *iter, dns_qpchain_t *chain,
+		 void **pval_r, uint32_t *ival_r);
+/*%<
+ * Like dns_qp_lookup(), but accepts a precomputed key. Stored keys and
+ * search keys must use the same encoding, with label separators as in
+ * dns_qpkey_fromname(), so ancestor matching can recognize label boundaries.
+ *
+ * Requires:
+ * \li  `qpr` is a pointer to a readable qp-trie
+ * \li  `search_keylen < sizeof(dns_qpkey_t)`
+ */
+
+isc_result_t
 dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	      dns_namespace_t space, dns_qpiter_t *iter, dns_qpchain_t *chain,
 	      void **pval_r, uint32_t *ival_r);

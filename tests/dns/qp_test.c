@@ -687,6 +687,15 @@ check_qpchain(dns_qp_t *qp, struct check_qpchain check[]) {
 	check_qpchainiter(qp, check, &iter);
 }
 
+static size_t
+qpkey_fromrelative(dns_qpkey_t key, void *uctx, void *pval, uint32_t ival) {
+	size_t keylen = qpkey_fromstring(key, uctx, pval, ival);
+	INSIST(keylen + 1 < sizeof(dns_qpkey_t));
+	memmove(key + 2, key + 1, keylen);
+	key[1] = SHIFT_NOBYTE;
+	return keylen + 1;
+}
+
 ISC_RUN_TEST_IMPL(relative_qpchain) {
 	dns_qp_t *qp = NULL;
 	const char names[][16] = { "@", "a", "b.a", "z" };
@@ -694,7 +703,9 @@ ISC_RUN_TEST_IMPL(relative_qpchain) {
 				     DNS_DBNAMESPACE_NSEC,
 				     DNS_DBNAMESPACE_NSEC3 };
 
-	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	dns_qpmethods_t methods = string_methods;
+	methods.makekey = qpkey_fromrelative;
+	dns_qp_create(isc_g_mctx, &methods, NULL, &qp);
 	for (size_t s = 0; s < ARRAY_SIZE(spaces); s++) {
 		for (size_t i = 0; i < ARRAY_SIZE(names); i++) {
 			insert_name(qp, names[i], spaces[s]);
@@ -718,7 +729,36 @@ ISC_RUN_TEST_IMPL(relative_qpchain) {
 			{ "m", spaces[s], DNS_R_PARTIALMATCH, 1, { "@" } },
 			{ NULL, 0, 0, 0, { NULL } },
 		};
-		check_qpchain(qp, checks);
+		for (size_t i = 0; checks[i].query != NULL; i++) {
+			dns_qpkey_t key;
+			size_t keylen = qpkey_fromrelative(
+				key, NULL, (void *)checks[i].query, spaces[s]);
+			for (unsigned int useiter = 0; useiter < 2; useiter++) {
+				dns_qpchain_t chain;
+				dns_qpiter_t iter;
+				void *pval = NULL;
+				uint32_t ival = 0;
+				isc_result_t result = dns_qp_lookupkey(
+					qp, key, keylen, useiter ? &iter : NULL,
+					&chain, &pval, &ival);
+				assert_int_equal(result, checks[i].result);
+				assert_int_equal(ival, spaces[s]);
+				assert_string_equal(
+					pval,
+					checks[i].names[checks[i].length - 1]);
+				assert_int_equal(dns_qpchain_length(&chain),
+						 checks[i].length);
+				for (unsigned int j = 0; j < checks[i].length;
+				     j++)
+				{
+					dns_qpchain_node(&chain, j, &pval,
+							 &ival);
+					assert_string_equal(pval,
+							    checks[i].names[j]);
+					assert_int_equal(ival, spaces[s]);
+				}
+			}
+		}
 	}
 	dns_qp_destroy(&qp);
 }

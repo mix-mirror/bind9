@@ -2160,7 +2160,7 @@ twig_offset(dns_qpnode_t *n, dns_qpshift_t sbit, dns_qpshift_t kbit,
  * Requires the iterator to be pointing at a leaf node.
  */
 static void
-fix_iterator(dns_qpreader_t *qp, dns_qpiter_t *it, dns_qpkey_t key,
+fix_iterator(dns_qpreader_t *qp, dns_qpiter_t *it, const dns_qpkey_t key,
 	     size_t len) {
 	dns_qpnode_t *n = it->stack[it->sp];
 
@@ -2270,9 +2270,18 @@ isc_result_t
 dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	      dns_namespace_t space, dns_qpiter_t *iter, dns_qpchain_t *chain,
 	      void **pval_r, uint32_t *ival_r) {
+	dns_qpkey_t key;
+	size_t keylen = dns_qpkey_fromname(key, name, space);
+	return dns_qp_lookupkey(qpr, key, keylen, iter, chain, pval_r, ival_r);
+}
+
+isc_result_t
+dns_qp_lookupkey(dns_qpreadable_t qpr, const dns_qpkey_t search,
+		 size_t searchlen, dns_qpiter_t *iter, dns_qpchain_t *chain,
+		 void **pval_r, uint32_t *ival_r) {
 	dns_qpreader_t *qp = dns_qpreader(qpr);
-	dns_qpkey_t search, found;
-	size_t searchlen, foundlen;
+	dns_qpkey_t found;
+	size_t foundlen;
 	size_t offset = 0;
 	dns_qpnode_t *n = NULL;
 	dns_qpshift_t bit = SHIFT_NOBYTE;
@@ -2282,8 +2291,7 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 	bool setiter = true;
 
 	REQUIRE(QP_VALID(qp));
-
-	searchlen = dns_qpkey_fromname(search, name, space);
+	REQUIRE(searchlen < sizeof(dns_qpkey_t));
 
 	if (chain == NULL) {
 		chain = &oc;
@@ -2328,17 +2336,10 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 		 *
 		 * Note 2: If SHIFT_NOBYTE twig is present, it will always
 		 * be in position 0, the first location in 'twigs'.
-		 *
-		 * The empty relative name is also an ancestor of relative
-		 * queries. Its key ends immediately after the namespace,
-		 * without a preceding label separator. Check the leaf's
-		 * key length to distinguish it from an absolute root name.
 		 */
 		if (bit != SHIFT_NOBYTE && branch_has_twig(n, SHIFT_NOBYTE) &&
-		    !is_branch(twigs) &&
-		    (qpkey_bit(search, searchlen, offset - 1) == SHIFT_NOBYTE ||
-		     (offset == NAME_OFFSET &&
-		      leaf_qpkey(qp, twigs, found) == NAME_OFFSET)))
+		    qpkey_bit(search, searchlen, offset - 1) == SHIFT_NOBYTE &&
+		    !is_branch(twigs))
 		{
 			add_link(chain, twigs, offset);
 		}
