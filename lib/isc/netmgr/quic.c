@@ -26,6 +26,7 @@
 
 typedef struct quic_awaiting_packet quic_awaiting_packet_t;
 typedef struct push_packet_job push_packet_job_t;
+typedef struct stop_socket_job stop_socket_job_t;
 
 struct quic_awaiting_packet {
 	isc_mem_t *mctx;
@@ -88,6 +89,11 @@ struct push_packet_job {
 	uint8_t data[] ISC_ATTR_COUNTED_BY(len);
 };
 
+struct stop_socket_job {
+	isc_nm_quiclistener_t *listener;
+	isc_tid_t tid;
+};
+
 constexpr uint32_t listener_magic = ISC_MAGIC('N', 'M', 'q', 'c');
 
 constexpr uintptr_t is_conn = 0x01;
@@ -107,7 +113,7 @@ stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, void **stream_data,
 
 static isc_result_t
 stream_closed_cb(isc_quic_conn_t *conn, void *cbarg, int64_t stream_id,
-		 isc_quic_application_error_kind_t kind,
+		 void *stream_data, isc_quic_application_error_kind_t kind,
 		 uint64_t rx_application_error_code,
 		 uint64_t tx_application_error_code);
 
@@ -163,6 +169,28 @@ async_push_packet(void *cbarg) {
 }
 
 static void
+async_stop_socket(void *cbarg) {
+	isc_nm_quiclistener_t *listener;
+	stop_socket_job_t *job;
+	isc_nmsocket_t *sock;
+
+	job = cbarg;
+	listener = job->listener;
+	sock = MOVE_OWNERSHIP(listener->children[job->tid]);
+
+	if (sock->outerhandle != NULL) {
+		isc_nmhandle_detach(&sock->outerhandle);
+	}
+
+	isc__nmsocket_prep_destroy(sock);
+	isc__nmsocket_detach(&sock);
+
+	isc_mem_put(listener->mctx, job, sizeof(*job));
+
+	isc_nm_quiclistener_unref(listener);
+}
+
+static void
 handshake_completed_cb(void *cbarg) {
 	isc__nm_quic_conn_t *nmconn;
 	isc_nmhandle_t *handle = cbarg;
@@ -215,6 +243,25 @@ stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, void **stream_data,
 }
 
 static isc_result_t
+stream_closed_cb(isc_quic_conn_t *conn ISC_ATTR_UNUSED,
+		 void *cbarg ISC_ATTR_UNUSED, int64_t stream_id ISC_ATTR_UNUSED,
+		 void *stream_data,
+		 isc_quic_application_error_kind_t kind ISC_ATTR_UNUSED,
+		 uint64_t rx_application_error_code ISC_ATTR_UNUSED,
+		 uint64_t tx_application_error_code ISC_ATTR_UNUSED)
+
+{
+	isc_nmhandle_t *handle = stream_data;
+
+	INSIST(handle->quic.stream->id == -1);
+
+	fprintf(stderr, "asdasdaaaa\n");
+	isc_quic_conn_detach(&handle->quic.stream->conn);
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
 data_read_cb(isc_quic_conn_t *conn ISC_ATTR_UNUSED, void *cbarg ISC_ATTR_UNUSED,
 	     isc_quic_stream_data_info_t info, isc_constregion_t data) {
 	isc_nmhandle_t *handle = info.stream_data;
@@ -232,8 +279,6 @@ static void
 udp_send_cb(isc_nmhandle_t *handle ISC_ATTR_UNUSED,
 	    isc_result_t result ISC_ATTR_UNUSED, void *cbarg) {
 	quic_awaiting_packet_t *packet = cbarg;
-
-	fprintf(stderr, "sent\n");
 
 	isc_mem_putanddetach(&packet->mctx, packet,
 			     STRUCT_FLEX_SIZE(packet, data, packet->len));
@@ -296,7 +341,6 @@ listener_udp_recv_cb(isc_nmhandle_t *udphandle, isc_result_t eresult,
 			isc_async_run(worker->loop, async_push_packet, job);
 			return;
 		}
-		fprintf(stderr, "ok %p\n", conn);
 		break;
 	case ISC_R_NOTFOUND:
 		worker = udphandle->sock->worker;
@@ -329,7 +373,6 @@ listener_udp_recv_cb(isc_nmhandle_t *udphandle, isc_result_t eresult,
 			.stream_open_cb_arg = listener->stream_open_cb_arg,
 		};
 		handle->quic.raw |= is_conn;
-		fprintf(stderr, "!! %p\n", conn);
 		break;
 	default:
 		return;
@@ -337,7 +380,6 @@ listener_udp_recv_cb(isc_nmhandle_t *udphandle, isc_result_t eresult,
 
 	result = isc_quic_conn_push_packet(conn, packet, &local, &sock->peer);
 	if (result != ISC_R_SUCCESS) {
-		fprintf(stderr, "ppoo %s\n", isc_result_toid(result));
 		isc_quic_conn_unref(conn);
 		return;
 	}
@@ -345,12 +387,9 @@ listener_udp_recv_cb(isc_nmhandle_t *udphandle, isc_result_t eresult,
 	written = 0;
 	result = isc_quic_conn_pull_packet(conn, out, &written, &local, &peer);
 	if (result != ISC_R_SUCCESS) {
-		fprintf(stderr, "ppoo2\n");
 		isc_quic_conn_unref(conn);
 		return;
 	}
-
-	fprintf(stderr, "sending %zu\n", written);
 
 	awaiting = isc_mem_get(sock->worker->mctx,
 			       STRUCT_FLEX_SIZE(awaiting, data, written));
@@ -365,15 +404,27 @@ listener_udp_recv_cb(isc_nmhandle_t *udphandle, isc_result_t eresult,
 }
 
 static void
-destroy(isc_nm_quiclistener_t *listener) {
-	// size_t i;
+listener_destroy(isc_nm_quiclistener_t *listener) {
+	size_t i;
 
 	listener->magic = 0x00;
 
+	for (i = 0; i < listener->nchildren; i++) {
+		INSIST(listener->children[i] == NULL);
+	}
+
+	isc_quic_router_unref(listener->router);
+
+	isc_mem_put(listener->mctx, listener->options,
+		    sizeof(*listener->options));
+
 	isc_refcount_destroy(&listener->references);
+	isc_mem_putanddetach(
+		&listener->mctx, listener,
+		STRUCT_FLEX_SIZE(listener, children, listener->nchildren));
 }
 
-ISC_REFCOUNT_IMPL(isc_nm_quiclistener, destroy);
+ISC_REFCOUNT_IMPL(isc_nm_quiclistener, listener_destroy);
 
 void
 isc__nmhandle_quic_destroy(isc_nmhandle_t *handle, uint64_t application_code) {
@@ -411,6 +462,7 @@ void
 isc__nm_quic_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 		  void *cbarg) {
 	quic_awaiting_packet_t *packet;
+	isc__nm_quic_stream_t *stream;
 	isc__nm_uvreq_t *uvreq;
 	isc_nmsocket_t *sock;
 	isc_result_t result;
@@ -420,7 +472,8 @@ isc__nm_quic_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 	REQUIRE(VALID_NMHANDLE(handle));
 	REQUIRE(VALID_NMSOCK(handle->sock));
 	REQUIRE(handle->sock->tid == isc_tid() &&
-		handle->sock->type == isc_nm_quicsocket);
+		handle->sock->type == isc_nm_quicsocket &&
+		(handle->quic.raw & is_conn) == 0);
 
 	/*
 	 * Stream has been shut down before.
@@ -429,10 +482,9 @@ isc__nm_quic_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 		cb(handle, ISC_R_CANCELED, cbarg);
 	}
 
-	REQUIRE((handle->quic.raw & is_conn) == 0);
-
 	sock = handle->sock;
-	if (isc__nm_closing(sock->worker)) {
+	stream = handle->quic.stream;
+	if (isc__nm_closing(sock->worker) || stream->conn == NULL) {
 		uvreq = isc__nm_uvreq_get(sock);
 		isc_nmhandle_attach(handle, &uvreq->handle);
 		uvreq->cb.send = cb;
@@ -441,8 +493,7 @@ isc__nm_quic_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 		return;
 	}
 
-	result = isc_quic_conn_push_stream_data(handle->quic.stream->conn,
-						handle->quic.stream->id,
+	result = isc_quic_conn_push_stream_data(stream->conn, stream->id,
 						region->base, region->length);
 	if (result != ISC_R_SUCCESS) {
 		cb(handle, result, cbarg);
@@ -450,7 +501,7 @@ isc__nm_quic_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 	}
 
 	written = 0;
-	result = isc_quic_conn_pull_packet(handle->quic.stream->conn,
+	result = isc_quic_conn_pull_packet(stream->conn,
 					   (isc_region_t){ buf, sizeof(buf) },
 					   &written, &sock->iface, &sock->peer);
 	if (result != ISC_R_SUCCESS) {
@@ -458,8 +509,8 @@ isc__nm_quic_send(isc_nmhandle_t *handle, isc_region_t *region, isc_nm_cb_t cb,
 		return;
 	}
 
-	handle->quic.stream->send_cb = cb;
-	handle->quic.stream->send_cb_arg = cbarg;
+	stream->send_cb = cb;
+	stream->send_cb_arg = cbarg;
 
 	packet = isc_mem_get(sock->worker->mctx,
 			     STRUCT_FLEX_SIZE(packet, data, written));
@@ -579,6 +630,10 @@ cleanup:
 
 void
 isc_nm_quiclistener_stop(isc_nm_quiclistener_t *listener) {
+	stop_socket_job_t *job;
+	isc_loop_t *loop;
+	size_t i;
+
 	REQUIRE(listener != NULL && listener->magic == listener_magic);
 	REQUIRE(!listener->closing);
 	REQUIRE(isc_tid() == 0);
@@ -586,4 +641,23 @@ isc_nm_quiclistener_stop(isc_nm_quiclistener_t *listener) {
 	listener->closing = true;
 	isc_nm_udplistener_stop(listener->udp_listener);
 	isc_nm_udplistener_detach(&listener->udp_listener);
+
+	job = isc_mem_get(listener->mctx, sizeof(*job));
+	*job = (stop_socket_job_t){
+		.listener = isc_nm_quiclistener_ref(listener),
+		.tid = 0,
+	};
+
+	async_stop_socket(job);
+
+	for (i = 1; i < listener->nchildren; i++) {
+		job = isc_mem_get(listener->mctx, sizeof(*job));
+		*job = (stop_socket_job_t){
+			.listener = isc_nm_quiclistener_ref(listener),
+			.tid = i,
+		};
+
+		loop = listener->children[i]->worker->loop;
+		isc_async_run(loop, async_stop_socket, job);
+	}
 }

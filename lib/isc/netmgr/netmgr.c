@@ -991,7 +991,7 @@ nmhandle_destroy(isc_nmhandle_t *handle) {
 #endif
 
 #ifdef HAVE_LIBNGTCP2
-	if (sock->type == isc_nm_quicsocket && handle->quic.stream != NULL) {
+	if (sock->type == isc_nm_quicsocket) {
 		isc__nmhandle_quic_destroy(handle, 0);
 	}
 #endif
