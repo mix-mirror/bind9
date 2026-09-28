@@ -1545,22 +1545,19 @@ version_negotiation_cb(ngtcp2_conn *ngconn, uint32_t ngversion,
 	isc_crypto_quic_hp_protect_t *hp = NULL;
 	isc_crypto_aead_t *aead = NULL;
 	isc_result_t result;
-	uint32_t version;
 	bool is_server;
 	int r;
 
 #if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
-	version = ngtcp2_conn_get_client_chosen_version2(ngconn);
 	is_server = ngtcp2_conn_is_server2(ngconn);
 #else  /* NGTCP2_VERSION_NUM >= 0x011700 */
-	version = ngtcp2_conn_get_client_chosen_version(ngconn);
 	is_server = ngtcp2_conn_is_server(ngconn);
 #endif /* NGTCP2_VERSION_NUM >= 0x011700 */
 
 	CHECK(derive_initial_secret(
 		(isc_region_t){ initial_secret, sizeof(initial_secret) },
 		(isc_region_t){ self_secret, sizeof(self_secret) },
-		(isc_region_t){ peer_secret, sizeof(peer_secret) }, version,
+		(isc_region_t){ peer_secret, sizeof(peer_secret) }, ngversion,
 		is_server, client_dcid));
 
 	CHECK(derive_packet_keys(
