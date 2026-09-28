@@ -317,18 +317,13 @@ qpzone_qp_getname(qpzonedb_t *qpdb, dns_qpreadable_t qpr,
 	return dns_qp_getkey(qpr, key, keylen, pval, ival);
 }
 
+/* Look up an internal name that is already relative to the zone origin. */
 static isc_result_t
-qpzone_qp_lookup(qpzonedb_t *qpdb, dns_qpreadable_t qpr, const dns_name_t *name,
+qpzone_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 		 dns_namespace_t nspace, dns_qpiter_t *iter,
 		 dns_qpchain_t *chain, void **pval, uint32_t *ival) {
-	dns_name_t relative;
-	dns_name_init(&relative);
-	isc_result_t result = qpzone_name_torelative(qpdb, name, &relative);
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
 	dns_qpkey_t key;
-	size_t keylen = qpzone_key_fromname(key, &relative, nspace);
+	size_t keylen = qpzone_key_fromname(key, name, nspace);
 	return dns_qp_lookupkey(qpr, key, keylen, iter, chain, pval, ival);
 }
 
@@ -2967,10 +2962,6 @@ step(qpz_search_t *search, dns_qpiter_t *it, direction_t direction,
 static bool
 activeempty(qpz_search_t *search, dns_qpiter_t *it, const dns_name_t *current) {
 	qpznode_t *next_node = NULL;
-	dns_name_t relative;
-	dns_name_init(&relative);
-	RUNTIME_CHECK(qpzone_name_torelative(search->qpdb, current,
-					     &relative) == ISC_R_SUCCESS);
 
 	/*
 	 * The iterator is currently pointed at the predecessor
@@ -2986,7 +2977,7 @@ activeempty(qpz_search_t *search, dns_qpiter_t *it, const dns_name_t *current) {
 		return false;
 	}
 	return step(search, it, FORWARD, &next_node) &&
-	       dns_name_issubdomain(&next_node->name, &relative);
+	       dns_name_issubdomain(&next_node->name, current);
 }
 
 static bool
@@ -2994,7 +2985,6 @@ wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 		 dns_name_t *wname) {
 	isc_result_t result;
 	qpznode_t *next_node = NULL, *prev_node = NULL;
-	dns_name_t name;
 	dns_name_t rname;
 	dns_name_t tname;
 	dns_qpiter_t it;
@@ -3002,7 +2992,6 @@ wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 	bool check_prev = false;
 	unsigned int n;
 
-	dns_name_init(&name);
 	dns_name_init(&tname);
 	dns_name_init(&rname);
 
@@ -3032,8 +3021,7 @@ wildcard_blocked(qpz_search_t *search, const dns_name_t *qname,
 		return false;
 	}
 
-	RUNTIME_CHECK(qpzone_name_torelative(search->qpdb, qname, &rname) ==
-		      ISC_R_SUCCESS);
+	dns_name_clone(qname, &rname);
 
 	/*
 	 * Remove the wildcard label to find the terminal name.
@@ -3120,9 +3108,9 @@ find_wildcard(qpz_search_t *search, qpznode_t **nodep, const dns_name_t *qname,
 				break;
 			}
 
-			result = qpzone_qp_lookup(search->qpdb, &search->qpr,
-						  wname, nspace, &wit, NULL,
-						  (void **)&wnode, NULL);
+			result = qpzone_qp_lookup(&search->qpr, wname, nspace,
+						  &wit, NULL, (void **)&wnode,
+						  NULL);
 			if (result == ISC_R_SUCCESS) {
 				/*
 				 * We have found the wildcard node.  If it
@@ -3222,9 +3210,9 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 			 * NSEC namespace.
 			 */
 			*firstp = false;
-			result = qpzone_qp_lookup(search->qpdb, &search->qpr,
-						  name, DNS_DBNAMESPACE_NSEC,
-						  nit, NULL, NULL, NULL);
+			result = qpzone_qp_lookup(&search->qpr, name,
+						  DNS_DBNAMESPACE_NSEC, nit,
+						  NULL, NULL, NULL);
 
 			INSIST(result != ISC_R_NOTFOUND);
 			if (result == ISC_R_SUCCESS) {
@@ -3268,8 +3256,7 @@ previous_closest_nsec(dns_rdatatype_t type, qpz_search_t *search,
 		}
 
 		*nodep = NULL;
-		result = qpzone_qp_lookup(search->qpdb, &search->qpr,
-					  &nsec_node->name,
+		result = qpzone_qp_lookup(&search->qpr, &nsec_node->name,
 					  DNS_DBNAMESPACE_NORMAL, &search->iter,
 					  &search->chain, (void **)nodep, NULL);
 		if (result == ISC_R_SUCCESS) {
@@ -3640,8 +3627,12 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	INSIST(version == NULL ||
 	       ((qpz_version_t *)version)->qpdb == (qpzonedb_t *)db);
 
-	if (!dns_name_issubdomain(name, &qpdb->common.origin)) {
-		return ISC_R_NOTFOUND;
+	/* Convert the query once; internal search helpers use relative names.
+	 */
+	dns_name_t relative = DNS_NAME_INITEMPTY;
+	result = qpzone_name_torelative(qpdb, name, &relative);
+	if (result != ISC_R_SUCCESS) {
+		return result;
 	}
 
 	/*
@@ -3669,7 +3660,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Search down from the root of the tree.
 	 */
-	result = qpzone_qp_lookup(qpdb, &search.qpr, name, nspace, &search.iter,
+	result = qpzone_qp_lookup(&search.qpr, &relative, nspace, &search.iter,
 				  &search.chain, (void **)&node, NULL);
 	if (result != ISC_R_NOTFOUND) {
 		RUNTIME_CHECK(qpzone_name_fromrelative(qpdb, &node->name,
@@ -3719,7 +3710,8 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			 * we must see if there's a matching wildcard active
 			 * in the current version.
 			 */
-			result = find_wildcard(&search, &node, name, nspace);
+			result = find_wildcard(&search, &node, &relative,
+					       nspace);
 			if (result == ISC_R_SUCCESS) {
 				RUNTIME_CHECK(
 					qpzone_name_fromrelative(
@@ -3739,7 +3731,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 			 * so it isn't necessary to check for them.
 			 */
 			dns_qpiter_t iter = search.iter;
-			active = activeempty(&search, &iter, name);
+			active = activeempty(&search, &iter, &relative);
 		}
 
 		/*
@@ -4441,10 +4433,10 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		 * NSEC3 follows after all non-nsec3 nodes, seek the NSEC3
 		 * origin node.
 		 */
-		result = qpzone_qp_lookup(
-			qpdb, qpdbiter->snap, &qpdb->common.origin,
-			DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter, NULL,
-			(void **)&qpdbiter->node, NULL);
+		result = qpzone_qp_lookup(qpdbiter->snap, &qpdb->origin->name,
+					  DNS_DBNAMESPACE_NSEC3,
+					  &qpdbiter->iter, NULL,
+					  (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS ||
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
@@ -4531,8 +4523,7 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		/*
 		 * The final non-nsec node is before the NSEC origin node.
 		 */
-		result = qpzone_qp_lookup(qpdb, qpdbiter->snap,
-					  &qpdb->common.origin,
+		result = qpzone_qp_lookup(qpdbiter->snap, &qpdb->origin->name,
 					  DNS_DBNAMESPACE_NSEC, &qpdbiter->iter,
 					  NULL, (void **)&qpdbiter->node, NULL);
 		if (result == ISC_R_SUCCESS) {
@@ -4584,29 +4575,34 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
+	dns_name_t relative = DNS_NAME_INITEMPTY;
+	result = qpzone_name_torelative((qpzonedb_t *)iterator->db, name,
+					&relative);
+	if (result != ISC_R_SUCCESS) {
+		qpdbiter->result = result;
+		return result;
+	}
+
 	switch (qpdbiter->nsec3mode) {
 	case nsec3only:
 		result = qpzone_qp_lookup(
-			(qpzonedb_t *)iterator->db, qpdbiter->snap, name,
-			DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter, NULL,
-			(void **)&qpdbiter->node, NULL);
+			qpdbiter->snap, &relative, DNS_DBNAMESPACE_NSEC3,
+			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
 		break;
 	case nonsec3:
 		result = qpzone_qp_lookup(
-			(qpzonedb_t *)iterator->db, qpdbiter->snap, name,
-			DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter, NULL,
-			(void **)&qpdbiter->node, NULL);
+			qpdbiter->snap, &relative, DNS_DBNAMESPACE_NORMAL,
+			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
 		break;
 	case full:
 		result = qpzone_qp_lookup(
-			(qpzonedb_t *)iterator->db, qpdbiter->snap, name,
-			DNS_DBNAMESPACE_NORMAL, &qpdbiter->iter, NULL,
-			(void **)&qpdbiter->node, NULL);
+			qpdbiter->snap, &relative, DNS_DBNAMESPACE_NORMAL,
+			&qpdbiter->iter, NULL, (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS) {
 			tresult = qpzone_qp_lookup(
-				(qpzonedb_t *)iterator->db, qpdbiter->snap,
-				name, DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter,
-				NULL, (void **)&qpdbiter->node, NULL);
+				qpdbiter->snap, &relative,
+				DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter, NULL,
+				(void **)&qpdbiter->node, NULL);
 			if (tresult == ISC_R_SUCCESS) {
 				result = tresult;
 			}
@@ -4647,9 +4643,17 @@ dbiterator_seek3(dns_dbiterator_t *iterator,
 
 	dereference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
 
-	result = qpzone_qp_lookup((qpzonedb_t *)iterator->db, qpdbiter->snap,
-				  name, DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter,
-				  NULL, (void **)&qpdbiter->node, NULL);
+	dns_name_t relative = DNS_NAME_INITEMPTY;
+	result = qpzone_name_torelative((qpzonedb_t *)iterator->db, name,
+					&relative);
+	if (result != ISC_R_SUCCESS) {
+		qpdbiter->result = result;
+		return result;
+	}
+
+	result = qpzone_qp_lookup(qpdbiter->snap, &relative,
+				  DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter, NULL,
+				  (void **)&qpdbiter->node, NULL);
 
 	switch (result) {
 	case ISC_R_SUCCESS:
@@ -4738,8 +4742,7 @@ dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		}
 
 		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
-		result = qpzone_qp_lookup(qpdb, qpdbiter->snap,
-					  &qpdb->common.origin,
+		result = qpzone_qp_lookup(qpdbiter->snap, &qpdb->origin->name,
 					  DNS_DBNAMESPACE_NSEC, &qpdbiter->iter,
 					  NULL, (void **)&qpdbiter->node, NULL);
 
@@ -4845,10 +4848,10 @@ dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 		}
 		INSIST(qpdbiter->node->nspace == DNS_DBNAMESPACE_NSEC);
 
-		result = qpzone_qp_lookup(
-			qpdb, qpdbiter->snap, &qpdb->common.origin,
-			DNS_DBNAMESPACE_NSEC3, &qpdbiter->iter, NULL,
-			(void **)&qpdbiter->node, NULL);
+		result = qpzone_qp_lookup(qpdbiter->snap, &qpdb->origin->name,
+					  DNS_DBNAMESPACE_NSEC3,
+					  &qpdbiter->iter, NULL,
+					  (void **)&qpdbiter->node, NULL);
 		if (result != ISC_R_SUCCESS ||
 		    QPDBITER_NSEC3_ORIGIN_NODE(qpdb, qpdbiter))
 		{
@@ -4974,9 +4977,9 @@ qpzone_createiterator(dns_db_t *db, unsigned int options,
 		 * NSEC3 follows after all non-nsec3 nodes,
 		 * seek the NSEC3 origin node.
 		 */
-		result = qpzone_qp_lookup(
-			qpdb, iter->snap, &qpdb->common.origin,
-			DNS_DBNAMESPACE_NSEC3, &iter->iter, NULL, NULL, NULL);
+		result = qpzone_qp_lookup(iter->snap, &qpdb->origin->name,
+					  DNS_DBNAMESPACE_NSEC3, &iter->iter,
+					  NULL, NULL, NULL);
 		INSIST(result == ISC_R_SUCCESS);
 		break;
 	default:
