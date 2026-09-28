@@ -51,18 +51,20 @@ struct dns_dyndbctx {
  * if not, set DNS_DYNDB_AGE to 0.
  */
 #ifndef DNS_DYNDB_VERSION
-#define DNS_DYNDB_VERSION 3
+#define DNS_DYNDB_VERSION 4
 #define DNS_DYNDB_AGE	  0
 #endif /* ifndef DNS_DYNDB_VERSION */
 
 typedef isc_result_t
-dns_dyndb_register_t(isc_mem_t *mctx, const char *name, const char *parameters,
-		     const char *file, unsigned long line,
-		     const dns_dyndbctx_t *dctx, void **instp);
+dns_dyndb_register_t(isc_mem_t *mctx, const char *name,
+		     const char *const *parameters, const char *file,
+		     unsigned long line, const dns_dyndbctx_t *dctx,
+		     void **instp);
 /*%
  * Called when registering a new driver instance. 'name' must be unique.
- * 'parameters' contains the driver configuration text. 'dctx' is the
- * initialization context set up in dns_dyndb_createctx().
+ * 'parameters' contains the driver configuration as a NULL-terminated
+ * token array (see <isccfg/tokens.h>). 'dctx' is the initialization
+ * context set up in dns_dyndb_createctx().
  *
  * '*instp' will be set to the driver instance handle if the function
  * is successful.
@@ -95,9 +97,9 @@ dns_dyndb_version_t(unsigned int *flags);
  */
 
 isc_result_t
-dns_dyndb_load(const char *libname, const char *name, const char *parameters,
-	       const char *file, unsigned long line, isc_mem_t *mctx,
-	       const dns_dyndbctx_t *dctx);
+dns_dyndb_load(const char *libname, const char *name,
+	       const char *const *parameters, const char *file,
+	       unsigned long line, isc_mem_t *mctx, const dns_dyndbctx_t *dctx);
 /*%
  * Load a dyndb module.
  *
