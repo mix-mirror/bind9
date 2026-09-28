@@ -252,12 +252,13 @@ stream_open_cb(isc_nmhandle_t *handle, isc_result_t eresult, void *cbarg) {
 
 	// fprintf(stderr, "Stream Opened %p\n", handle);
 	//
-	// isc_region_t *reply = isc_mem_get(isc_g_mctx, sizeof(isc_region_t) +
-	// 3); reply->length = 3, reply->base = (uint8_t *)reply +
-	// sizeof(isc_region_t); memmove(reply->base, "UwU", 3);
+	isc_region_t *reply = isc_mem_get(isc_g_mctx, sizeof(isc_region_t) + 3);
+	reply->length = 3,
+	reply->base = (uint8_t *)reply + sizeof(isc_region_t);
+	memmove(reply->base, "UwU", 3);
 
 	isc_nmhandle_ref(handle);
-	// isc_nm_send(handle, reply, send_cb, reply);
+	isc_nm_send(handle, reply, send_cb, reply);
 }
 
 static void
