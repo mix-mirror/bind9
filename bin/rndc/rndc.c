@@ -301,10 +301,12 @@ static void
 rndc_recvdone(isc_nmhandle_t *handle, isc_result_t result, void *arg) {
 	isccc_ccmsg_t *ccmsg = (isccc_ccmsg_t *)arg;
 	isccc_sexpr_t *response = NULL;
+	isccc_sexpr_t *_ctrl = NULL;
 	isccc_sexpr_t *data = NULL;
 	isccc_region_t source;
 	char *errormsg = NULL;
 	char *textmsg = NULL;
+	uint32_t rpl = 0, ser = ~serial;
 
 	REQUIRE(handle != NULL);
 	REQUIRE(ccmsg != NULL);
@@ -330,6 +332,23 @@ rndc_recvdone(isc_nmhandle_t *handle, isc_result_t result, void *arg) {
 	if (debug_response) {
 		isccc_sexpr_print(response, stderr);
 		fprintf(stderr, "\n");
+	}
+
+	_ctrl = isccc_alist_lookup(response, "_ctrl");
+	if (!isccc_alist_alistp(_ctrl)) {
+		fatal("bad or missing ctrl section in response");
+	}
+
+	if (isccc_cc_lookupuint32(_ctrl, "_rpl", &rpl) != ISC_R_SUCCESS ||
+	    rpl != 1)
+	{
+		fatal("bad or missing ctrl.rpl section in response");
+	}
+
+	if (isccc_cc_lookupuint32(_ctrl, "_ser", &ser) != ISC_R_SUCCESS ||
+	    ser != serial)
+	{
+		fatal("bad or missing ctrl.ser section in response");
 	}
 
 	data = isccc_alist_lookup(response, "_data");
@@ -380,7 +399,7 @@ rndc_recvnonce(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t result,
 	isccc_sexpr_t *response = NULL;
 	isccc_sexpr_t *_ctrl = NULL;
 	isccc_region_t source;
-	uint32_t nonce;
+	uint32_t nonce, rpl = 0, ser = ~serial;
 	isccc_sexpr_t *request = NULL;
 	isccc_time_t now = isc_stdtime_now();
 	isc_region_t r;
@@ -411,6 +430,19 @@ rndc_recvnonce(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t result,
 	if (!isccc_alist_alistp(_ctrl)) {
 		fatal("bad or missing ctrl section in response");
 	}
+
+	if (isccc_cc_lookupuint32(_ctrl, "_rpl", &rpl) != ISC_R_SUCCESS ||
+	    rpl != 1)
+	{
+		fatal("bad or missing ctrl.rpl section in response");
+	}
+
+	if (isccc_cc_lookupuint32(_ctrl, "_ser", &ser) != ISC_R_SUCCESS ||
+	    ser != serial)
+	{
+		fatal("bad or missing ctrl.ser section in response");
+	}
+
 	nonce = 0;
 	if (isccc_cc_lookupuint32(_ctrl, "_nonce", &nonce) != ISC_R_SUCCESS) {
 		nonce = 0;
