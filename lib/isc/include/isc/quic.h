@@ -464,7 +464,8 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_router_t *router,
 			    const isc_quic_conn_callbacks_t *callbacks,
 			    void			    *callback_arg,
 			    const isc_quic_conn_options_t   *options,
-			    const char *sni, const isc_sockaddr_t *local,
+			    isc_quic_version_t version, const char *sni,
+			    const isc_sockaddr_t *local,
 			    const isc_sockaddr_t *peer,
 			    isc_quic_conn_t	**connp);
 

@@ -379,9 +379,9 @@ ISC_RUN_TEST_IMPL(isc_quic_router_cid) {
 	result = isc_tlsctx_createclient(&opts.tlsctx);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	conn = NULL;
-	result = isc_quic_conn_client_create(isc_g_mctx, router, NULL, NULL,
-					     &opts, NULL, &client_addr[0],
-					     &server_addr, &conn);
+	result = isc_quic_conn_client_create(
+		isc_g_mctx, router, NULL, NULL, &opts, ISC_QUIC_VERSION_V1,
+		NULL, &client_addr[0], &server_addr, &conn);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	cid = (isc_constregion_t){ client_dcid, sizeof(client_dcid) };
@@ -437,9 +437,9 @@ ISC_RUN_TEST_IMPL(isc_quic_router_stateless_reset) {
 	result = isc_tlsctx_createclient(&opts.tlsctx);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	conn = NULL;
-	result = isc_quic_conn_client_create(isc_g_mctx, router, NULL, NULL,
-					     &opts, NULL, &client_addr[0],
-					     &server_addr, &conn);
+	result = isc_quic_conn_client_create(
+		isc_g_mctx, router, NULL, NULL, &opts, ISC_QUIC_VERSION_V1,
+		NULL, &client_addr[0], &server_addr, &conn);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_random_buf(token, sizeof(token));
@@ -496,9 +496,9 @@ ISC_RUN_TEST_IMPL(isc_quic_router_packet) {
 	result = isc_tlsctx_createclient(&opts.tlsctx);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	conn = NULL;
-	result = isc_quic_conn_client_create(isc_g_mctx, router, NULL, NULL,
-					     &opts, NULL, &client_addr[0],
-					     &server_addr, &conn);
+	result = isc_quic_conn_client_create(
+		isc_g_mctx, router, NULL, NULL, &opts, ISC_QUIC_VERSION_V1,
+		NULL, &client_addr[0], &server_addr, &conn);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Initial CRYPTO frames MUST be 1200 bytes */
@@ -597,8 +597,8 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_base) {
 	for (i = 0; i < client_len; i++) {
 		result = isc_quic_conn_client_create(
 			isc_g_mctx, client->router, &callbacks, client,
-			&client->opts, "bind9.local", &client_addr[i],
-			&server_addr, &client->state[i].conn);
+			&client->opts, ISC_QUIC_VERSION_V1, "bind9.local",
+			&client_addr[i], &server_addr, &client->state[i].conn);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
 		len = 0;
@@ -786,8 +786,8 @@ ISC_LOOP_TEST_IMPL(isc_quic_conn_closed_stream_no_write) {
 
 	result = isc_quic_conn_client_create(
 		isc_g_mctx, client->router, &callbacks, client, &client->opts,
-		"bind9.local", &client_addr[0], &server_addr,
-		&client->state[0].conn);
+		ISC_QUIC_VERSION_V1, "bind9.local", &client_addr[0],
+		&server_addr, &client->state[0].conn);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	len = 0;
