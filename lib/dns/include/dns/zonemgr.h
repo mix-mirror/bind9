@@ -256,7 +256,6 @@ dns_zonemgr_first_zone(dns_zonemgr_t *zmgr, dns_zone_t **first);
  *	(result ISC_R_NOMORE).
  */
 
-
 void
 dns_zonemgr_lock(dns_zonemgr_t *zmgr, isc_rwlocktype_t locktype);
 void
