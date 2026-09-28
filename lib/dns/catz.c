@@ -2394,6 +2394,7 @@ dns__catz_update_cb(void *data) {
 				char typebuf[DNS_RDATATYPE_FORMATSIZE];
 				char classbuf[DNS_RDATACLASS_FORMATSIZE];
 
+				dns_rdataset_getownercase(&rdataset, name);
 				dns_name_format(name, cname,
 						DNS_NAME_FORMATSIZE);
 				dns_rdataclass_format(rdataset.rdclass,

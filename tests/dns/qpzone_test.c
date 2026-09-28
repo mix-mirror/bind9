@@ -553,6 +553,77 @@ ISC_RUN_TEST_IMPL(diffop_add_sub) {
 	assert_null(db);
 }
 
+ISC_RUN_TEST_IMPL(relative_names) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	dns_dbnode_t *dbnode = NULL;
+	dns_fixedname_t fowner, frelative, foutside;
+	dns_name_t *owner = NULL, *relative = NULL, *outside = NULL;
+	dns_dbiterator_t *iterator = NULL;
+	dns_fixedname_t fcurrent, forigin;
+	dns_name_t *current = dns_fixedname_initname(&fcurrent);
+	dns_name_t *origin = dns_fixedname_initname(&forigin);
+
+	dns_test_namefromstring("www.example.org.", &fowner);
+	dns_test_namefromstring("www", &frelative);
+	dns_test_namefromstring("www.example.net.", &foutside);
+	owner = dns_fixedname_name(&fowner);
+	relative = dns_fixedname_name(&frelative);
+	outside = dns_fixedname_name(&foutside);
+
+	result = dns__qpzone_create(isc_g_mctx, &example_org_name,
+				    dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
+				    NULL, &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	qpzonedb_t *qpdb = (qpzonedb_t *)db;
+	assert_int_equal(qpdb->origin->name.length, 0);
+	assert_false(dns_name_isabsolute(&qpdb->origin->name));
+
+	result = dns_db_findnode(db, owner, true, &dbnode);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_true(dns_name_equal(&((qpznode_t *)dbnode)->name, relative));
+	assert_false(dns_name_isabsolute(&((qpznode_t *)dbnode)->name));
+	dns_db_detachnode(&dbnode);
+
+	result = dns_db_createiterator(
+		db, DNS_DB_RELATIVENAMES | DNS_DB_NONSEC3, &iterator);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_equal(dns_dbiterator_first(iterator), ISC_R_SUCCESS);
+	result = dns_dbiterator_current(iterator, &dbnode, current);
+	assert_int_equal(result, DNS_R_NEWORIGIN);
+	assert_int_equal(current->length, 0);
+	assert_false(dns_name_isabsolute(current));
+	dns_db_detachnode(&dbnode);
+	assert_int_equal(dns_dbiterator_origin(iterator, origin),
+			 ISC_R_SUCCESS);
+	assert_true(dns_name_equal(origin, &example_org_name));
+	assert_int_equal(dns_dbiterator_next(iterator), ISC_R_SUCCESS);
+	result = dns_dbiterator_current(iterator, &dbnode, current);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_true(dns_name_equal(current, relative));
+	dns_db_detachnode(&dbnode);
+	dns_dbiterator_destroy(&iterator);
+
+	result = dns_db_createiterator(db, DNS_DB_NONSEC3, &iterator);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_equal(dns_dbiterator_seek(iterator, owner), ISC_R_SUCCESS);
+	result = dns_dbiterator_current(iterator, &dbnode, current);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_true(dns_name_equal(current, owner));
+	dns_db_detachnode(&dbnode);
+	dns_dbiterator_destroy(&iterator);
+
+	result = dns_db_findnode(db, outside, false, &dbnode);
+	assert_int_equal(result, ISC_R_NOTFOUND);
+	assert_null(dbnode);
+	result = dns_db_findnode(db, outside, true, &dbnode);
+	assert_int_equal(result, DNS_R_OUTOFZONE);
+	assert_null(dbnode);
+
+	dns_db_detach(&db);
+}
+
 ISC_RUN_TEST_IMPL(wildcard_foundname) {
 	static const unsigned char address[] = { 192, 0, 2, 1 };
 	isc_result_t result;
@@ -734,84 +805,6 @@ add_record(dns_db_t *db, const char *owner, dns_rdatatype_t rdtype,
 }
 
 /*
- * Create 'name' in the database's tree the way findnodeintree() does,
- * except for its origin check, so the test can reproduce a database that
- * was populated before out-of-zone data was rejected (for example a
- * secondary zone file or journal written by an older version).
- */
-static void
-create_node_unchecked(dns_db_t *db, const dns_name_t *name,
-		      dns_dbnode_t **nodep) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	qpznode_t *node = NULL;
-	dns_qpread_t qpr = { 0 };
-	dns_qp_t *qp = begin_transaction(qpdb, &qpr, true);
-	isc_result_t result;
-
-	result = dns_qp_getname(qp, name, DNS_DBNAMESPACE_NORMAL,
-				(void **)&node, NULL);
-	if (result == ISC_R_SUCCESS) {
-		qpznode_acquire(node DNS__DB_FILELINE);
-	} else {
-		node = new_qpznode(qpdb, name, DNS_DBNAMESPACE_NORMAL);
-		result = dns_qp_insert(qp, node, 0);
-		assert_int_equal(result, ISC_R_SUCCESS);
-		qpznode_erefs_increment(node DNS__DB_FILELINE);
-
-		addwildcards(qpdb, qp, name, DNS_DBNAMESPACE_NORMAL);
-		if (dns_name_iswildcard(name)) {
-			wildcardmagic(qpdb, qp, name, DNS_DBNAMESPACE_NORMAL);
-		}
-	}
-
-	end_transaction(qpdb, qp, true);
-
-	*nodep = (dns_dbnode_t *)node;
-}
-
-/*
- * Add a single record whose owner is not below the zone origin, bypassing
- * the out-of-zone check on node creation.
- */
-static void
-add_record_unchecked(dns_db_t *db, const char *owner, dns_rdatatype_t rdtype,
-		     const char *text) {
-	isc_result_t result;
-	dns_fixedname_t fowner;
-	dns_dbnode_t *node = NULL;
-	dns_rdata_t rdata = DNS_RDATA_INIT;
-	dns_rdatalist_t rdatalist;
-	dns_rdataset_t rdataset;
-	unsigned char rdata_data[256];
-
-	dns_test_namefromstring(owner, &fowner);
-	result = dns_test_rdatafromstring(&rdata, dns_rdataclass_in, rdtype,
-					  rdata_data, sizeof(rdata_data), text,
-					  false);
-	assert_int_equal(result, ISC_R_SUCCESS);
-
-	dns_rdatalist_init(&rdatalist);
-	rdatalist.ttl = 300;
-	rdatalist.type = rdtype;
-	rdatalist.rdclass = dns_rdataclass_in;
-	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
-
-	dns_rdataset_init(&rdataset);
-	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-
-	create_node_unchecked(db, dns_fixedname_name(&fowner), &node);
-
-	WITH_NEWVERSION(db, newversion, true) {
-		result = dns_db_addrdataset(db, node, newversion, 0, &rdataset,
-					    0, NULL);
-		assert_int_equal(result, ISC_R_SUCCESS);
-	}
-
-	dns_db_detachnode(&node);
-	dns_rdataset_disassociate(&rdataset);
-}
-
-/*
  * Look up 'qname'/'rdtype' in the current version of the database and
  * return the result, with the found name in 'found'.
  */
@@ -834,14 +827,8 @@ find_record(dns_db_t *db, const char *qname, dns_rdatatype_t rdtype,
 	return result;
 }
 
-/*
- * Nodes that are not below the zone origin could end up in the database
- * before out-of-zone data was rejected on load (e.g. from a secondary
- * zone file carrying such data).  They must not be visible through
- * lookups: not as zone cuts, DNAMEs or wildcards above the apex, nor as
- * answers for names outside the zone.
- */
-ISC_RUN_TEST_IMPL(nodes_outside_zone) {
+/* Names outside the zone must not be visible through zone lookups. */
+ISC_RUN_TEST_IMPL(out_of_zone_queries) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	dns_fixedname_t ffound, fexpected;
@@ -859,16 +846,6 @@ ISC_RUN_TEST_IMPL(nodes_outside_zone) {
 	add_record(db, "example.org.", dns_rdatatype_ns, "ns.example.org.");
 	add_record(db, "ns.example.org.", dns_rdatatype_a, "10.0.0.2");
 	add_record(db, "www.example.org.", dns_rdatatype_a, "10.0.0.1");
-
-	/* Above the origin. */
-	add_record_unchecked(db, "org.", dns_rdatatype_ns, "ns.attacker.");
-	add_record_unchecked(db, "org.", dns_rdatatype_dname, "attacker.");
-	add_record_unchecked(db, "*.org.", dns_rdatatype_a, "192.0.2.1");
-
-	/* Outside the zone altogether. */
-	add_record_unchecked(db, "mail.attacker.", dns_rdatatype_a,
-			     "192.0.2.2");
-	add_record_unchecked(db, "*.attacker.", dns_rdatatype_a, "192.0.2.3");
 
 	/* Names in the zone are answered from the zone. */
 	result = find_record(db, "www.example.org.", dns_rdatatype_a, 0, found);
@@ -908,9 +885,10 @@ ISC_TEST_ENTRY(setownercase)
 ISC_TEST_ENTRY(resign_sooner_values)
 ISC_TEST_ENTRY(unscheduled_resign)
 ISC_TEST_ENTRY(diffop_add_sub)
+ISC_TEST_ENTRY(relative_names)
 ISC_TEST_ENTRY(wildcard_foundname)
 ISC_TEST_ENTRY(wildcard_delegation_foundname)
-ISC_TEST_ENTRY(nodes_outside_zone)
+ISC_TEST_ENTRY(out_of_zone_queries)
 ISC_TEST_ENTRY(diffop_addresign)
 ISC_TEST_LIST_END
 

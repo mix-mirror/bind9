@@ -175,8 +175,11 @@ addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	CHECK(dns__db_addrdataset(sampledb->db, node, version, now, rdataset,
 				  options, addedrdataset DNS__DB_FLARG_PASS));
 	if (dns_rdatatype_isaddr(rdataset->type)) {
-		CHECK(syncptrs(sampledb->inst, &node->name, rdataset,
-			       DNS_DIFFOP_ADD));
+		CHECK(dns_name_concatenate(&node->name,
+					   dns_db_origin(sampledb->db),
+					   dns_fixedname_name(&name)));
+		CHECK(syncptrs(sampledb->inst, dns_fixedname_name(&name),
+			       rdataset, DNS_DIFFOP_ADD));
 	}
 
 cleanup:
@@ -202,8 +205,11 @@ subtractrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	}
 
 	if (dns_rdatatype_isaddr(rdataset->type)) {
-		CHECK(syncptrs(sampledb->inst, &node->name, rdataset,
-			       DNS_DIFFOP_DEL));
+		CHECK(dns_name_concatenate(&node->name,
+					   dns_db_origin(sampledb->db),
+					   dns_fixedname_name(&name)));
+		CHECK(syncptrs(sampledb->inst, dns_fixedname_name(&name),
+			       rdataset, DNS_DIFFOP_DEL));
 	}
 
 cleanup:

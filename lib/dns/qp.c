@@ -2328,10 +2328,17 @@ dns_qp_lookup(dns_qpreadable_t qpr, const dns_name_t *name,
 		 *
 		 * Note 2: If SHIFT_NOBYTE twig is present, it will always
 		 * be in position 0, the first location in 'twigs'.
+		 *
+		 * The empty relative name is also an ancestor of relative
+		 * queries. Its key ends immediately after the namespace,
+		 * without a preceding label separator. Check the leaf's
+		 * key length to distinguish it from an absolute root name.
 		 */
 		if (bit != SHIFT_NOBYTE && branch_has_twig(n, SHIFT_NOBYTE) &&
-		    qpkey_bit(search, searchlen, offset - 1) == SHIFT_NOBYTE &&
-		    !is_branch(twigs))
+		    !is_branch(twigs) &&
+		    (qpkey_bit(search, searchlen, offset - 1) == SHIFT_NOBYTE ||
+		     (offset == NAME_OFFSET &&
+		      leaf_qpkey(qp, twigs, found) == NAME_OFFSET)))
 		{
 			add_link(chain, twigs, offset);
 		}

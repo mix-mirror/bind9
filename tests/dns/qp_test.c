@@ -687,6 +687,42 @@ check_qpchain(dns_qp_t *qp, struct check_qpchain check[]) {
 	check_qpchainiter(qp, check, &iter);
 }
 
+ISC_RUN_TEST_IMPL(relative_qpchain) {
+	dns_qp_t *qp = NULL;
+	const char names[][16] = { "@", "a", "b.a", "z" };
+	dns_namespace_t spaces[] = { DNS_DBNAMESPACE_NORMAL,
+				     DNS_DBNAMESPACE_NSEC,
+				     DNS_DBNAMESPACE_NSEC3 };
+
+	dns_qp_create(isc_g_mctx, &string_methods, NULL, &qp);
+	for (size_t s = 0; s < ARRAY_SIZE(spaces); s++) {
+		for (size_t i = 0; i < ARRAY_SIZE(names); i++) {
+			insert_name(qp, names[i], spaces[s]);
+		}
+	}
+
+	for (size_t s = 0; s < ARRAY_SIZE(spaces); s++) {
+		struct check_qpchain checks[] = {
+			{ "@", spaces[s], ISC_R_SUCCESS, 1, { "@" } },
+			{ "a", spaces[s], ISC_R_SUCCESS, 2, { "@", "a" } },
+			{ "b.a",
+			  spaces[s],
+			  ISC_R_SUCCESS,
+			  3,
+			  { "@", "a", "b.a" } },
+			{ "c.a",
+			  spaces[s],
+			  DNS_R_PARTIALMATCH,
+			  2,
+			  { "@", "a" } },
+			{ "m", spaces[s], DNS_R_PARTIALMATCH, 1, { "@" } },
+			{ NULL, 0, 0, 0, { NULL } },
+		};
+		check_qpchain(qp, checks);
+	}
+	dns_qp_destroy(&qp);
+}
+
 ISC_RUN_TEST_IMPL(qpchain) {
 	dns_qp_t *qp = NULL;
 	const char insert[][16] = { ".",      "a.",	    "b.",
@@ -2168,6 +2204,7 @@ ISC_TEST_ENTRY(qpkey_sort)
 ISC_TEST_ENTRY(qpiter)
 ISC_TEST_ENTRY(partialmatch)
 ISC_TEST_ENTRY(qpchain)
+ISC_TEST_ENTRY(relative_qpchain)
 ISC_TEST_ENTRY(predecessors)
 ISC_TEST_ENTRY(fixiterator)
 ISC_TEST_ENTRY(qpkey_delete)
