@@ -811,7 +811,7 @@ dns_zonemgr_getcount(dns_zonemgr_t *zmgr, dns_zonestate_t state) {
 isc_result_t
 dns_zonemgr_next_zone(dns_zone_t *zone, dns_zone_t **next) {
 	REQUIRE(DNS_ZONE_VALID(zone));
-	REQUIRE(zone->zmgr->locked);
+	REQUIRE(isc_refcount_current(&zone->zmgr->locks) != 0);
 	REQUIRE(next != NULL && *next == NULL);
 
 	*next = ISC_LIST_NEXT(zone, link);
@@ -825,7 +825,7 @@ dns_zonemgr_next_zone(dns_zone_t *zone, dns_zone_t **next) {
 isc_result_t
 dns_zonemgr_first_zone(dns_zonemgr_t *zmgr, dns_zone_t **first) {
 	REQUIRE(DNS_ZONEMGR_VALID(zmgr));
-	REQUIRE(zmgr->locked);
+	REQUIRE(isc_refcount_current(&zmgr->locks) != 0);
 	REQUIRE(first != NULL && *first == NULL);
 
 	*first = ISC_LIST_HEAD(zmgr->zones);
@@ -839,11 +839,11 @@ dns_zonemgr_first_zone(dns_zonemgr_t *zmgr, dns_zone_t **first) {
 void
 dns_zonemgr_lock(dns_zonemgr_t *zmgr, isc_rwlocktype_t locktype) {
 	RWLOCK(&zmgr->rwlock, locktype);
-	zmgr->locked = true;
+	isc_refcount_increment0(&zmgr->locks);
 }
 
 void
 dns_zonemgr_unlock(dns_zonemgr_t *zmgr, isc_rwlocktype_t locktype) {
-	zmgr->locked = false;
+	isc_refcount_decrement0(&zmgr->locks);
 	RWUNLOCK(&zmgr->rwlock, locktype);
 }

@@ -338,7 +338,7 @@ struct dns_zonemgr {
 	isc_ratelimiter_t *startupnotifyrl;
 	isc_ratelimiter_t *startuprefreshrl;
 	isc_rwlock_t rwlock;
-	bool locked;
+	isc_refcount_t locks;
 
 	/* Locked by rwlock. */
 	dns_zonelist_t zones;
