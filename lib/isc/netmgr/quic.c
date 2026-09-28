@@ -106,6 +106,12 @@ stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, void **stream_data,
 		 int64_t stream_id);
 
 static isc_result_t
+stream_closed_cb(isc_quic_conn_t *conn, void *cbarg, int64_t stream_id,
+		 isc_quic_application_error_kind_t kind,
+		 uint64_t rx_application_error_code,
+		 uint64_t tx_application_error_code);
+
+static isc_result_t
 data_read_cb(isc_quic_conn_t *conn, void *cbarg,
 	     isc_quic_stream_data_info_t info, isc_constregion_t data);
 
@@ -115,6 +121,7 @@ udp_send_cb(isc_nmhandle_t *handle, isc_result_t result, void *cbarg);
 static isc_quic_conn_callbacks_t listener_cb = {
 	.handshake_completed = handshake_completed_cb,
 	.stream_opened = stream_opened_cb,
+	.stream_closed = stream_closed_cb,
 	.data_read = data_read_cb,
 };
 
