@@ -3627,8 +3627,7 @@ qpzone_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	INSIST(version == NULL ||
 	       ((qpz_version_t *)version)->qpdb == (qpzonedb_t *)db);
 
-	/* Convert the query once; internal search helpers use relative names.
-	 */
+	/* Internal search helpers use relative names. */
 	dns_name_t relative = DNS_NAME_INITEMPTY;
 	result = qpzone_name_torelative(qpdb, name, &relative);
 	if (result != ISC_R_SUCCESS) {
@@ -4452,6 +4451,7 @@ dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 	if (result == ISC_R_SUCCESS) {
 		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
+		qpdbiter->neworigin = iterator->relative_names;
 	} else {
 		qpdbiter->node = NULL;
 	}
@@ -4552,6 +4552,7 @@ dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG) {
 
 	if (result == ISC_R_SUCCESS) {
 		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
+		qpdbiter->neworigin = iterator->relative_names;
 	} else {
 		qpdbiter->node = NULL;
 	}
@@ -4614,6 +4615,7 @@ dbiterator_seek(dns_dbiterator_t *iterator,
 
 	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
 		reference_iter_node(qpdbiter DNS__DB_FLARG_PASS);
+		qpdbiter->neworigin = iterator->relative_names;
 	} else {
 		qpdbiter->node = NULL;
 	}
@@ -4673,6 +4675,9 @@ dbiterator_seek3(dns_dbiterator_t *iterator,
 		break;
 	}
 
+	if (result == ISC_R_SUCCESS) {
+		qpdbiter->neworigin = iterator->relative_names;
+	}
 	qpdbiter->result = result;
 
 	return qpdbiter->result;
@@ -4913,7 +4918,7 @@ dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
 
 	*nodep = (dns_dbnode_t *)qpdbiter->node;
 
-	if (name != NULL && iterator->relative_names && qpdbiter->neworigin) {
+	if (name != NULL && qpdbiter->neworigin) {
 		qpdbiter->neworigin = false;
 		return DNS_R_NEWORIGIN;
 	}
@@ -4952,7 +4957,7 @@ qpzone_createiterator(dns_db_t *db, unsigned int options,
 		.common.methods = &dbiterator_methods,
 		.common.relative_names = ((options & DNS_DB_RELATIVENAMES) !=
 					  0),
-		.neworigin = true,
+		.neworigin = ((options & DNS_DB_RELATIVENAMES) != 0),
 	};
 
 	if ((options & DNS_DB_NSEC3ONLY) != 0) {
