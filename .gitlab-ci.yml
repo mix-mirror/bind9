@@ -1910,7 +1910,14 @@ release:
 # SSH-confirmed jobs hint
 
 .ssh-confirmed-jobs-hint: &ssh_confirmed_jobs_hint
-  SSH_RUN_HINT: 'Run this command to proceed:\n\033[1mssh-agent ssh bind9-confirm-${CI_JOB_NAME}\033[0m\nFor more context check the docs at https://gitlab.isc.org/isc-private/bind9/-/wikis/SSH-confirmed-jobs\n'
+  SSH_RUN_HINT: 'In order to proceed, run:\n\033[1mssh-agent ssh bind9-confirm-${CI_JOB_NAME}\033[0m\nFor more context check the docs at https://gitlab.isc.org/isc-private/bind9/-/wikis/SSH-confirmed-jobs.\n'
+
+ssh-confirmed-job:
+  <<: *quick_checks_job
+  variables:
+    <<: *ssh_confirmed_jobs_hint
+  script:
+    - if [ -n "${SSH_RUN_HINT}" ]; then echo -e "${SSH_RUN_HINT}"; fi
 
 # Job signing the source tarballs in the release directory
 
