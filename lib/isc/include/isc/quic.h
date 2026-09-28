@@ -150,7 +150,7 @@ struct isc_quic_conn_callbacks {
 	 * \param application_error_code if `has_application_error` is true.
 	 */
 	isc_result_t (*stream_closed)(isc_quic_conn_t *conn, void *cbarg,
-				      int64_t stream_id,
+				      int64_t stream_id, void *stream_data,
 				      isc_quic_application_error_kind_t kind,
 				      uint64_t rx_application_error_code,
 				      uint64_t tx_application_error_code);
