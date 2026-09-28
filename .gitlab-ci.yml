@@ -1910,6 +1910,14 @@ release:
     - cp "/tmp/${CI_JOB_NAME}.log" "${CI_PROJECT_DIR}/${CI_JOB_NAME}-${CI_COMMIT_TAG}.log"
     - rm -f "/tmp/${CI_JOB_NAME}.log" "/tmp/${CI_JOB_NAME}-done" "/tmp/${CI_JOB_NAME}.sh"
 
+ssh-confirmed-job:
+  <<: *quick_checks_job
+  variables:
+    SSH_COMMAND_HINT: "ssh-agent ssh bind9-confirm-${CI_JOB_NAME}"
+  script:
+    - echo -e "\e[31m*** Sleeping until /tmp/${CI_JOB_NAME}.sh is executed over SSH... ⌛\e[0m"
+    - echo -e "\e[35m*** In order to proceed, run:\n\e[1m${SSH_COMMAND_HINT}\e[0m"
+
 # Job signing the source tarballs in the release directory
 
 sign:
