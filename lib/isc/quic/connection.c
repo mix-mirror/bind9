@@ -2292,7 +2292,8 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_router_t *router,
 			    const isc_quic_conn_callbacks_t *callbacks,
 			    void *callback_arg,
 			    const isc_quic_conn_options_t *options,
-			    const char *sni, const isc_sockaddr_t *local,
+			    isc_quic_version_t version, const char *sni,
+			    const isc_sockaddr_t *local,
 			    const isc_sockaddr_t *peer,
 			    isc_quic_conn_t **connp) {
 	ngtcp2_transport_params transport_params;
@@ -2302,6 +2303,7 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_router_t *router,
 	ngtcp2_path path;
 	ngtcp2_cid dcid, scid;
 	isc_tls_t *tls = NULL;
+	uint32_t ngversion;
 	int r;
 
 	REQUIRE(connp != NULL && *connp == NULL);
@@ -2309,6 +2311,20 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_router_t *router,
 		options->handshake_timeout != isc_quic_timestamp_invalid &&
 		options->idle_timeout != isc_quic_timestamp_invalid &&
 		options->alpn.length <= sizeof(conn->alpn.data));
+	REQUIRE(version != ISC_QUIC_VERSION_INVALID &&
+		version != ISC_QUIC_VERSION_UNKNOWN &&
+		version < ISC_QUIC_VERSION__MAX);
+
+	switch (version) {
+	case ISC_QUIC_VERSION_V1:
+		ngversion = NGTCP2_PROTO_VER_V1;
+		break;
+	case ISC_QUIC_VERSION_V2:
+		ngversion = NGTCP2_PROTO_VER_V2;
+		break;
+	default:
+		return ISC_R_NOTIMPLEMENTED;
+	}
 
 	ERR_set_mark();
 
@@ -2361,9 +2377,9 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_router_t *router,
 
 	memmove(conn->alpn.data, options->alpn.base, conn->alpn.len);
 
-	r = ngtcp2_conn_client_new(&conn->inner, &dcid, &scid, &path,
-				   NGTCP2_PROTO_VER_V1, &client_cb, &settings,
-				   &transport_params, &conn->mem, conn);
+	r = ngtcp2_conn_client_new(&conn->inner, &dcid, &scid, &path, ngversion,
+				   &client_cb, &settings, &transport_params,
+				   &conn->mem, conn);
 	switch (r) {
 	case 0:
 		break;
