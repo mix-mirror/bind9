@@ -147,7 +147,7 @@ ISC_REFCOUNT_DECL(controllistener);
 ISC_REFCOUNT_DECL(controlconnection);
 #endif
 
-#define CLOCKSKEW 300
+#define CC_CLOCKSKEW 300
 
 static void
 free_controlkey(controlkey_t *key, isc_mem_t *mctx) {
@@ -458,8 +458,8 @@ control_recvmessage(isc_nmhandle_t *handle ISC_ATTR_UNUSED, isc_result_t result,
 	}
 
 	if (isccc_cc_lookupuint32(conn->ctrl, "_tim", &sent) == ISC_R_SUCCESS) {
-		if ((sent + CLOCKSKEW) < conn->now ||
-		    (sent - CLOCKSKEW) > conn->now)
+		if (sent + CC_CLOCKSKEW < conn->now ||
+		    sent - CC_CLOCKSKEW > conn->now)
 		{
 			CLEANUP(DNS_R_CLOCKSKEW);
 		}
