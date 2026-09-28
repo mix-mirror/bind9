@@ -205,6 +205,7 @@ STATIC_ASSERT(ISC_NETMGR_TCP_RECVBUF_SIZE <= ISC_NETMGR_RECVBUF_SIZE,
 typedef struct isc__nm_uvreq isc__nm_uvreq_t;
 
 typedef struct isc__nm_quic_stream isc__nm_quic_stream_t;
+typedef struct isc__nm_quic_conn isc__nm_quic_conn_t;
 
 /*
  * Single network event loop worker.
@@ -262,9 +263,10 @@ struct isc_nmhandle {
 
 	union {
 		isc_nm_http_session_t *httpsession;
-		struct {
-			isc_quic_conn_t *conn;
+		union {
 			isc__nm_quic_stream_t *stream;
+			isc__nm_quic_conn_t *conn;
+			uintptr_t raw;
 		} quic;
 	};
 

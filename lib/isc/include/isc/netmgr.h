@@ -868,8 +868,9 @@ ISC_REFCOUNT_DECL(isc_nm_quiclistener);
 
 void
 isc_nm_quicconnect(isc_sockaddr_t *local, isc_sockaddr_t *peer,
-		   isc_quic_conn_options_t *options, isc_nm_cb_t cb,
-		   void *cbarg);
+		   isc_quic_conn_options_t *options, isc_nm_cb_t connect_cb,
+		   void *connect_cb_arg, isc_nm_cb_t stream_open_cb,
+		   void *stream_open_cb_arg);
 
 #endif /* HAVE_LIBNGTCP2 */
 
