@@ -284,7 +284,8 @@ def test_apex_cname_coexists_with_other_types(ns3):
     ns3.rndc("flushtree insecure.parent")
 
     check_mx(_query_insecure_parent(ns3, "MX"))
-    _check_insecure_cname_chain(_query_insecure_parent(ns3, "A"))
+    res = _query_insecure_parent(ns3, "A")
+    _check_insecure_cname_chain(res)
     check_mx(_query_insecure_parent(ns3, "MX"))
 
     with ns3.watch_log_from_here() as watcher:
