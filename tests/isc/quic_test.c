@@ -161,7 +161,7 @@ stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, void **stream_data,
 
 static isc_result_t
 stream_closed_cb(isc_quic_conn_t *conn, void *cbarg, int64_t stream_id,
-		 isc_quic_application_error_kind_t kind,
+		 void *stream_data, isc_quic_application_error_kind_t kind,
 		 uint64_t rx_application_error_code,
 		 uint64_t tx_application_error_code);
 
@@ -295,24 +295,22 @@ stream_opened_cb(isc_quic_conn_t *conn, void *cbarg, void **stream_data,
 
 static isc_result_t
 stream_closed_cb(isc_quic_conn_t *conn, void *cbarg, int64_t stream_id,
+		 void *stream_data,
 		 isc_quic_application_error_kind_t kind ISC_ATTR_UNUSED,
 		 uint64_t rx_application_error_code ISC_ATTR_UNUSED,
 		 uint64_t tx_application_error_code ISC_ATTR_UNUSED) {
+	stream_state_t *s = stream_data;
 	endpoint_t *e = cbarg;
 	size_t i;
 
 	for (i = 0; i < e->len; i++) {
 		if (e->state[i].conn == conn) {
-			break;
-		}
-	}
+			assert_int_not_equal(i, e->len);
+			assert_int_equal(s->id, stream_id);
 
-	assert_int_not_equal(i, e->len);
-
-	ISC_LIST_FOREACH(e->state[i].stream, s, link) {
-		if (s->id == stream_id) {
 			ISC_LIST_UNLINK(e->state[i].stream, s, link);
 			isc_mem_put(isc_g_mctx, s, sizeof(*s));
+			return ISC_R_SUCCESS;
 		}
 	}
 

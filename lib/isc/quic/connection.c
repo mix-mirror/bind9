@@ -1778,9 +1778,9 @@ stream_close2_cb(ngtcp2_conn *ngconn ISC_ATTR_UNUSED, uint32_t flags,
 			kind = ISC_QUIC_APPLICATION_ERROR_NONE;
 		}
 
-		result = conn->cb->stream_closed(conn, conn->cbarg, stream_id,
-						 kind, rx_app_error_code,
-						 tx_app_error_code);
+		result = conn->cb->stream_closed(
+			conn, conn->cbarg, stream_id, stream->data, kind,
+			rx_app_error_code, tx_app_error_code);
 		if (result != ISC_R_SUCCESS) {
 			return NGTCP2_ERR_CALLBACK_FAILURE;
 		}
