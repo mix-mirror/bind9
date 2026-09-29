@@ -102,12 +102,13 @@ def token_init_and_cleanup():
         HSMPIN,
     ]
 
+    database = Path.cwd() / "kryoptic.db"
+
     try:
         cmd = isctest.run.cmd(token_init_command, env=token_env)
         assert "Token successfully initialized\n" == cmd.out
         cmd = isctest.run.cmd(token_pin_init_command, env=token_env)
         assert "User PIN successfully initialized\n" == cmd.out
-        database = Path.cwd() / "kryoptic.db"
         assert database.exists()
         yield
     finally:
