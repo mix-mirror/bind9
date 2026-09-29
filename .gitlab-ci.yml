@@ -1722,12 +1722,26 @@ gcc:asan:
   <<: *fedora_44_amd64_image
   <<: *build_job
 
+# Out of the box, ASan holds up to 256 MiB of freed memory per process in
+# quarantine and gives every thread a fake stack of up to 11 MiB, and a
+# system test runs many named instances at once.  Merge request pipelines
+# shrink both, which leaves room for four tests at a time; other pipelines
+# keep ASan's defaults and run three.  This ASAN_OPTIONS replaces the
+# global one, so it repeats the options set there.
+.asan-mr-variables: &asan_mr_variables
+  TEST_PARALLEL_JOBS: 4
+  ASAN_OPTIONS: "abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1:quarantine_size_mb=64:max_uar_stack_size_log=16"
+
 system:gcc:asan:
   variables:
     LSAN_OPTIONS: "suppressions=$CI_PROJECT_DIR/suppr-lsan.txt"
     TEST_PARALLEL_JOBS: 3
   <<: *fedora_44_amd64_image
   <<: *system_test_job
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $REBASE_ONLY != "1"'
+      variables: *asan_mr_variables
+    - *default_triggering_rules_list
   needs:
     - job: gcc:asan
       artifacts: true
@@ -1753,7 +1767,15 @@ system:clang:asan:
     TEST_PARALLEL_JOBS: 3
   <<: *base_image
   <<: *system_test_job
-  <<: *extra_system_tests_triggering_rules
+  rules:
+    - *rule_tag
+    - *rule_source_other_than_mr
+    # A copy of *rule_mr_system_tests that also sets the variables; keep
+    # the two in sync.
+    - if: '$CI_MERGE_REQUEST_DIFF_BASE_SHA != null'
+      changes:
+        - 'bin/tests/system/**/*'
+      variables: *asan_mr_variables
   needs:
     - job: clang:asan
       artifacts: true
