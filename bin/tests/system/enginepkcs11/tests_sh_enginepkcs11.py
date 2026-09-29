@@ -95,6 +95,5 @@ def bootstrap() -> dict[str, Any]:
     return {"pin_path": pin_path}
 
 
-# @pytest.mark.flaky(max_runs=5)  # GL#4605
 def test_enginepkcs11(run_tests_sh):
     run_tests_sh()
