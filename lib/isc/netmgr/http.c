@@ -825,9 +825,9 @@ client_handle_content_type_header(http_cstream_t *cstream, const uint8_t *value,
 	const char type_dns_message[] = DNS_MEDIA_TYPE;
 	const size_t len = sizeof(type_dns_message) - 1;
 
-	UNUSED(valuelen);
-
-	if (strncasecmp((const char *)value, type_dns_message, len) == 0) {
+	if (len == valuelen &&
+	    strncasecmp((const char *)value, type_dns_message, len) == 0)
+	{
 		cstream->response_status.content_type_valid = true;
 		return true;
 	}
