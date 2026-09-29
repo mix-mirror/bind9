@@ -125,6 +125,20 @@ typedef struct dns_db_methods {
 				       dns_dbversion_t	     *version,
 				       dns_rdatatype_t	      type,
 				       dns_rdatatype_t covers DNS__DB_FLARG);
+	isc_result_t (*addcache)(dns_db_t *db, const dns_name_t *name,
+				 isc_stdtime_t now, dns_rdataset_t *rdataset,
+				 unsigned int	 options,
+				 dns_rdataset_t *addedrdataset);
+	isc_result_t (*deletecache)(dns_db_t *db, const dns_name_t *name,
+				    dns_rdatatype_t type,
+				    dns_rdatatype_t covers);
+	isc_result_t (*findcache)(dns_db_t *db, const dns_name_t *name,
+				  dns_rdatatype_t type, unsigned int options,
+				  isc_stdtime_t now, dns_rdataset_t *rdataset,
+				  dns_rdataset_t *sigrdataset);
+	void (*expirecache)(dns_db_t *db, dns_slabheader_t *header);
+	isc_result_t (*flushcache)(dns_db_t *db, const dns_name_t *name,
+				   bool subtree);
 	bool (*issecure)(dns_db_t *db);
 	unsigned int (*nodecount)(dns_db_t *db);
 	isc_result_t (*getoriginnode)(dns_db_t		  *db,
@@ -1810,3 +1824,23 @@ dns_db_getzoneversion(dns_db_t *db, isc_buffer_t *b);
  *     ZONEVERSION
  * \li ISC_R_FAILURE other failures
  */
+
+/* Cache mutation addresses RRsets directly, without an owner node. */
+isc_result_t
+dns_db_addcache(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
+		dns_rdataset_t *rdataset, unsigned int options,
+		dns_rdataset_t *addedrdataset);
+isc_result_t
+dns_db_deletecache(dns_db_t *db, const dns_name_t *name, dns_rdatatype_t type,
+		   dns_rdatatype_t covers);
+
+void
+dns_db_expirecache(dns_db_t *db, dns_slabheader_t *header);
+isc_result_t
+dns_db_flushcache(dns_db_t *db, const dns_name_t *name, bool subtree);
+
+/* Exact cache lookup, without CNAME or ancestor DNAME processing. */
+isc_result_t
+dns_db_findcache(dns_db_t *db, const dns_name_t *name, dns_rdatatype_t type,
+		 unsigned int options, isc_stdtime_t now,
+		 dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset);

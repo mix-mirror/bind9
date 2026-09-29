@@ -108,7 +108,7 @@ copy_rdataset(dns_rdataset_t *rdataset, isc_buffer_t *buffer) {
 }
 
 isc_result_t
-dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
+dns_ncache_add(dns_message_t *message, dns_db_t *cache, const dns_name_t *owner,
 	       dns_rdatatype_t rdtype, isc_stdtime_t now, dns_ttl_t minttl,
 	       dns_ttl_t maxttl, bool optout, bool secure,
 	       dns_rdataset_t *addedrdataset) {
@@ -126,7 +126,7 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 
 	/*
 	 * Convert the authority data from 'message' into a negative cache
-	 * rdataset, and store it in 'cache' at 'node'.
+	 * rdataset, and store it in 'cache' at 'owner'.
 	 *
 	 * We assume that all data in the authority section has been
 	 * validated by the caller.
@@ -278,8 +278,8 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
 		ncrdataset.attributes.optout = true;
 	}
 
-	return dns_db_addrdataset(cache, node, NULL, now, &ncrdataset, 0,
-				  addedrdataset);
+	return dns_db_addcache(cache, owner, now, &ncrdataset, 0,
+			       addedrdataset);
 }
 
 isc_result_t

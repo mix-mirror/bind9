@@ -143,9 +143,6 @@ dns_zonefetch_done(void *arg) {
 	eresult = resp->result;
 
 	/* Free resources which are not of interest */
-	if (resp->node != NULL) {
-		dns_db_detachnode(&resp->node);
-	}
 	if (resp->cache != NULL) {
 		dns_db_detach(&resp->cache);
 	}

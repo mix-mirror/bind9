@@ -24,6 +24,7 @@
 #include <cmocka.h>
 
 #include <isc/lib.h>
+#include <isc/thread.h>
 #include <isc/util.h>
 
 #include <dns/lib.h>
@@ -56,7 +57,6 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 			 bool longname) {
 	isc_result_t result;
 	dns_rdata_t rdata;
-	dns_dbnode_t *node = NULL;
 	dns_rdatalist_t rdatalist;
 	dns_rdataset_t rdataset;
 	dns_fixedname_t fname;
@@ -85,10 +85,6 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 	dns_test_namefromstring(namebuf, &fname);
 	name = dns_fixedname_name(&fname);
 
-	result = dns_db_findnode(db, name, true, &node);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	assert_non_null(node);
-
 	dns_rdata_init(&rdata);
 	rdata.length = rdata_len;
 	rdata.data = rdatabuf;
@@ -104,28 +100,19 @@ overmempurge_addrdataset(dns_db_t *db, isc_stdtime_t now, int idx,
 	dns_rdataset_init(&rdataset);
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-	result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0, NULL);
+	result = dns_db_addcache(db, name, now, &rdataset, 0, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
-
-	dns_db_detachnode(&node);
 }
 
 static void
-cleanup_all_deadnodes(dns_db_t *db, size_t maxcache) {
-	qpcache_t *qpdb = (qpcache_t *)db;
-	qpcache_ref(qpdb);
-	for (uint16_t locknum = 0; locknum < qpdb->buckets_count; locknum++) {
-		cleanup_deadnodes(qpdb, locknum);
-	}
-	qpcache_unref(qpdb);
-
+wait_for_reclamation(dns_db_t *db, size_t maxcache) {
 	/*
-	 * NAMESPACE_NORMAL node/entry reclamation is deferred to an RCU
-	 * grace period (see table_delete()), so it doesn't show
-	 * up in isc_mem_inuse() immediately. If memory usage would fail the
-	 * caller's limit check, wait for reclamation before checking again.
-	 * Otherwise, avoid a callback barrier on every insertion: thousands
-	 * of serial callback waits make these tests unnecessarily slow.
+	 * Header reclamation is deferred to an RCU grace period, so freed
+	 * storage doesn't show up in isc_mem_inuse() immediately. If memory
+	 * usage would fail the caller's limit check, wait for reclamation
+	 * before checking again. Otherwise, avoid a callback barrier on every
+	 * insertion: thousands of serial callback waits make these tests
+	 * unnecessarily slow.
 	 */
 	if (isc_mem_inuse(db->mctx) >= maxcache) {
 		rcu_quiescent_state();
@@ -145,7 +132,6 @@ servestale_addrdataset(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
 		       dns_ttl_t ttl, dns_trust_t trust) {
 	isc_result_t result;
 	dns_rdata_t rdata;
-	dns_dbnode_t *node = NULL;
 	dns_rdatalist_t rdatalist;
 	dns_rdataset_t rdataset;
 	unsigned char rdatabuf[1024];
@@ -166,14 +152,8 @@ servestale_addrdataset(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
 	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 	rdataset.trust = trust;
 
-	result = dns_db_findnode(db, name, true, &node);
-	assert_true(result == ISC_R_SUCCESS || result == DNS_R_CNAME);
-	assert_non_null(node);
-
-	result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0, NULL);
+	result = dns_db_addcache(db, name, now, &rdataset, 0, NULL);
 	assert_int_equal(result, ISC_R_SUCCESS);
-
-	dns_db_detachnode(&node);
 }
 
 /*
@@ -366,14 +346,7 @@ ISC_LOOP_TEST_IMPL(cname_precedence) {
 		const isc_result_t expected_result;
 		const dns_rdatatype_t expected_type;
 		const bool expected_stale;
-		/*
-		 * Caching fresh data retires the expired RRsets at the node,
-		 * so when the stale RRset is inserted first it is already
-		 * gone by the time the fresh one is cached.  Set when the
-		 * stale RRset was the expected answer: that insertion order
-		 * finds nothing instead.
-		 */
-		const bool purged;
+
 	} testcases[] = {
 		/* Both fresh: the requested type wins over the alias. */
 		{
@@ -448,7 +421,6 @@ ISC_LOOP_TEST_IMPL(cname_precedence) {
 			.expected_result = DNS_R_CNAME,
 			.expected_type = cname,
 			.expected_stale = true,
-			.purged = true,
 		},
 		{
 			.type1 = cname,
@@ -571,354 +543,143 @@ ISC_LOOP_TEST_IMPL(cname_precedence) {
 		const dns_rdatatype_t expected_type =
 			testcases[i].expected_type;
 		const bool expected_stale = testcases[i].expected_stale;
-		const bool purged = testcases[i].purged;
-
-		/*
-		 * A fresh RRset cached after a stale one retires it; with
-		 * 'purged' set, that insertion order is expected to find
-		 * nothing for the query.
-		 */
-		if (purged && rank1 == stale && rank2 == fresh) {
-			check_cname_precedence(mctx, type1, rank1, type2, rank2,
-					       qtype, ISC_R_NOTFOUND, none,
-					       false);
-		} else {
-			check_cname_precedence(mctx, type1, rank1, type2, rank2,
-					       qtype, expected_result,
-					       expected_type, expected_stale);
-		}
-		if (purged && rank2 == stale && rank1 == fresh) {
-			check_cname_precedence(mctx, type2, rank2, type1, rank1,
-					       qtype, ISC_R_NOTFOUND, none,
-					       false);
-		} else {
-			check_cname_precedence(mctx, type2, rank2, type1, rank1,
-					       qtype, expected_result,
-					       expected_type, expected_stale);
-		}
+		check_cname_precedence(mctx, type1, rank1, type2, rank2, qtype,
+				       expected_result, expected_type,
+				       expected_stale);
+		check_cname_precedence(mctx, type2, rank2, type1, rank1, qtype,
+				       expected_result, expected_type,
+				       expected_stale);
 	}
 
 	isc_mem_detach(&mctx);
 	isc_loopmgr_shutdown();
 }
 
-ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
-	isc_result_t result;
-	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
-	dns_rdatasetiter_t *iterator = NULL;
-	isc_mem_t *mctx = NULL;
-	isc_stdtime_t now = isc_stdtime_now();
-	dns_fixedname_t fname;
-	dns_name_t *name = NULL;
-
-	isc_mem_create("test", &mctx);
-
-	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
-	assert_int_equal(result, ISC_R_SUCCESS);
-
-	dns_test_namefromstring("deleted.example.com.", &fname);
-	name = dns_fixedname_name(&fname);
-
-	servestale_addrdataset(db, name, now, dns_rdatatype_a, "10.53.0.1",
-			       3600, dns_trust_answer);
-
-	result = dns_db_findnode(db, name, false, &node);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	assert_non_null(node);
-
-	result = dns_db_deleterdataset(db, node, NULL, dns_rdatatype_a, 0);
-	assert_int_equal(result, ISC_R_SUCCESS);
-
-	result = dns_db_allrdatasets(db, node, NULL, DNS_DB_EXPIREDOK, now,
-				     &iterator);
-	assert_int_equal(result, ISC_R_SUCCESS);
-
-	result = dns_rdatasetiter_first(iterator);
-	assert_int_equal(result, ISC_R_NOMORE);
-
-	dns_rdatasetiter_destroy(&iterator);
-	dns_db_detachnode(&node);
-	dns_db_detach(&db);
-	isc_mem_detach(&mctx);
-	isc_loopmgr_shutdown();
-}
-
-/* Eviction operates on names, including all types stored at a name. */
-ISC_LOOP_TEST_IMPL(clock_nodes) {
+/* Evict one type without removing other types at the same owner. */
+ISC_LOOP_TEST_IMPL(clock_headers) {
 	isc_mem_t *mctx = NULL;
 	dns_fixedname_t fname;
 	dns_name_t *name = NULL;
-	dns_dbnode_t *nodes[3] = { NULL, NULL, NULL };
-	const char *names[] = { "hot.example.", "cold.example.",
-				"new.example." };
-	isc_stdtime_t now = isc_stdtime_now();
-
 	isc_mem_create("test", &mctx);
 	dns_db_t *db = servestale_setup(mctx, &fname, &name);
-	qpcache_t *qpdb = (qpcache_t *)db;
-
-	for (size_t i = 0; i < 3; i++) {
-		dns_test_namefromstring(names[i], &fname);
-		assert_int_equal(dns_db_findnode(db, name, true, &nodes[i]),
-				 ISC_R_SUCCESS);
-		/*
-		 * Put the empty nodes in one bucket for deterministic eviction.
-		 */
-		((qpcnode_t *)nodes[i])->locknum = 0;
-		servestale_addrdataset(db, name, now, dns_rdatatype_a,
-				       "192.0.2.1", 3600, dns_trust_answer);
-		servestale_addrdataset(db, name, now, dns_rdatatype_aaaa,
-				       "2001:db8::1", 3600, dns_trust_answer);
-	}
-
-	qpcnode_t *hot = (qpcnode_t *)nodes[0];
-	qpcnode_t *cold = (qpcnode_t *)nodes[1];
-	qpcnode_t *newnode = (qpcnode_t *)nodes[2];
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlocktype_t tlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *lock = &qpdb->buckets[0].lock;
-	NODE_WRLOCK(lock, &nlocktype);
-
-	/* Skip another evictor's marker, including hash collisions. */
+	qpcache_t *cache = (qpcache_t *)db;
+	isc_stdtime_t now = isc_stdtime_now();
+	servestale_addrdataset(db, name, now, dns_rdatatype_a, "192.0.2.1",
+			       3600, dns_trust_answer);
+	servestale_addrdataset(db, name, now, dns_rdatatype_aaaa, "2001:db8::1",
+			       3600, dns_trust_answer);
 	rcu_read_lock();
-	struct cds_lfht_iter marker_iter;
-	qpcache_marker_t *marker = table_addmarker(
-		&qpdb->table, isc_hash32(name->ndata, name->length, false),
-		&marker_iter);
-	assert_int_equal(table_count(&qpdb->table), 3);
-
-	/* A hit on one type gives the whole node a second chance. */
-	dns_slabheader_t *header = cds_list_first_entry(
-		&hot->headers, dns_slabheader_t, headers_link);
-	qpcache_hit(qpdb, header);
-	expire_clock_nodes(qpdb, newnode, 0, 1, &nlocktype,
-			   &tlocktype DNS__DB_FILELINE);
-	NODE_UNLOCK(lock, &nlocktype);
-
-	assert_true(cds_list_empty(&cold->headers));
-	assert_false(atomic_load_relaxed(&cold->visited));
-	assert_false(cds_list_empty(&hot->headers));
-	assert_false(cds_list_empty(&newnode->headers));
-
-	/* The node being populated is protected even for a large purge. */
-	NODE_WRLOCK(lock, &nlocktype);
-	expire_clock_nodes(qpdb, newnode, 0, SIZE_MAX, &nlocktype,
-			   &tlocktype DNS__DB_FILELINE);
-	NODE_UNLOCK(lock, &nlocktype);
-	assert_false(cds_list_empty(&newnode->headers));
-	assert_true(cds_list_empty(&hot->headers));
-
-	table_delmarker(&qpdb->table, marker);
+	dns_slabheader_t *a = table_find(cache, name,
+					 DNS_TYPEPAIR(dns_rdatatype_a));
+	dns_slabheader_t *aaaa = table_find(cache, name,
+					    DNS_TYPEPAIR(dns_rdatatype_aaaa));
+	assert_non_null(a);
+	assert_non_null(aaaa);
+	qpcache_hit(cache, a);
+	assert_false(atomic_load_relaxed(&aaaa->visited));
+	/* Include a foreign marker with the same hash as a real header. */
+	qpcache_marker_t *marker = isc_mem_get(mctx, sizeof(*marker));
+	*marker = (qpcache_marker_t){ .item.marker = true };
+	isc_mem_attach(mctx, &marker->mctx);
+	cds_lfht_node_init(&marker->item.ht_node);
+	cache_key_t key = { name, DNS_TYPEPAIR(dns_rdatatype_a) };
+	cds_lfht_add(cache->ht, key_hash(&key), &marker->item.ht_node);
+	assert_int_equal(nodecount(db), 2);
+	assert_ptr_equal(table_find(cache, name, key.type), a);
+	expire_clock_headers(cache, aaaa, SIZE_MAX);
+	assert_null(table_find(cache, name, DNS_TYPEPAIR(dns_rdatatype_a)));
+	assert_ptr_equal(
+		table_find(cache, name, DNS_TYPEPAIR(dns_rdatatype_aaaa)),
+		aaaa);
+	assert_int_equal(cds_lfht_del(cache->ht, &marker->item.ht_node), 0);
+	call_rcu(&marker->item.rcu_head, item_destroy);
 	rcu_read_unlock();
+	dns_db_detach(&db);
+	rcu_quiescent_state();
+	rcu_barrier();
+	assert_int_equal(isc_mem_inuse(mctx), 0);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
 
-	/* An externally held empty node can be populated and evicted again. */
-	dns_test_namefromstring(names[1], &fname);
+/* A retained version cannot delete or repopulate its replacement. */
+ISC_LOOP_TEST_IMPL(replaced_header_lifetime) {
+	isc_mem_t *mctx = NULL;
+	dns_fixedname_t fname, ffound;
+	dns_name_t *name = NULL;
+	isc_mem_create("test", &mctx);
+	dns_db_t *db = servestale_setup(mctx, &fname, &name);
+	isc_stdtime_t now = isc_stdtime_now();
+	servestale_addrdataset(db, name, now, dns_rdatatype_a, "192.0.2.1",
+			       3600, dns_trust_answer);
+	dns_rdataset_t held = DNS_RDATASET_INIT, current = DNS_RDATASET_INIT;
+	assert_int_equal(dns_db_find(db, name, NULL, dns_rdatatype_a, 0, now,
+				     dns_fixedname_initname(&ffound), &held,
+				     NULL),
+			 ISC_R_SUCCESS);
 	servestale_addrdataset(db, name, now, dns_rdatatype_a, "192.0.2.2",
 			       3600, dns_trust_answer);
-	assert_false(cds_list_empty(&cold->headers));
-	assert_int_equal(
-		dns_db_deleterdataset(db, nodes[1], NULL, dns_rdatatype_a, 0),
-		ISC_R_SUCCESS);
-	assert_false(atomic_load_relaxed(&cold->visited));
-
-	/* Evict other buckets without waiting on their locks. */
-	if (qpdb->buckets_count > 1) {
-		/* Empty and held exclusively by this test. */
-		cold->locknum = 1;
-		servestale_addrdataset(db, name, now, dns_rdatatype_a,
-				       "192.0.2.3", 3600, dns_trust_answer);
-		isc_rwlocktype_t other = isc_rwlocktype_none;
-		NODE_WRLOCK(&qpdb->buckets[1].lock, &other);
-		NODE_WRLOCK(lock, &nlocktype);
-		expire_clock_nodes(qpdb, newnode, 0, SIZE_MAX, &nlocktype,
-				   &tlocktype DNS__DB_FILELINE);
-		assert_false(cds_list_empty(&cold->headers));
-		NODE_UNLOCK(&qpdb->buckets[1].lock, &other);
-		expire_clock_nodes(qpdb, newnode, 0, SIZE_MAX, &nlocktype,
-				   &tlocktype DNS__DB_FILELINE);
-		assert_true(cds_list_empty(&cold->headers));
-		NODE_UNLOCK(lock, &nlocktype);
-	}
-
-	for (size_t i = 0; i < 3; i++) {
-		dns_db_detachnode(&nodes[i]);
-	}
+	dns_rdataset_expire(&held);
+	assert_int_equal(dns_db_find(db, name, NULL, dns_rdatatype_a, 0, now,
+				     dns_fixedname_name(&ffound), &current,
+				     NULL),
+			 ISC_R_SUCCESS);
+	assert_ptr_not_equal(held.slab.raw, current.slab.raw);
+	dns_rdataset_disassociate(&current);
+	assert_int_equal(dns_db_deletecache(db, name, dns_rdatatype_a, 0),
+			 ISC_R_SUCCESS);
 	dns_db_detach(&db);
 	rcu_quiescent_state();
 	rcu_barrier();
-	size_t inuse = isc_mem_inuse(mctx);
+	assert_int_equal(dns_rdataset_first(&held), ISC_R_SUCCESS);
+	dns_rdata_t rdata = DNS_RDATA_INIT;
+	dns_rdataset_current(&held, &rdata);
+	assert_int_equal(rdata.data[3], 1);
+	dns_rdataset_disassociate(&held);
+	rcu_quiescent_state();
+	rcu_barrier();
+	assert_int_equal(isc_mem_inuse(mctx), 0);
 	isc_mem_detach(&mctx);
 	isc_loopmgr_shutdown();
-	assert_int_equal(inuse, 0);
 }
 
-/* Force removal between finding a node and acquiring its external reference. */
-ISC_LOOP_TEST_IMPL(removed_node_cannot_reactivate) {
+ISC_LOOP_TEST_IMPL(nsec_header_eviction) {
 	isc_mem_t *mctx = NULL;
 	dns_fixedname_t fname;
 	dns_name_t *name = NULL;
-	dns_dbnode_t *node = NULL;
-	qpcnode_t *candidate = NULL;
-
 	isc_mem_create("test", &mctx);
 	dns_db_t *db = servestale_setup(mctx, &fname, &name);
-	qpcache_t *qpdb = (qpcache_t *)db;
-	assert_int_equal(dns_db_findnode(db, name, true, &node), ISC_R_SUCCESS);
-
-	/* Model a lookup paused before reactivate_node() takes the bucket lock.
-	 */
+	qpcache_t *cache = (qpcache_t *)db;
+	isc_stdtime_t now = isc_stdtime_now();
+	servestale_addrdataset(db, name, now, dns_rdatatype_nsec,
+			       "zzz.example.com. A NSEC RRSIG", 3600,
+			       dns_trust_secure);
 	rcu_read_lock();
-	assert_int_equal(table_find(&qpdb->table, name, &candidate),
+	dns_slabheader_t *first = table_find(cache, name,
+					     DNS_TYPEPAIR(dns_rdatatype_nsec));
+	dns_slabheader_ref(first);
+	servestale_addrdataset(db, name, now, dns_rdatatype_nsec,
+			       "zzz.example.com. AAAA NSEC RRSIG", 3600,
+			       dns_trust_secure);
+	assert_int_equal(header_delete(cache, first), 0);
+	dns_slabheader_t *indexed = NULL;
+	assert_int_equal(dns_qp_getname(cache->tree_nsec, name,
+					DNS_DBNAMESPACE_NSEC, (void **)&indexed,
+					NULL),
 			 ISC_R_SUCCESS);
-	dns_db_detachnode(&node);
-	assert_true(candidate->removed);
-	assert_false(reactivate_node(qpdb, candidate,
-				     isc_rwlocktype_none DNS__DB_FILELINE));
-	assert_int_equal(isc_refcount_current(&candidate->erefs), 0);
-	assert_int_equal(dns_db_findnode(db, name, false, &node),
-			 ISC_R_NOTFOUND);
-
-	/* Retrying with create=true must acquire a new, indexed node. */
-	assert_int_equal(dns_db_findnode(db, name, true, &node), ISC_R_SUCCESS);
-	assert_ptr_not_equal(node, candidate);
-
-	/* An insertion that loses to an existing node has the same race. */
-	qpcnode_t *unused = new_qpcnode(qpdb, name, DNS_DBNAMESPACE_NORMAL);
-	assert_int_equal(table_insert(&qpdb->table, unused, &candidate),
-			 ISC_R_EXISTS);
-	qpcnode_detach(&unused);
-	assert_ptr_equal(node, candidate);
-	dns_db_detachnode(&node);
-	assert_false(reactivate_node(qpdb, candidate,
-				     isc_rwlocktype_none DNS__DB_FILELINE));
-	assert_int_equal(isc_refcount_current(&candidate->erefs), 0);
-
-	assert_int_equal(dns_db_findnode(db, name, true, &node), ISC_R_SUCCESS);
-	assert_ptr_not_equal(node, candidate);
-	rcu_read_unlock();
-
-	/* If acquisition wins, its reference prevents removal of the empty
-	 * node. */
-	candidate = (qpcnode_t *)node;
-	assert_true(reactivate_node(qpdb, candidate,
-				    isc_rwlocktype_none DNS__DB_FILELINE));
-	dns_db_detachnode(&node);
-	rcu_read_lock();
-	qpcnode_t *indexed = NULL;
-	assert_int_equal(table_find(&qpdb->table, name, &indexed),
-			 ISC_R_SUCCESS);
-	assert_ptr_equal(indexed, candidate);
-	rcu_read_unlock();
-
-	servestale_addrdataset(db, name, isc_stdtime_now(), dns_rdatatype_a,
-			       "192.0.2.1", 3600, dns_trust_answer);
-	node = (dns_dbnode_t *)candidate;
-	dns_db_detachnode(&node);
+	assert_ptr_not_equal(indexed, first);
+	expire_clock_headers(cache, NULL, SIZE_MAX);
+	assert_int_equal(dns_qp_memusage(cache->tree_nsec).leaves, 0);
 	dns_db_detach(&db);
-	rcu_quiescent_state();
-	rcu_barrier();
-	size_t inuse = isc_mem_inuse(mctx);
-	isc_mem_detach(&mctx);
-	isc_loopmgr_shutdown();
-	assert_int_equal(inuse, 0);
-}
-
-/* Entry callbacks must not depend on either the table or the cache. */
-ISC_LOOP_TEST_IMPL(table_entries_outlive_cache) {
-	isc_mem_t *mctx = NULL;
-	dns_fixedname_t fname;
-	dns_name_t *name = NULL;
-
-	isc_mem_create("test", &mctx);
-	dns_db_t *db = servestale_setup(mctx, &fname, &name);
-	qpcache_t *qpdb = (qpcache_t *)db;
-	qpcache_table_t *table = isc_mem_get(mctx, sizeof(*table));
-	*table = (qpcache_table_t){ 0 };
-	table_init(mctx, table);
-	qpcnode_t *first = new_qpcnode(qpdb, name, DNS_DBNAMESPACE_NORMAL);
-	qpcnode_t *second = new_qpcnode(qpdb, name, DNS_DBNAMESPACE_NORMAL);
-	qpcnode_t *found = NULL;
-
-	rcu_read_lock();
-	struct cds_lfht_iter iter1, iter2;
-	uint32_t hash = isc_hash32(name->ndata, name->length, false);
-	qpcache_marker_t *marker1 = table_addmarker(table, hash, &iter1);
-	qpcache_marker_t *marker2 = table_addmarker(table, hash, &iter2);
-	assert_int_equal(table_count(table), 0);
-	assert_int_equal(table_find(table, name, &found), ISC_R_NOTFOUND);
-	assert_int_equal(table_delete(table, name), ISC_R_NOTFOUND);
-	assert_int_equal(table_insert(table, first, &found), ISC_R_SUCCESS);
-	assert_int_equal(isc_refcount_current(&first->references), 2);
-	assert_int_equal(table_insert(table, second, &found), ISC_R_EXISTS);
-	assert_ptr_equal(found, first);
-	assert_int_equal(isc_refcount_current(&second->references), 1);
-	assert_int_equal(table_count(table), 1);
-
-	assert_int_equal(table_delete(table, name), ISC_R_SUCCESS);
-	assert_int_equal(table_find(table, name, &found), ISC_R_NOTFOUND);
-	assert_int_equal(table_delete(table, name), ISC_R_NOTFOUND);
-	assert_int_equal(table_insert(table, second, &found), ISC_R_SUCCESS);
-	assert_int_equal(table_find(table, name, &found), ISC_R_SUCCESS);
-	assert_ptr_equal(found, second);
-	assert_int_equal(table_count(table), 1);
-
-	/* Removed markers may still be observed by overlapping scans. */
-	table_delmarker(table, marker1);
-	cds_lfht_next(table->ht, &iter1);
-	table_delmarker(table, marker2);
-
-	/* Keep first referenced beyond both cache teardown and its callback. */
-	qpcnode_detach(&second);
-	table_destroy(table);
-	isc_mem_put(mctx, table, sizeof(*table));
-	dns_db_detach(&db);
-	/* Both removed and shutdown entries are still awaiting reclamation. */
-	assert_true(isc_mem_inuse(mctx) > 0);
 	rcu_read_unlock();
 	rcu_quiescent_state();
 	rcu_barrier();
-
 	assert_int_equal(isc_refcount_current(&first->references), 1);
 	assert_true(dns_name_equal(&first->name, name));
-	qpcnode_detach(&first);
-
-	size_t inuse = isc_mem_inuse(mctx);
+	dns_slabheader_detach(&first);
+	assert_int_equal(isc_mem_inuse(mctx), 0);
 	isc_mem_detach(&mctx);
 	isc_loopmgr_shutdown();
-	assert_int_equal(inuse, 0);
-}
-
-ISC_LOOP_TEST_IMPL(destroy_with_pending_entry) {
-	isc_mem_t *mctx = NULL;
-	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
-	dns_fixedname_t fname;
-	dns_name_t *name = NULL;
-
-	isc_mem_create("test", &mctx);
-	db = servestale_setup(mctx, &fname, &name);
-	/* Also exercise destruction of a node still present in the table. */
-	servestale_addrdataset(db, name, isc_stdtime_now(), dns_rdatatype_a,
-			       "10.53.0.1", 3600, dns_trust_answer);
-	dns_test_namefromstring("empty.example.com.", &fname);
-
-	/* Keep the deleted entry's callback pending until after DB detach. */
-	rcu_read_lock();
-	isc_result_t result = dns_db_findnode(db, name, true, &node);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	dns_db_detachnode(&node);
-	dns_db_detach(&db);
-	rcu_read_unlock();
-	rcu_quiescent_state();
-	rcu_barrier();
-
-	size_t inuse = isc_mem_inuse(mctx);
-	isc_mem_detach(&mctx);
-	isc_loopmgr_shutdown();
-	assert_int_equal(inuse, 0);
 }
 
 ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
@@ -956,7 +717,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054,
 					 DNS_RDATA_MAXLENGTH - 2, false);
-		cleanup_all_deadnodes(db, maxcache);
+		wait_for_reclamation(db, maxcache);
 		if (verbose) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
@@ -1003,7 +764,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	 */
 	while (i-- > 0) {
 		overmempurge_addrdataset(db, now, i, 50054, 0, true);
-		cleanup_all_deadnodes(db, maxcache);
+		wait_for_reclamation(db, maxcache);
 		if (verbose) {
 			print_message("# inuse: %zd max: %zd\n",
 				      isc_mem_inuse(mctx), maxcache);
@@ -1016,18 +777,169 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	isc_loopmgr_shutdown();
 }
 
+static void
+add_negative(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
+	     dns_rdatatype_t type, dns_trust_t trust) {
+	dns_rdatalist_t list;
+	dns_rdatalist_init(&list);
+	list.rdclass = dns_rdataclass_in;
+	list.type = type;
+	list.ttl = 60;
+	dns_rdataset_t set = DNS_RDATASET_INIT;
+	dns_rdatalist_tordataset(&list, &set);
+	set.attributes.negative = true;
+	set.attributes.nxdomain = type == dns_rdatatype_any;
+	set.trust = trust;
+	assert_int_equal(dns_db_addcache(db, name, now, &set, 0, NULL),
+			 ISC_R_SUCCESS);
+	dns_rdataset_disassociate(&set);
+}
+
+ISC_LOOP_TEST_IMPL(negative_precedence) {
+	isc_mem_t *mctx = NULL;
+	dns_fixedname_t fname;
+	dns_name_t *name = NULL;
+	isc_mem_create("test", &mctx);
+	dns_db_t *db = servestale_setup(mctx, &fname, &name);
+	isc_stdtime_t now = isc_stdtime_now();
+	servestale_addrdataset(db, name, now, dns_rdatatype_a, "192.0.2.1",
+			       3600, dns_trust_answer);
+	add_negative(db, name, now, dns_rdatatype_any, dns_trust_answer);
+	dns_rdataset_t answer = DNS_RDATASET_INIT;
+	assert_int_equal(dns_db_findcache(db, name, dns_rdatatype_a, 0, now,
+					  &answer, NULL),
+			 DNS_R_NCACHENXDOMAIN);
+	dns_rdataset_disassociate(&answer);
+	/* Expiry exposes the retained positive. */
+	assert_int_equal(dns_db_findcache(db, name, dns_rdatatype_a, 0,
+					  now + 61, &answer, NULL),
+			 ISC_R_SUCCESS);
+	dns_rdataset_disassociate(&answer);
+	/* So does eviction of just the name-wide negative. */
+	assert_int_equal(dns_db_deletecache(db, name, dns_rdatatype_any, 0),
+			 ISC_R_SUCCESS);
+	assert_int_equal(dns_db_findcache(db, name, dns_rdatatype_a, 0, now,
+					  &answer, NULL),
+			 ISC_R_SUCCESS);
+	dns_rdataset_disassociate(&answer);
+	servestale_addrdataset(db, name, now, dns_rdatatype_a, "192.0.2.2",
+			       3600, dns_trust_secure);
+	add_negative(db, name, now, dns_rdatatype_any, dns_trust_answer);
+	assert_int_equal(dns_db_findcache(db, name, dns_rdatatype_a, 0, now,
+					  &answer, NULL),
+			 ISC_R_SUCCESS);
+	assert_int_equal(answer.trust, dns_trust_secure);
+	dns_rdataset_disassociate(&answer);
+	add_negative(db, name, now, dns_rdatatype_any, dns_trust_secure);
+	assert_int_equal(dns_db_findcache(db, name, dns_rdatatype_a, 0, now,
+					  &answer, NULL),
+			 DNS_R_NCACHENXDOMAIN);
+	dns_rdataset_disassociate(&answer);
+	servestale_addrdataset(db, name, now, dns_rdatatype_a, "192.0.2.3",
+			       3600, dns_trust_secure);
+	assert_int_equal(dns_db_findcache(db, name, dns_rdatatype_a, 0, now,
+					  &answer, NULL),
+			 ISC_R_SUCCESS);
+	dns_rdataset_disassociate(&answer);
+	/* Exact-name flushing removes every type without an owner index. */
+	assert_int_equal(dns_db_flushcache(db, name, false), ISC_R_SUCCESS);
+	assert_int_equal(nodecount(db), 0);
+	dns_db_detach(&db);
+	rcu_quiescent_state();
+	rcu_barrier();
+	assert_int_equal(isc_mem_inuse(mctx), 0);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
+typedef struct {
+	dns_db_t *db;
+	const dns_name_t *name;
+	unsigned int id;
+} concurrent_arg_t;
+
+static void *
+concurrent_cache(void *arg) {
+	concurrent_arg_t *ctx = arg;
+	isc_stdtime_t now = isc_stdtime_now();
+	unsigned char raw[] = { 192, 0, 2, ctx->id + 1 };
+	dns_rdata_t rdata = DNS_RDATA_INIT;
+	rdata.data = raw;
+	rdata.length = sizeof(raw);
+	rdata.type = dns_rdatatype_a;
+	rdata.rdclass = dns_rdataclass_in;
+	dns_rdatalist_t list;
+	dns_rdatalist_init(&list);
+	list.rdclass = dns_rdataclass_in;
+	list.type = dns_rdatatype_a;
+	list.ttl = 3600;
+	ISC_LIST_APPEND(list.rdata, &rdata, link);
+	dns_rdataset_t input = DNS_RDATASET_INIT;
+	dns_rdatalist_tordataset(&list, &input);
+	input.trust = dns_trust_answer;
+	for (unsigned int i = 0; i < 1000; i++) {
+		dns_rdataset_t answer = DNS_RDATASET_INIT;
+		RUNTIME_CHECK(dns_db_addcache(ctx->db, ctx->name, now, &input,
+					      0, &answer) == ISC_R_SUCCESS);
+		RUNTIME_CHECK(dns_rdataset_first(&answer) == ISC_R_SUCCESS);
+		if (i % 3 == 0) {
+			dns_rdataset_expire(&answer);
+		}
+		dns_rdataset_disassociate(&answer);
+		isc_result_t result = dns_db_findcache(ctx->db, ctx->name,
+						       dns_rdatatype_a, 0, now,
+						       &answer, NULL);
+		RUNTIME_CHECK(result == ISC_R_SUCCESS ||
+			      result == ISC_R_NOTFOUND);
+		if (result == ISC_R_SUCCESS) {
+			RUNTIME_CHECK(dns_rdataset_first(&answer) ==
+				      ISC_R_SUCCESS);
+			dns_rdataset_disassociate(&answer);
+		}
+		if (i % 11 == 0) {
+			expire_clock_headers((qpcache_t *)ctx->db, NULL,
+					     SIZE_MAX);
+		}
+		rcu_quiescent_state();
+	}
+	dns_rdataset_disassociate(&input);
+	return NULL;
+}
+
+ISC_LOOP_TEST_IMPL(concurrent_replacement_eviction) {
+	isc_mem_t *mctx = NULL;
+	dns_fixedname_t fname;
+	dns_name_t *name = NULL;
+	isc_mem_create("test", &mctx);
+	dns_db_t *db = servestale_setup(mctx, &fname, &name);
+	isc_thread_t threads[4];
+	concurrent_arg_t args[4];
+	for (unsigned int i = 0; i < 4; i++) {
+		args[i] = (concurrent_arg_t){ db, name, i };
+		isc_thread_create(concurrent_cache, &args[i], &threads[i]);
+	}
+	for (unsigned int i = 0; i < 4; i++) {
+		isc_thread_join(threads[i], NULL);
+	}
+	assert_true(nodecount(db) <= 1);
+	dns_db_detach(&db);
+	rcu_quiescent_state();
+	rcu_barrier();
+	assert_int_equal(isc_mem_inuse(mctx), 0);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
-ISC_TEST_ENTRY_CUSTOM(removed_node_cannot_reactivate, setup_managers,
+ISC_TEST_ENTRY_CUSTOM(negative_precedence, setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(concurrent_replacement_eviction, setup_managers,
 		      teardown_managers)
-ISC_TEST_ENTRY_CUSTOM(table_entries_outlive_cache, setup_managers,
+ISC_TEST_ENTRY_CUSTOM(clock_headers, setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(replaced_header_lifetime, setup_managers,
 		      teardown_managers)
-ISC_TEST_ENTRY_CUSTOM(clock_nodes, setup_managers, teardown_managers)
-ISC_TEST_ENTRY_CUSTOM(destroy_with_pending_entry, setup_managers,
-		      teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(nsec_header_eviction, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
-ISC_TEST_ENTRY_CUSTOM(allrdatasets_expiredok_skips_deleted_header,
-		      setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(servestale_fresh_over_stale_cname, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(servestale_fresh_cname_over_stale_type, setup_managers,

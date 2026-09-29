@@ -1747,8 +1747,8 @@ query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	/*
 	 * We treat type A additional section processing as if it
 	 * were "any address type" additional section processing.
-	 * To avoid multiple lookups, we do an 'any' database
-	 * lookup and iterate over the node.
+	 * Authoritative databases can locate the owner with ANY;
+	 * the cache uses separate A and AAAA lookups.
 	 */
 	if (qtype == dns_rdatatype_a) {
 		type = dns_rdatatype_any;
@@ -1808,11 +1808,23 @@ query_additional_cb(void *arg, const dns_name_t *name, dns_rdatatype_t qtype,
 	}
 
 	version = NULL;
-	result = dns_db_findext(db, name, version, type,
-				client->query.dboptions | DNS_DBFIND_GLUEOK |
-					DNS_DBFIND_ADDITIONALOK,
-				client->inner.now, fname, &cm, &ci, rdataset,
-				sigrdataset);
+	result = dns_db_findcache(db, name, qtype,
+				  client->query.dboptions | DNS_DBFIND_GLUEOK |
+					  DNS_DBFIND_ADDITIONALOK,
+				  client->inner.now, rdataset, sigrdataset);
+	if (result != ISC_R_SUCCESS && qtype == dns_rdatatype_a) {
+		dns_rdataset_cleanup(rdataset);
+		dns_rdataset_cleanup(sigrdataset);
+		result = dns_db_findcache(
+			db, name, dns_rdatatype_aaaa,
+			client->query.dboptions | DNS_DBFIND_GLUEOK |
+				DNS_DBFIND_ADDITIONALOK,
+			client->inner.now, rdataset, sigrdataset);
+	}
+	if (result == ISC_R_SUCCESS) {
+		dns_name_copy(name, fname);
+		type = rdataset->type;
+	}
 
 	dns_cache_updatestats(qctx->view->cache, result);
 	if (!client->inner.wantdnssec) {
@@ -1923,8 +1935,10 @@ found:
 	}
 
 	if (qtype == dns_rdatatype_a) {
-		CHECK(dns_db_findnodeext(db, foundname, false, &cm, &ci,
-					 &node));
+		if (!dns_db_iscache(db)) {
+			CHECK(dns_db_findnodeext(db, foundname, false, &cm, &ci,
+						 &node));
+		}
 
 		/*
 		 * We now go looking for A and AAAA records, along with
@@ -1942,12 +1956,21 @@ found:
 		} else if (client->inner.wantdnssec) {
 			sigrdataset = ns_client_newrdataset(client);
 		}
-		if (query_isduplicate(client, fname, dns_rdatatype_a, NULL)) {
+		if ((trdataset != NULL && trdataset->type == dns_rdatatype_a) ||
+		    query_isduplicate(client, fname, dns_rdatatype_a, NULL))
+		{
 			goto aaaa_lookup;
 		}
-		result = dns_db_findrdataset(db, node, version, dns_rdatatype_a,
-					     0, client->inner.now, rdataset,
-					     sigrdataset);
+		if (dns_db_iscache(db)) {
+			result = dns_db_findcache(
+				db, foundname, dns_rdatatype_a,
+				DNS_DBFIND_GLUEOK | DNS_DBFIND_ADDITIONALOK,
+				client->inner.now, rdataset, sigrdataset);
+		} else {
+			result = dns_db_findrdataset(
+				db, node, version, dns_rdatatype_a, 0,
+				client->inner.now, rdataset, sigrdataset);
+		}
 		if (result == DNS_R_NCACHENXDOMAIN) {
 			goto addname;
 		} else if (result == DNS_R_NCACHENXRRSET) {
@@ -1987,13 +2010,22 @@ found:
 			}
 		}
 	aaaa_lookup:
-		if (query_isduplicate(client, fname, dns_rdatatype_aaaa, NULL))
+		if ((trdataset != NULL &&
+		     trdataset->type == dns_rdatatype_aaaa) ||
+		    query_isduplicate(client, fname, dns_rdatatype_aaaa, NULL))
 		{
 			goto addname;
 		}
-		result = dns_db_findrdataset(
-			db, node, version, dns_rdatatype_aaaa, 0,
-			client->inner.now, rdataset, sigrdataset);
+		if (dns_db_iscache(db)) {
+			result = dns_db_findcache(
+				db, foundname, dns_rdatatype_aaaa,
+				DNS_DBFIND_GLUEOK | DNS_DBFIND_ADDITIONALOK,
+				client->inner.now, rdataset, sigrdataset);
+		} else {
+			result = dns_db_findrdataset(
+				db, node, version, dns_rdatatype_aaaa, 0,
+				client->inner.now, rdataset, sigrdataset);
+		}
 		if (result == DNS_R_NCACHENXDOMAIN) {
 			goto addname;
 		} else if (result == DNS_R_NCACHENXRRSET) {
@@ -2354,9 +2386,6 @@ free_fresp(ns_client_t *client, dns_fetchresponse_t **frespp) {
 
 	if (fresp->fetch != NULL) {
 		dns_resolver_destroyfetch(&fresp->fetch);
-	}
-	if (fresp->node != NULL) {
-		dns_db_detachnode(&fresp->node);
 	}
 	if (fresp->cache != NULL) {
 		dns_db_detach(&fresp->cache);
@@ -6114,9 +6143,6 @@ query_resume(query_ctx_t *qctx) {
 		qctx->qtype = qctx->rpz_st->q.qtype;
 		fixedname_move(&qctx->rpz_st->q.foundname, &qctx->foundname);
 
-		if (qctx->fresp->node != NULL) {
-			dns_db_detachnode(&qctx->fresp->node);
-		}
 		qctx->rpz_st->r.db = MOVE_OWNERSHIP(qctx->fresp->cache);
 		qctx->rpz_st->r.r_type = qctx->fresp->qtype;
 		qctx->rpz_st->r.r_rdataset =
@@ -6155,9 +6181,6 @@ query_resume(query_ctx_t *qctx) {
 		 */
 		ns_client_putrdataset(qctx->client, &qctx->fresp->rdataset);
 		ns_client_putrdataset(qctx->client, &qctx->fresp->sigrdataset);
-		if (qctx->fresp->node != NULL) {
-			dns_db_detachnode(&qctx->fresp->node);
-		}
 		if (qctx->fresp->cache != NULL) {
 			dns_db_detach(&qctx->fresp->cache);
 		}
@@ -6168,9 +6191,6 @@ query_resume(query_ctx_t *qctx) {
 		qctx->qtype = qctx->fresp->qtype;
 		qctx->db = MOVE_OWNERSHIP(qctx->fresp->cache);
 		qctx_set_foundname(qctx, qctx->fresp->foundname);
-		if (qctx->fresp->node != NULL) {
-			dns_db_detachnode(&qctx->fresp->node);
-		}
 		qctx->rdataset = MOVE_OWNERSHIP(qctx->fresp->rdataset);
 		qctx->sigrdataset = MOVE_OWNERSHIP(qctx->fresp->sigrdataset);
 	}

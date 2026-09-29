@@ -486,7 +486,6 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 		dns_name_t *fname = dns_fixedname_initname(&foundname);
 		dns_name_t *ansname = NULL;
 		dns_db_t *db = NULL;
-		dns_dbnode_t *node = NULL;
 
 		rctx->restarts++;
 		want_restart = false;
@@ -519,7 +518,6 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			INSIST(resp->fetch == rctx->fetch);
 			dns_resolver_destroyfetch(&rctx->fetch);
 			db = resp->cache;
-			node = resp->node;
 			result = resp->result;
 			vresult = resp->vresult;
 			dns_name_copy(resp->foundname, fname);
@@ -675,9 +673,6 @@ client_resfind(resctx_t *rctx, dns_fetchresponse_t *resp) {
 			isc_mem_put(mctx, ansname, sizeof(*ansname));
 		}
 
-		if (node != NULL) {
-			dns_db_detachnode(&node);
-		}
 		if (db != NULL) {
 			dns_db_detach(&db);
 		}

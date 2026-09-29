@@ -66,11 +66,21 @@ struct dns_slabheader_proof {
 	dns_rdatatype_t type;
 };
 
-#define DNS_SLABHEADER_FOREACH(pos, head)                 \
-	dns_slabheader_t *pos = NULL, *pos##_next = NULL; \
-	cds_list_for_each_entry_safe(pos, pos##_next, head, headers_link)
+/* Shared prefix for real hash entries and small eviction markers. */
+typedef struct dns_cacheitem {
+	struct cds_lfht_node ht_node;
+	struct rcu_head	     rcu_head;
+	bool		     marker;
+} dns_cacheitem_t;
 
 struct dns_slabheader {
+	dns_cacheitem_t item;
+	dns_name_t	name;
+	dns_db_t       *db; /* Borrowed; associated datasets hold a database
+			       reference. */
+	atomic_bool visited;
+	uint64_t    serial;
+
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;
 
@@ -79,21 +89,12 @@ struct dns_slabheader {
 	isc_mem_t *mctx;
 
 	/*%
-	 * Locked by the owning node's lock.
+	 * Immutable after publication.
 	 */
 	isc_stdtime_t  expire;
 	dns_typepair_t typepair;
 
 	dns_slabheader_proof_t *noqname;
-
-	dns_slabheader_t *related;
-
-	struct cds_list_head headers_link;
-
-	/*%
-	 * The database node objects containing this rdataset, if any.
-	 */
-	dns_dbnode_t *node;
 
 	/* Used for stale refresh */
 	_Atomic(isc_stdtime_t) last_refresh_fail_ts;
@@ -232,16 +233,6 @@ dns_rdataslab_equalx(dns_slabheader_t *header1, dns_slabheader_t *header2,
  *
  * Returns:
  *\li	true if the slabs are equal, #false otherwise.
- */
-
-#define dns_slabheader_reset(header, node) \
-	dns_slabheader__reset(header, node, __func__, __FILE__, __LINE__)
-void
-dns_slabheader__reset(dns_slabheader_t *h, dns_dbnode_t *node, const char *func,
-		      const char *file, const unsigned int line);
-/*%<
- * Reset an rdataslab header 'h' so it can be used to store data in
- * database node 'node'.
  */
 
 void

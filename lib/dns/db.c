@@ -1127,3 +1127,60 @@ dns_db_getzoneversion(dns_db_t *db, isc_buffer_t *b) {
 	}
 	return ISC_R_NOTIMPLEMENTED;
 }
+
+isc_result_t
+dns_db_addcache(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
+		dns_rdataset_t *rdataset, unsigned int options,
+		dns_rdataset_t *addedrdataset) {
+	REQUIRE(dns_db_iscache(db));
+	REQUIRE(DNS_NAME_VALID(name));
+	REQUIRE(DNS_RDATASET_VALID(rdataset));
+	REQUIRE(dns_rdataset_isassociated(rdataset));
+	REQUIRE(rdataset->rdclass == db->rdclass);
+	REQUIRE((options & (DNS_DBADD_MERGE | DNS_DBADD_EXACT)) == 0);
+	REQUIRE(addedrdataset == NULL ||
+		!dns_rdataset_isassociated(addedrdataset));
+	if (db->methods->addcache != NULL) {
+		return db->methods->addcache(db, name, now, rdataset, options,
+					     addedrdataset);
+	}
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+isc_result_t
+dns_db_deletecache(dns_db_t *db, const dns_name_t *name, dns_rdatatype_t type,
+		   dns_rdatatype_t covers) {
+	REQUIRE(dns_db_iscache(db));
+	REQUIRE(DNS_NAME_VALID(name));
+	if (db->methods->deletecache != NULL) {
+		return db->methods->deletecache(db, name, type, covers);
+	}
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+void
+dns_db_expirecache(dns_db_t *db, dns_slabheader_t *header) {
+	REQUIRE(dns_db_iscache(db));
+	db->methods->expirecache(db, header);
+}
+
+isc_result_t
+dns_db_flushcache(dns_db_t *db, const dns_name_t *name, bool subtree) {
+	REQUIRE(dns_db_iscache(db));
+	if (db->methods->flushcache == NULL) {
+		return ISC_R_NOTIMPLEMENTED;
+	}
+	return db->methods->flushcache(db, name, subtree);
+}
+
+isc_result_t
+dns_db_findcache(dns_db_t *db, const dns_name_t *name, dns_rdatatype_t type,
+		 unsigned int options, isc_stdtime_t now,
+		 dns_rdataset_t *rdataset, dns_rdataset_t *sigrdataset) {
+	REQUIRE(dns_db_iscache(db));
+	REQUIRE(DNS_NAME_VALID(name));
+	REQUIRE(rdataset == NULL || !dns_rdataset_isassociated(rdataset));
+	REQUIRE(sigrdataset == NULL || !dns_rdataset_isassociated(sigrdataset));
+	return db->methods->findcache(db, name, type, options, now, rdataset,
+				      sigrdataset);
+}

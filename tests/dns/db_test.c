@@ -45,6 +45,7 @@
 ISC_LOOP_TEST_IMPL(getoriginnode) {
 	dns_db_t *db = NULL;
 	dns_dbnode_t *node = NULL;
+
 	isc_result_t result;
 
 	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, dns_rootname,
@@ -96,7 +97,6 @@ ISC_LOOP_TEST_IMPL(getsetservestalettl) {
 /* check DNS_DBFIND_STALEOK works */
 ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_fixedname_t example_fixed;
 	dns_fixedname_t found_fixed;
 	dns_name_t *example;
@@ -158,14 +158,9 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 		dns_rdataset_init(&rdataset);
 		dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
-		result = dns_db_findnode(db, example, true, &node);
+		result = dns_db_addcache(db, example, 0, &rdataset, 0, NULL);
 		assert_int_equal(result, ISC_R_SUCCESS);
 
-		result = dns_db_addrdataset(db, node, NULL, 0, &rdataset, 0,
-					    NULL);
-		assert_int_equal(result, ISC_R_SUCCESS);
-
-		dns_db_detachnode(&node);
 		dns_rdataset_disassociate(&rdataset);
 
 		result = dns_db_find(db, example, NULL, dns_rdatatype_a, 0, 0,

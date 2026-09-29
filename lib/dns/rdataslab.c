@@ -131,7 +131,7 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	dns_slabheader_t *header = isc_mem_get(mctx, size);
 
 	*header = (dns_slabheader_t){
-		.headers_link = CDS_LIST_HEAD_INIT(header->headers_link),
+		.name = DNS_NAME_INITEMPTY,
 		.trust = rdataset->trust,
 		.nitems = nitems,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
@@ -503,30 +503,6 @@ dns_rdataslab_equalx(dns_slabheader_t *slab1, dns_slabheader_t *slab2,
 	return true;
 }
 
-void
-dns_slabheader__reset(dns_slabheader_t *h, dns_dbnode_t *node, const char *func,
-		      const char *file, const unsigned int line) {
-	h->node = node;
-
-	atomic_init(&h->attributes, 0);
-	atomic_init(&h->last_refresh_fail_ts, 0);
-	isc_refcount_init(&h->references, 1);
-
-	STATIC_ASSERT(sizeof(h->attributes) == 2,
-		      "The .attributes field of dns_slabheader_t needs to be "
-		      "16-bit int type exactly.");
-
-#if DNS_SLABHEADER_TRACE
-	fprintf(stderr,
-		"%s:%s:%s:%u:t%" PRItid ":%p->references = %" PRIuFAST32 "\n",
-		__func__, func, file, line, isc_tid(), h, h->references);
-#else
-	UNUSED(func);
-	UNUSED(file);
-	UNUSED(line);
-#endif
-}
-
 static void
 slabheader_destroy(dns_slabheader_t *header) {
 	unsigned int size = dns_rdataslab_size(header);
@@ -535,6 +511,9 @@ slabheader_destroy(dns_slabheader_t *header) {
 		dns_slabheader_freeproof(header->mctx, &header->noqname);
 	}
 
+	if (dns_name_dynamic(&header->name)) {
+		dns_name_free(&header->name, header->mctx);
+	}
 	isc_mem_putanddetach(&header->mctx, header, size);
 }
 
@@ -575,7 +554,7 @@ rdataset_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 
 	dns_slabheader_detach(&header);
 
-	dns__db_detachnode(&rdataset->slab.node DNS__DB_FLARG_PASS);
+	dns_db_detach(&rdataset->slab.db);
 }
 
 static isc_result_t
@@ -657,13 +636,12 @@ rdataset_clone(const dns_rdataset_t *source,
 	       dns_rdataset_t *target DNS__DB_FLARG) {
 	dns_slabheader_t *header = rdataset_getheader(source);
 
-	INSIST(target->slab.node == NULL);
+	INSIST(target->slab.db == NULL);
 	INSIST(!ISC_LINK_LINKED(target, link));
 	*target = *source;
 	ISC_LINK_INIT(target, link);
-	target->slab.node = NULL;
-	dns__db_attachnode(source->slab.node,
-			   &target->slab.node DNS__DB_FLARG_PASS);
+	target->slab.db = NULL;
+	dns_db_attach(source->slab.db, &target->slab.db);
 
 	target->slab.iter_pos = NULL;
 	target->slab.iter_count = 0;
@@ -682,7 +660,7 @@ static isc_result_t
 rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 		    dns_rdataset_t *nsec,
 		    dns_rdataset_t *nsecsig DNS__DB_FLARG) {
-	dns_dbnode_t *node = rdataset->slab.node;
+	dns_db_t *db = rdataset->slab.db;
 	dns_slabheader_t *header = rdataset_getheader(rdataset);
 	const dns_slabheader_proof_t *noqname = rdataset->slab.noqname;
 
@@ -709,7 +687,7 @@ rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 		.magic = nsec->magic,
 	};
 	nsec->attributes.keepcase = true;
-	dns__db_attachnode(node, &nsec->proof.node DNS__DB_FLARG_PASS);
+	dns_db_attach(db, &nsec->proof.db);
 
 	*nsecsig = (dns_rdataset_t){
 		.methods = &dns_rdataslab_proof_rdatasetmethods,
@@ -725,7 +703,7 @@ rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 		.magic = nsecsig->magic,
 	};
 	nsecsig->attributes.keepcase = true;
-	dns__db_attachnode(node, &nsecsig->proof.node DNS__DB_FLARG_PASS);
+	dns_db_attach(db, &nsecsig->proof.db);
 
 	dns_name_clone(&noqname->name, name);
 
@@ -744,7 +722,7 @@ static void
 rdataset_expire(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	dns_slabheader_t *header = rdataset_getheader(rdataset);
 
-	dns_db_expiredata(rdataset->slab.node, header);
+	dns_db_expirecache(rdataset->slab.db, header);
 }
 
 static void
@@ -765,7 +743,7 @@ rdataset_getheader(const dns_rdataset_t *rdataset) {
 static void
 slabheader_proof_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
 	dns_slabheader_detach(&rdataset->proof.header);
-	dns__db_detachnode(&rdataset->proof.node DNS__DB_FLARG_PASS);
+	dns_db_detach(&rdataset->proof.db);
 }
 
 static isc_result_t
@@ -845,15 +823,14 @@ static void
 slabheader_proof_clone(const dns_rdataset_t *source,
 		       dns_rdataset_t *target DNS__DB_FLARG) {
 	INSIST(!ISC_LINK_LINKED(target, link));
-	INSIST(target->proof.node == NULL);
+	INSIST(target->proof.db == NULL);
 	INSIST(target->proof.header == NULL);
 
 	*target = *source;
 
 	ISC_LINK_INIT(target, link);
-	target->proof.node = NULL;
-	dns__db_attachnode(source->proof.node,
-			   &target->proof.node DNS__DB_FLARG_PASS);
+	target->proof.db = NULL;
+	dns_db_attach(source->proof.db, &target->proof.db);
 	dns_slabheader_ref(target->proof.header);
 
 	target->proof.iter_pos = NULL;

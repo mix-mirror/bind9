@@ -52,13 +52,13 @@
 #define DNS_NCACHETOWIRE_OMITDNSSEC 0x0001
 
 isc_result_t
-dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
+dns_ncache_add(dns_message_t *message, dns_db_t *cache, const dns_name_t *owner,
 	       dns_rdatatype_t rdtype, isc_stdtime_t now, dns_ttl_t minttl,
 	       dns_ttl_t maxttl, bool optout, bool secure,
 	       dns_rdataset_t *addedrdataset);
 /*%<
  * Convert the authority data from 'message' into a negative cache
- * rdataset, and store it in 'cache' at 'node' with a TTL limited to
+ * rdataset, and store it in 'cache' at 'name' with a TTL limited to
  * 'maxttl'.
  *
  * \li If 'secure' is true and all the records that make up the entry
@@ -75,20 +75,20 @@ dns_ncache_add(dns_message_t *message, dns_db_t *cache, dns_dbnode_t *node,
  *
  * Note:
  *\li	If 'addedrdataset' is not NULL, then it will be attached to the added
- *	rdataset.  See dns_db_addrdataset() for more details.
+ *	rdataset.  See dns_db_addcache() for more details.
  *
  * Requires:
  *\li	'message' is a valid message with a properly formatting negative cache
  *	authority section.
  *
- *\li	The requirements of dns_db_addrdataset() apply to 'cache', 'node',
+ *\li	The requirements of dns_db_addcache() apply to 'cache', 'owner',
  *	'now', and 'addedrdataset'.
  *
  * Returns:
  *\li	#ISC_R_SUCCESS
  *\li	#ISC_R_NOSPACE
  *
- *\li	Any result code of dns_db_addrdataset() is a possible result code
+ *\li	Any result code of dns_db_addcache() is a possible result code
  *	of dns_ncache_add().
  */
 

@@ -6542,9 +6542,6 @@ tat_done(void *arg) {
 	INSIST(tat != NULL);
 
 	/* Free resources which are not of interest */
-	if (resp->node != NULL) {
-		dns_db_detachnode(&resp->node);
-	}
 	if (resp->cache != NULL) {
 		dns_db_detach(&resp->cache);
 	}

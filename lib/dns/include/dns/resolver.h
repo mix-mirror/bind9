@@ -66,7 +66,7 @@
 
 /*%
  * A dns_fetchresponse_t is sent to the caller when a fetch completes.
- * Any of 'db', 'node', 'rdataset', and 'sigrdataset' may be bound; it
+ * Any of 'cache', 'rdataset', and 'sigrdataset' may be bound; it
  * is the receiver's responsibility to detach them, and also free the
  * structure.
  *
@@ -85,7 +85,6 @@ struct dns_fetchresponse {
 	dns_edectx_t	     *edectx;
 	dns_rdatatype_t	      qtype;
 	dns_db_t	     *cache;
-	dns_dbnode_t	     *node;
 	dns_rdataset_t	     *rdataset;
 	dns_rdataset_t	     *sigrdataset;
 	dns_fixedname_t	      fname;

@@ -137,7 +137,6 @@ ncache_add(dns_message_t *msg, const dns_name_t *qname,
 	   isc_result_t *find_result) {
 	isc_stdtime_t now = isc_stdtime_now();
 	dns_db_t *db = NULL;
-	dns_dbnode_t *node = NULL;
 	dns_fixedname_t ffound;
 	dns_name_t *found = dns_fixedname_initname(&ffound);
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
@@ -148,13 +147,8 @@ ncache_add(dns_message_t *msg, const dns_name_t *qname,
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns_db_findnode(db, qname, true, &node);
-	assert_int_equal(result, ISC_R_SUCCESS);
-
-	result = dns_ncache_add(msg, db, node, dns_rdatatype_any, now, 0, 3600,
+	result = dns_ncache_add(msg, db, qname, dns_rdatatype_any, now, 0, 3600,
 				false, false, NULL);
-
-	dns_db_detachnode(&node);
 
 	*find_result = dns_db_find(db, qname, NULL, dns_rdatatype_a, 0, now,
 				   found, &rdataset, NULL);
