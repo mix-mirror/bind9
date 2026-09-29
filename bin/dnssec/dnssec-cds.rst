@@ -198,7 +198,7 @@ To fetch the child records required by :program:`dnssec-cds`, invoke
    for f in dsset-*
    do
        d=${f#dsset-}
-       dig +dnssec +noall +answer $d DNSKEY $d CDNSKEY $d CDS |
+       dig +dnssec +noall +answer +tcp +keepalive $d DNSKEY $d CDNSKEY $d CDS |
        dnssec-cds -i -f /dev/stdin -d $f $d
    done
 
@@ -210,7 +210,7 @@ protection time.
 
 ::
 
-   dig +dnssec +noall +answer $d DNSKEY $d CDNSKEY $d CDS |
+   dig +dnssec +noall +answer +tcp +keepalive $d DNSKEY $d CDNSKEY $d CDS |
    dnssec-cds -u -i -f /dev/stdin -d $f $d |
    nsupdate -l
 

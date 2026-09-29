@@ -655,10 +655,17 @@ matching_sigs(keyinfo_t *keytbl, dns_rdataset_t *rdataset,
 			 * Replay attack protection: work out next age limit,
 			 * only after the signature has been verified
 			 */
+			if (sig.covered != dns_rdatatype_cds &&
+			    sig.covered != dns_rdatatype_cdnskey)
+			{
+				continue;
+			}
 			if (oldestsig.timesigned == 0 ||
 			    isc_serial_lt(sig.timesigned, oldestsig.timesigned))
 			{
-				verbose_time(2, "this is the oldest so far",
+				verbose_time(2,
+					     "update oldest acceptable "
+					     "inception time to",
 					     sig.timesigned);
 				oldestsig = sig;
 			}
