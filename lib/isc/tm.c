@@ -127,7 +127,7 @@ isc_tm_timegm(struct tm *tm) {
 		yday += mdays[i - 1];
 	}
 	ret = tm->tm_sec + (60 * tm->tm_min) + (3600 * tm->tm_hour) +
-	      (86400 *
+	      (UINT64_C(86400) *
 	       (yday + ((tm->tm_year - 70) * 365) + ((tm->tm_year - 69) / 4) -
 		((tm->tm_year - 1) / 100) + ((tm->tm_year + 299) / 400)));
 	return ret;
