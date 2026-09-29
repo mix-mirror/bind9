@@ -17,11 +17,14 @@ from .. import log
 
 OPENSSL_VARS = {
     "OPENSSL_CONF": os.getenv("OPENSSL_CONF", None),
-    "BIND9_TEST_KRYOPTIC_MODULE": None,
+    "BIND9_TEST_KRYOPTIC_MODULE": os.getenv("BIND9_TEST_KRYOPTIC_MODULE", None),
 }
 
 
 def parse_openssl_config(path: str | None):
+    # An explicitly set module takes precedence over the OpenSSL config.
+    if OPENSSL_VARS["BIND9_TEST_KRYOPTIC_MODULE"] is not None:
+        return
     if path is None or not os.path.exists(path):
         return
     assert os.path.isfile(path), f"{path} exists, but it's not a file"
