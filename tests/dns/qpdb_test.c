@@ -365,7 +365,7 @@ ISC_LOOP_TEST_IMPL(clock_nodes) {
 	/* Skip another evictor's marker, including hash collisions. */
 	rcu_read_lock();
 	struct cds_lfht_iter marker_iter;
-	qpcache_entry_t *marker = table_addmarker(
+	qpcache_marker_t *marker = table_addmarker(
 		&qpdb->table, isc_hash32(name->ndata, name->length, false),
 		&marker_iter);
 	assert_int_equal(table_count(&qpdb->table), 3);
@@ -525,12 +525,13 @@ ISC_LOOP_TEST_IMPL(table_entries_outlive_cache) {
 	rcu_read_lock();
 	struct cds_lfht_iter iter1, iter2;
 	uint32_t hash = isc_hash32(name->ndata, name->length, false);
-	qpcache_entry_t *marker1 = table_addmarker(table, hash, &iter1);
-	qpcache_entry_t *marker2 = table_addmarker(table, hash, &iter2);
+	qpcache_marker_t *marker1 = table_addmarker(table, hash, &iter1);
+	qpcache_marker_t *marker2 = table_addmarker(table, hash, &iter2);
 	assert_int_equal(table_count(table), 0);
 	assert_int_equal(table_find(table, name, &found), ISC_R_NOTFOUND);
 	assert_int_equal(table_delete(table, name), ISC_R_NOTFOUND);
 	assert_int_equal(table_insert(table, first, &found), ISC_R_SUCCESS);
+	assert_int_equal(isc_refcount_current(&first->references), 2);
 	assert_int_equal(table_insert(table, second, &found), ISC_R_EXISTS);
 	assert_ptr_equal(found, first);
 	assert_int_equal(isc_refcount_current(&second->references), 1);
@@ -549,8 +550,7 @@ ISC_LOOP_TEST_IMPL(table_entries_outlive_cache) {
 	cds_lfht_next(table->ht, &iter1);
 	table_delmarker(table, marker2);
 
-	/* Only the entries now own these nodes. */
-	qpcnode_detach(&first);
+	/* Keep first referenced beyond both cache teardown and its callback. */
 	qpcnode_detach(&second);
 	table_destroy(table);
 	isc_mem_put(mctx, table, sizeof(*table));
@@ -560,6 +560,10 @@ ISC_LOOP_TEST_IMPL(table_entries_outlive_cache) {
 	rcu_read_unlock();
 	rcu_quiescent_state();
 	rcu_barrier();
+
+	assert_int_equal(isc_refcount_current(&first->references), 1);
+	assert_true(dns_name_equal(&first->name, name));
+	qpcnode_detach(&first);
 
 	size_t inuse = isc_mem_inuse(mctx);
 	isc_mem_detach(&mctx);

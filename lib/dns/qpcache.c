@@ -95,13 +95,29 @@
  */
 typedef struct qpcache qpcache_t;
 
-/*%
- * This is the structure that is used for each node in the qp trie of
- * trees.
- */
+/* Shared hash membership, embedded in cache nodes and eviction markers. */
+typedef enum {
+	qpcache_item_node,
+	qpcache_item_marker,
+} qpcache_itemkind_t;
+
+typedef struct qpcache_item {
+	struct cds_lfht_node ht_node;
+	struct rcu_head rcu_head;
+	qpcache_itemkind_t kind;
+} qpcache_item_t;
+
+typedef struct qpcache_marker {
+	qpcache_item_t item;
+	isc_mem_t *mctx;
+} qpcache_marker_t;
+
+/* Cache owner node; NSEC-index companion nodes do not use hash membership. */
 typedef struct qpcnode qpcnode_t;
 struct qpcnode {
 	DBNODE_FIELDS;
+
+	qpcache_item_t item;
 
 	qpcache_t *qpdb;
 
@@ -116,10 +132,10 @@ struct qpcnode {
 	 * and decremented by dns_db_detachnode().
 	 *
 	 * 'references' counts internal references to the node object,
-	 * including the one held by the QP trie so the node won't be
-	 * deleted while it's quiescently stored in the database - even
-	 * though 'erefs' may be zero because no external caller is
-	 * using it at the time.
+	 * including the one held by the hashmap (or the QP trie for an
+	 * NSEC-index companion) so the node won't be deleted while it's
+	 * quiescently stored in the database - even though 'erefs' may be zero
+	 * because no external caller is using it at the time.
 	 *
 	 * Generally when 'erefs' is incremented or decremented,
 	 * 'references' is too. When both go to zero (meaning callers
@@ -179,13 +195,6 @@ typedef struct qpcache_table {
 	isc_mem_t *mctx;
 	struct cds_lfht *ht;
 } qpcache_table_t;
-
-typedef struct qpcache_entry {
-	struct cds_lfht_node ht_node;
-	struct rcu_head rcu_head;
-	isc_mem_t *mctx;
-	qpcnode_t *node; /* NULL for eviction markers. */
-} qpcache_entry_t;
 
 struct qpcache {
 	/* Unlocked. */
@@ -269,27 +278,42 @@ ISC_REFCOUNT_STATIC_DECL(qpcnode);
 #endif
 
 /*
- * The hash entries own their node and memory-context references, independently
- * of the table and cache. Reclamation can therefore finish after cache
- * teardown. Lookups, insertion, deletion and counting require an RCU read-side
- * section; returned nodes remain valid within that section or under a node
- * reference.
+ * Hash membership owns one internal node reference, released after an RCU
+ * grace period. Nodes and markers own their memory-context references, so
+ * reclamation can finish after cache teardown. Lookups, insertion, deletion
+ * and counting require RCU; returned nodes remain valid within that section
+ * or under a node reference.
  */
+static qpcnode_t *
+item_node(qpcache_item_t *item) {
+	if (item->kind == qpcache_item_marker) {
+		return NULL;
+	}
+	INSIST(item->kind == qpcache_item_node);
+	return caa_container_of(item, qpcnode_t, item);
+}
+
 static int
-entry_match(struct cds_lfht_node *ht_node, const void *key) {
-	qpcache_entry_t *entry = caa_container_of(ht_node, qpcache_entry_t,
-						  ht_node);
-	return entry->node != NULL && dns_name_equal(&entry->node->name, key);
+item_match(struct cds_lfht_node *ht_node, const void *key) {
+	qpcache_item_t *item = caa_container_of(ht_node, qpcache_item_t,
+						ht_node);
+	qpcnode_t *node = item_node(item);
+	return node != NULL && dns_name_equal(&node->name, key);
 }
 
 static void
-entry_destroy(struct rcu_head *rcu_head) {
-	qpcache_entry_t *entry = caa_container_of(rcu_head, qpcache_entry_t,
-						  rcu_head);
-	if (entry->node != NULL) {
-		qpcnode_detach(&entry->node);
+item_destroy(struct rcu_head *rcu_head) {
+	qpcache_item_t *item = caa_container_of(rcu_head, qpcache_item_t,
+						rcu_head);
+	qpcnode_t *node = item_node(item);
+	if (node != NULL) {
+		/* External/internal users may still retain the node. */
+		qpcnode_detach(&node);
+	} else {
+		qpcache_marker_t *marker =
+			caa_container_of(item, qpcache_marker_t, item);
+		isc_mem_putanddetach(&marker->mctx, marker, sizeof(*marker));
 	}
-	isc_mem_putanddetach(&entry->mctx, entry, sizeof(*entry));
 }
 
 static void
@@ -305,13 +329,13 @@ table_init(isc_mem_t *mctx, qpcache_table_t *table) {
 /* No application readers remain, but the resize worker may still be active. */
 static void
 table_destroy(qpcache_table_t *table) {
-	qpcache_entry_t *entry = NULL;
+	qpcache_item_t *item = NULL;
 	struct cds_lfht_iter iter;
 
 	rcu_read_lock();
-	cds_lfht_for_each_entry(table->ht, &iter, entry, ht_node) {
-		INSIST(cds_lfht_del(table->ht, &entry->ht_node) == 0);
-		call_rcu(&entry->rcu_head, entry_destroy);
+	cds_lfht_for_each_entry(table->ht, &iter, item, ht_node) {
+		INSIST(cds_lfht_del(table->ht, &item->ht_node) == 0);
+		call_rcu(&item->rcu_head, item_destroy);
 	}
 	rcu_read_unlock();
 	RUNTIME_CHECK(cds_lfht_destroy(table->ht, NULL) == 0);
@@ -323,35 +347,34 @@ table_find(qpcache_table_t *table, const dns_name_t *name, qpcnode_t **nodep) {
 	struct cds_lfht_iter iter;
 	uint32_t hash = isc_hash32(name->ndata, name->length, false);
 
-	cds_lfht_lookup(table->ht, hash, entry_match, name, &iter);
+	cds_lfht_lookup(table->ht, hash, item_match, name, &iter);
 	struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
 	if (ht_node == NULL) {
 		return ISC_R_NOTFOUND;
 	}
-	qpcache_entry_t *entry = caa_container_of(ht_node, qpcache_entry_t,
-						  ht_node);
-	*nodep = entry->node;
+	qpcache_item_t *item = caa_container_of(ht_node, qpcache_item_t,
+						ht_node);
+	*nodep = item_node(item);
 	return ISC_R_SUCCESS;
 }
 
+/* The caller supplies a node which has never been published in a table. */
 static isc_result_t
 table_insert(qpcache_table_t *table, qpcnode_t *node, qpcnode_t **existingp) {
 	const dns_name_t *name = &node->name;
 	uint32_t hash = isc_hash32(name->ndata, name->length, false);
-	qpcache_entry_t *entry = isc_mem_get(table->mctx, sizeof(*entry));
-	*entry = (qpcache_entry_t){ 0 };
-	isc_mem_attach(table->mctx, &entry->mctx);
-	qpcnode_attach(node, &entry->node);
-	cds_lfht_node_init(&entry->ht_node);
 
+	REQUIRE(!node->removed);
+	REQUIRE(node->nspace == DNS_DBNAMESPACE_NORMAL);
+	qpcnode_ref(node);
 	struct cds_lfht_node *ht_node = cds_lfht_add_unique(
-		table->ht, hash, entry_match, name, &entry->ht_node);
-	if (ht_node != &entry->ht_node) {
-		/* This entry was never published and needs no grace period. */
-		entry_destroy(&entry->rcu_head);
-		qpcache_entry_t *existing =
-			caa_container_of(ht_node, qpcache_entry_t, ht_node);
-		*existingp = existing->node;
+		table->ht, hash, item_match, name, &node->item.ht_node);
+	if (ht_node != &node->item.ht_node) {
+		/* Unpublished: release membership without a grace period. */
+		qpcnode_unref(node);
+		qpcache_item_t *item = caa_container_of(ht_node, qpcache_item_t,
+							ht_node);
+		*existingp = item_node(item);
 		return ISC_R_EXISTS;
 	}
 	return ISC_R_SUCCESS;
@@ -362,14 +385,14 @@ table_delete(qpcache_table_t *table, const dns_name_t *name) {
 	struct cds_lfht_iter iter;
 	uint32_t hash = isc_hash32(name->ndata, name->length, false);
 
-	cds_lfht_lookup(table->ht, hash, entry_match, name, &iter);
+	cds_lfht_lookup(table->ht, hash, item_match, name, &iter);
 	struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
 	if (ht_node == NULL || cds_lfht_del(table->ht, ht_node) != 0) {
 		return ISC_R_NOTFOUND;
 	}
-	qpcache_entry_t *entry = caa_container_of(ht_node, qpcache_entry_t,
-						  ht_node);
-	call_rcu(&entry->rcu_head, entry_destroy);
+	qpcache_item_t *item = caa_container_of(ht_node, qpcache_item_t,
+						ht_node);
+	call_rcu(&item->rcu_head, item_destroy);
 	return ISC_R_SUCCESS;
 }
 
@@ -377,11 +400,11 @@ table_delete(qpcache_table_t *table, const dns_name_t *name) {
 static size_t
 table_count(qpcache_table_t *table) {
 	struct cds_lfht_iter iter;
-	qpcache_entry_t *entry = NULL;
+	qpcache_item_t *item = NULL;
 	size_t count = 0;
 
-	cds_lfht_for_each_entry(table->ht, &iter, entry, ht_node) {
-		count += entry->node != NULL;
+	cds_lfht_for_each_entry(table->ht, &iter, item, ht_node) {
+		count += item->kind == qpcache_item_node;
 	}
 	return count;
 }
@@ -392,25 +415,26 @@ marker_match(struct cds_lfht_node *ht_node, const void *key) {
 }
 
 /* Caller holds RCU from insertion through the end of traversal. */
-static qpcache_entry_t *
+static qpcache_marker_t *
 table_addmarker(qpcache_table_t *table, uint32_t hash,
 		struct cds_lfht_iter *iter) {
-	qpcache_entry_t *marker = isc_mem_get(table->mctx, sizeof(*marker));
-	*marker = (qpcache_entry_t){ 0 };
+	qpcache_marker_t *marker = isc_mem_get(table->mctx, sizeof(*marker));
+	*marker = (qpcache_marker_t){ .item.kind = qpcache_item_marker };
 	isc_mem_attach(table->mctx, &marker->mctx);
-	cds_lfht_node_init(&marker->ht_node);
-	cds_lfht_add(table->ht, hash, &marker->ht_node);
-	cds_lfht_lookup(table->ht, hash, marker_match, &marker->ht_node, iter);
-	INSIST(cds_lfht_iter_get_node(iter) == &marker->ht_node);
+	cds_lfht_node_init(&marker->item.ht_node);
+	cds_lfht_add(table->ht, hash, &marker->item.ht_node);
+	cds_lfht_lookup(table->ht, hash, marker_match, &marker->item.ht_node,
+			iter);
+	INSIST(cds_lfht_iter_get_node(iter) == &marker->item.ht_node);
 	return marker;
 }
 
 static void
-table_delmarker(qpcache_table_t *table, qpcache_entry_t *marker) {
-	INSIST(marker->node == NULL);
-	INSIST(cds_lfht_del(table->ht, &marker->ht_node) == 0);
+table_delmarker(qpcache_table_t *table, qpcache_marker_t *marker) {
+	INSIST(marker->item.kind == qpcache_item_marker);
+	INSIST(cds_lfht_del(table->ht, &marker->item.ht_node) == 0);
 	/* Other eviction scans can still hold this marker under RCU. */
-	call_rcu(&marker->rcu_head, entry_destroy);
+	call_rcu(&marker->item.rcu_head, item_destroy);
 }
 
 /*
@@ -617,8 +641,8 @@ expire_clock_nodes(qpcache_t *qpdb, qpcnode_t *newnode, uint32_t idx,
 
 	REQUIRE(*nlocktypep == isc_rwlocktype_write);
 	rcu_read_lock();
-	qpcache_entry_t *marker = table_addmarker(&qpdb->table, isc_random32(),
-						  &iter);
+	qpcache_marker_t *marker = table_addmarker(&qpdb->table, isc_random32(),
+						   &iter);
 
 	/*
 	 * Random-start second chance, in hash order rather than SIEVE's
@@ -633,15 +657,15 @@ expire_clock_nodes(qpcache_t *qpdb, qpcnode_t *newnode, uint32_t idx,
 		}
 		struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
 		INSIST(ht_node != NULL); /* Our marker is still present. */
-		if (ht_node == &marker->ht_node) {
+		if (ht_node == &marker->item.ht_node) {
 			if (++rounds == 2) {
 				break;
 			}
 			continue;
 		}
-		qpcache_entry_t *entry =
-			caa_container_of(ht_node, qpcache_entry_t, ht_node);
-		qpcnode_t *node = entry->node;
+		qpcache_item_t *item = caa_container_of(ht_node, qpcache_item_t,
+							ht_node);
+		qpcnode_t *node = item_node(item);
 		if (node == NULL || node == newnode) {
 			continue;
 		}
@@ -2048,11 +2072,12 @@ qpcache__destroy(qpcache_t *qpdb) {
 
 	/* Drain data before deferred entry destruction loses cache state. */
 	struct cds_lfht_iter iter;
-	qpcache_entry_t *entry = NULL;
+	qpcache_item_t *item = NULL;
 	rcu_read_lock();
-	cds_lfht_for_each_entry(qpdb->table.ht, &iter, entry, ht_node) {
-		INSIST(entry->node != NULL); /* No eviction scans remain. */
-		(void)node_deleteheaders(qpdb, entry->node);
+	cds_lfht_for_each_entry(qpdb->table.ht, &iter, item, ht_node) {
+		qpcnode_t *node = item_node(item);
+		INSIST(node != NULL); /* No eviction scans remain. */
+		(void)node_deleteheaders(qpdb, node);
 	}
 	rcu_read_unlock();
 
@@ -2169,6 +2194,7 @@ static qpcnode_t *
 new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 	qpcnode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
 	*newdata = (qpcnode_t){
+		.item.kind = qpcache_item_node,
 		.headers = CDS_LIST_HEAD_INIT(newdata->headers),
 		.methods = &qpcnode_methods,
 		.qpdb = qpdb,
@@ -2178,6 +2204,7 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.locknum = isc_random_uniform(qpdb->buckets_count),
 	};
 
+	cds_lfht_node_init(&newdata->item.ht_node);
 	atomic_init(&newdata->visited, false);
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
 	dns_name_dup(name, newdata->mctx, &newdata->name);
