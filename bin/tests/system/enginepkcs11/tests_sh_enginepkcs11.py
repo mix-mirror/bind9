@@ -37,7 +37,6 @@ EXTRA_ARTIFACTS = pytest.mark.extra_artifacts(
         "ns*/update.cmd.*",
         "ns*/update.log.*",
         "ns*/verify.out.*",
-        "ns*/pin",
         "ns*/zone.*.jbk",
         "ns*/zone.*.jnl",
         "ns*/*.kskid1",
