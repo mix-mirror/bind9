@@ -76,10 +76,8 @@ typedef struct dns_cacheitem {
 struct dns_slabheader {
 	dns_cacheitem_t item;
 	dns_name_t	name;
-	dns_db_t       *db; /* Borrowed; associated datasets hold a database
-			       reference. */
-	atomic_bool visited;
-	uint64_t    serial;
+	atomic_bool	visited;
+	uint64_t	serial;
 
 	_Atomic(uint16_t)    attributes;
 	_Atomic(dns_trust_t) trust;

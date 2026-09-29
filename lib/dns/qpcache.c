@@ -225,10 +225,9 @@ update_rrsetstats(dns_stats_t *stats, const dns_typepair_t typepair,
 }
 
 static void
-mark(dns_slabheader_t *header, uint_least16_t flag) {
+mark(qpcache_t *qpdb, dns_slabheader_t *header, uint_least16_t flag) {
 	uint_least16_t attributes = atomic_load_acquire(&header->attributes);
 	uint_least16_t newattributes = 0;
-	qpcache_t *qpdb = (qpcache_t *)header->db;
 
 	/*
 	 * If we are already ancient there is nothing to do.
@@ -491,7 +490,7 @@ check_stale_header(dns_slabheader_t *header, qpc_search_t *search) {
 	DNS_SLABHEADER_CLRATTR(header, DNS_SLABHEADERATTR_STALE_WINDOW);
 	if (!ZEROTTL(header) && KEEPSTALE(search->qpdb) && stale > search->now)
 	{
-		mark(header, DNS_SLABHEADERATTR_STALE);
+		mark(search->qpdb, header, DNS_SLABHEADERATTR_STALE);
 		/*
 		 * If DNS_DBFIND_STALESTART is set then it means we
 		 * failed to resolve the name during recursion, in
@@ -808,7 +807,6 @@ qpcache_addcache(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
 		return result;
 	}
 	dns_slabheader_t *newheader = (dns_slabheader_t *)region.base;
-	newheader->db = db;
 	newheader->expire = now + rdataset->ttl;
 	dns_name_dup(name, db->mctx, &newheader->name);
 	cds_lfht_node_init(&newheader->item.ht_node);
@@ -990,7 +988,6 @@ qpcache_deletecache(dns_db_t *db, const dns_name_t *name, dns_rdatatype_t type,
 
 static void
 qpcache_expirecache(dns_db_t *db, dns_slabheader_t *header) {
-	REQUIRE(header->db == db);
 	rcu_read_lock();
 	(void)header_delete((qpcache_t *)db, header);
 	rcu_read_unlock();
