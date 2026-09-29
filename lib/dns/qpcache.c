@@ -34,7 +34,6 @@
 #include <isc/refcount.h>
 #include <isc/result.h>
 #include <isc/rwlock.h>
-#include <isc/sieve.h>
 #include <isc/stdio.h>
 #include <isc/string.h>
 #include <isc/time.h>
@@ -141,9 +140,8 @@ struct qpcnode {
 	/* Protected by the bucket lock; an unlinked node cannot be revived. */
 	bool removed;
 
-	/* SIEVE tracks all rdatasets at this name as one cache entry. */
-	ISC_LINK(qpcnode_t) lrulink;
-	bool visited;
+	/* Hits give all rdatasets at this name a second chance. */
+	atomic_bool visited;
 
 	/*%
 	 * Used for dead nodes cleaning.  This linked list is used to mark nodes
@@ -171,9 +169,6 @@ typedef struct qpcache_bucket {
 
 			/* Per-bucket lock. */
 			isc_rwlock_t lock;
-
-			/* SIEVE-LRU cache cleaning state. */
-			ISC_SIEVE(qpcnode_t) sieve;
 		};
 		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
 	};
@@ -189,7 +184,7 @@ typedef struct qpcache_entry {
 	struct cds_lfht_node ht_node;
 	struct rcu_head rcu_head;
 	isc_mem_t *mctx;
-	qpcnode_t *node;
+	qpcnode_t *node; /* NULL for eviction markers. */
 } qpcache_entry_t;
 
 struct qpcache {
@@ -284,14 +279,16 @@ static int
 entry_match(struct cds_lfht_node *ht_node, const void *key) {
 	qpcache_entry_t *entry = caa_container_of(ht_node, qpcache_entry_t,
 						  ht_node);
-	return dns_name_equal(&entry->node->name, key);
+	return entry->node != NULL && dns_name_equal(&entry->node->name, key);
 }
 
 static void
 entry_destroy(struct rcu_head *rcu_head) {
 	qpcache_entry_t *entry = caa_container_of(rcu_head, qpcache_entry_t,
 						  rcu_head);
-	qpcnode_detach(&entry->node);
+	if (entry->node != NULL) {
+		qpcnode_detach(&entry->node);
+	}
 	isc_mem_putanddetach(&entry->mctx, entry, sizeof(*entry));
 }
 
@@ -376,12 +373,44 @@ table_delete(qpcache_table_t *table, const dns_name_t *name) {
 	return ISC_R_SUCCESS;
 }
 
+/* Markers have no node and must not appear in cache node statistics. */
 static size_t
 table_count(qpcache_table_t *table) {
-	long before, after;
-	unsigned long count;
-	cds_lfht_count_nodes(table->ht, &before, &count, &after);
-	return (size_t)count;
+	struct cds_lfht_iter iter;
+	qpcache_entry_t *entry = NULL;
+	size_t count = 0;
+
+	cds_lfht_for_each_entry(table->ht, &iter, entry, ht_node) {
+		count += entry->node != NULL;
+	}
+	return count;
+}
+
+static int
+marker_match(struct cds_lfht_node *ht_node, const void *key) {
+	return ht_node == key;
+}
+
+/* Caller holds RCU from insertion through the end of traversal. */
+static qpcache_entry_t *
+table_addmarker(qpcache_table_t *table, uint32_t hash,
+		struct cds_lfht_iter *iter) {
+	qpcache_entry_t *marker = isc_mem_get(table->mctx, sizeof(*marker));
+	*marker = (qpcache_entry_t){ 0 };
+	isc_mem_attach(table->mctx, &marker->mctx);
+	cds_lfht_node_init(&marker->ht_node);
+	cds_lfht_add(table->ht, hash, &marker->ht_node);
+	cds_lfht_lookup(table->ht, hash, marker_match, &marker->ht_node, iter);
+	INSIST(cds_lfht_iter_get_node(iter) == &marker->ht_node);
+	return marker;
+}
+
+static void
+table_delmarker(qpcache_table_t *table, qpcache_entry_t *marker) {
+	INSIST(marker->node == NULL);
+	INSIST(cds_lfht_del(table->ht, &marker->ht_node) == 0);
+	/* Other eviction scans can still hold this marker under RCU. */
+	call_rcu(&marker->rcu_head, entry_destroy);
 }
 
 /*
@@ -579,35 +608,66 @@ node_deleteheaders(qpcache_t *qpdb, qpcnode_t *node) {
 }
 
 static void
-expire_lru_nodes(qpcache_t *qpdb, qpcnode_t *newnode, uint32_t idx,
-		 size_t requested, isc_rwlocktype_t *nlocktypep,
-		 isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
+expire_clock_nodes(qpcache_t *qpdb, qpcnode_t *newnode, uint32_t idx,
+		   size_t requested, isc_rwlocktype_t *nlocktypep,
+		   isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
 	size_t expired = 0;
+	unsigned int rounds = 0;
+	struct cds_lfht_iter iter;
 
-	do {
-		qpcnode_t *node = ISC_SIEVE_NEXT(qpdb->buckets[idx].sieve,
-						 visited, lrulink);
-		if (node == NULL) {
-			return;
+	REQUIRE(*nlocktypep == isc_rwlocktype_write);
+	rcu_read_lock();
+	qpcache_entry_t *marker = table_addmarker(&qpdb->table, isc_random32(),
+						  &iter);
+
+	/*
+	 * Random-start second chance, in hash order rather than SIEVE's
+	 * insertion order. A second revolution can reclaim entries whose
+	 * visited bits were cleared on the first. Never wait for another
+	 * bucket while holding the insertion bucket's lock.
+	 */
+	while (expired < requested) {
+		cds_lfht_next(qpdb->table.ht, &iter);
+		if (cds_lfht_iter_get_node(&iter) == NULL) {
+			cds_lfht_first(qpdb->table.ht, &iter);
 		}
-		/* Keep the name being populated, but consider other names. */
-		if (node == newnode) {
-			qpcnode_t *next = ISC_LIST_PREV(node, lrulink);
-			if (next == NULL) {
-				next = ISC_LIST_TAIL(
-					qpdb->buckets[idx].sieve.list);
+		struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
+		INSIST(ht_node != NULL); /* Our marker is still present. */
+		if (ht_node == &marker->ht_node) {
+			if (++rounds == 2) {
+				break;
 			}
-			if (next == node) {
-				return;
-			}
-			qpdb->buckets[idx].sieve.hand = next;
+			continue;
+		}
+		qpcache_entry_t *entry =
+			caa_container_of(ht_node, qpcache_entry_t, ht_node);
+		qpcnode_t *node = entry->node;
+		if (node == NULL || node == newnode) {
 			continue;
 		}
 
-		expired += node_deleteheaders(qpdb, node);
-		flush_node(qpdb, node, nlocktypep, tlocktypep,
-			   dns_expire_lru DNS__DB_FLARG_PASS);
-	} while (expired < requested);
+		isc_rwlock_t *lock = &qpdb->buckets[node->locknum].lock;
+		isc_rwlocktype_t locktype = isc_rwlocktype_write;
+		if (node->locknum != idx &&
+		    isc_rwlock_trylock(lock, isc_rwlocktype_write) !=
+			    ISC_R_SUCCESS)
+		{
+			continue;
+		}
+		if (!node->removed && !cds_list_empty(&node->headers) &&
+		    !atomic_exchange_relaxed(&node->visited, false))
+		{
+			expired += node_deleteheaders(qpdb, node);
+			flush_node(qpdb, node, &locktype, tlocktypep,
+				   dns_expire_lru DNS__DB_FLARG_PASS);
+		}
+		if (node->locknum != idx) {
+			NODE_UNLOCK(lock, &locktype);
+		}
+	}
+
+	table_delmarker(&qpdb->table, marker);
+	rcu_read_unlock();
 }
 
 static void
@@ -631,21 +691,18 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 			     dns_name_size(&HEADERNODE(newheader)->name)) +
 			dns_rdataslab_size(newheader) + QP_SAFETY_MARGIN;
 
-		expire_lru_nodes(qpdb, HEADERNODE(newheader), idx, purgesize,
-				 nlocktypep, tlocktypep DNS__DB_FLARG_PASS);
-	}
-
-	qpcnode_t *node = HEADERNODE(newheader);
-	if (!ISC_SIEVE_LINKED(node, lrulink)) {
-		ISC_SIEVE_UNMARK(node, visited);
-		ISC_SIEVE_INSERT(qpdb->buckets[idx].sieve, node, lrulink);
+		expire_clock_nodes(qpdb, HEADERNODE(newheader), idx, purgesize,
+				   nlocktypep, tlocktypep DNS__DB_FLARG_PASS);
 	}
 }
 
 static void
 qpcache_hit(qpcache_t *qpdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
 	qpcnode_t *node = HEADERNODE(header);
-	ISC_SIEVE_MARK(node, visited);
+	/* Avoid writes to the shared cache line for already-visited nodes. */
+	if (!atomic_load_relaxed(&node->visited)) {
+		atomic_store_relaxed(&node->visited, true);
+	}
 }
 
 /*
@@ -956,9 +1013,8 @@ header_delete(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header) {
 	update_rrsetstats(qpdb->rrsetstats, header->typepair,
 			  atomic_load_acquire(&header->attributes), false);
 
-	if (cds_list_empty(&node->headers) && ISC_SIEVE_LINKED(node, lrulink)) {
-		ISC_SIEVE_UNLINK(qpdb->buckets[node->locknum].sieve, node,
-				 lrulink);
+	if (cds_list_empty(&node->headers)) {
+		atomic_store_relaxed(&node->visited, false);
 	}
 
 	if (header->related != NULL) {
@@ -1990,15 +2046,15 @@ qpcache__destroy(qpcache_t *qpdb) {
 	unsigned int i;
 	char buf[DNS_NAME_FORMATSIZE];
 
-	/* Final node reclamation must not need cache statistics or SIEVE. */
-	for (i = 0; i < qpdb->buckets_count; i++) {
-		qpcnode_t *node;
-		while ((node = ISC_LIST_HEAD(qpdb->buckets[i].sieve.list)) !=
-		       NULL)
-		{
-			(void)node_deleteheaders(qpdb, node);
-		}
+	/* Drain data before deferred entry destruction loses cache state. */
+	struct cds_lfht_iter iter;
+	qpcache_entry_t *entry = NULL;
+	rcu_read_lock();
+	cds_lfht_for_each_entry(qpdb->table.ht, &iter, entry, ht_node) {
+		INSIST(entry->node != NULL); /* No eviction scans remain. */
+		(void)node_deleteheaders(qpdb, entry->node);
 	}
+	rcu_read_unlock();
 
 	table_destroy(&qpdb->table);
 	dns_qp_destroy(&qpdb->tree_nsec);
@@ -2017,8 +2073,6 @@ qpcache__destroy(qpcache_t *qpdb) {
 	}
 	for (i = 0; i < qpdb->buckets_count; i++) {
 		NODE_DESTROYLOCK(&qpdb->buckets[i].lock);
-
-		INSIST(ISC_SIEVE_EMPTY(qpdb->buckets[i].sieve));
 
 		INSIST(isc_queue_empty(&qpdb->buckets[i].deadnodes));
 		isc_queue_destroy(&qpdb->buckets[i].deadnodes);
@@ -2124,7 +2178,7 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.locknum = isc_random_uniform(qpdb->buckets_count),
 	};
 
-	ISC_LINK_INIT(newdata, lrulink);
+	atomic_init(&newdata->visited, false);
 	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
 	dns_name_dup(name, newdata->mctx, &newdata->name);
 
@@ -2980,8 +3034,6 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 
 	dns_rdatasetstats_create(mctx, &qpdb->rrsetstats);
 	for (i = 0; i < (int)qpdb->buckets_count; i++) {
-		ISC_SIEVE_INIT(qpdb->buckets[i].sieve);
-
 		isc_queue_init(&qpdb->buckets[i].deadnodes);
 
 		NODE_INITLOCK(&qpdb->buckets[i].lock);
@@ -3335,7 +3387,6 @@ static dns_dbmethods_t qpdb_cachemethods = {
 static void
 qpcnode_destroy(qpcnode_t *qpnode) {
 	INSIST(cds_list_empty(&qpnode->headers));
-	INSIST(!ISC_SIEVE_LINKED(qpnode, lrulink));
 
 	dns_name_free(&qpnode->name, qpnode->mctx);
 	isc_mem_putanddetach(&qpnode->mctx, qpnode, sizeof(qpcnode_t));

@@ -327,7 +327,7 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 }
 
 /* Eviction operates on names, including all types stored at a name. */
-ISC_LOOP_TEST_IMPL(sieve_nodes) {
+ISC_LOOP_TEST_IMPL(clock_nodes) {
 	isc_mem_t *mctx = NULL;
 	dns_fixedname_t fname;
 	dns_name_t *name = NULL;
@@ -362,36 +362,66 @@ ISC_LOOP_TEST_IMPL(sieve_nodes) {
 	isc_rwlock_t *lock = &qpdb->buckets[0].lock;
 	NODE_WRLOCK(lock, &nlocktype);
 
+	/* Skip another evictor's marker, including hash collisions. */
+	rcu_read_lock();
+	struct cds_lfht_iter marker_iter;
+	qpcache_entry_t *marker = table_addmarker(
+		&qpdb->table, isc_hash32(name->ndata, name->length, false),
+		&marker_iter);
+	assert_int_equal(table_count(&qpdb->table), 3);
+
 	/* A hit on one type gives the whole node a second chance. */
 	dns_slabheader_t *header = cds_list_first_entry(
 		&hot->headers, dns_slabheader_t, headers_link);
 	qpcache_hit(qpdb, header);
-	expire_lru_nodes(qpdb, newnode, 0, 1, &nlocktype,
-			 &tlocktype DNS__DB_FILELINE);
+	expire_clock_nodes(qpdb, newnode, 0, 1, &nlocktype,
+			   &tlocktype DNS__DB_FILELINE);
 	NODE_UNLOCK(lock, &nlocktype);
 
 	assert_true(cds_list_empty(&cold->headers));
-	assert_false(ISC_SIEVE_LINKED(cold, lrulink));
+	assert_false(atomic_load_relaxed(&cold->visited));
 	assert_false(cds_list_empty(&hot->headers));
 	assert_false(cds_list_empty(&newnode->headers));
 
 	/* The node being populated is protected even for a large purge. */
 	NODE_WRLOCK(lock, &nlocktype);
-	expire_lru_nodes(qpdb, newnode, 0, SIZE_MAX, &nlocktype,
-			 &tlocktype DNS__DB_FILELINE);
+	expire_clock_nodes(qpdb, newnode, 0, SIZE_MAX, &nlocktype,
+			   &tlocktype DNS__DB_FILELINE);
 	NODE_UNLOCK(lock, &nlocktype);
 	assert_false(cds_list_empty(&newnode->headers));
 	assert_true(cds_list_empty(&hot->headers));
+
+	table_delmarker(&qpdb->table, marker);
+	rcu_read_unlock();
 
 	/* An externally held empty node can be populated and evicted again. */
 	dns_test_namefromstring(names[1], &fname);
 	servestale_addrdataset(db, name, now, dns_rdatatype_a, "192.0.2.2",
 			       3600, dns_trust_answer);
-	assert_true(ISC_SIEVE_LINKED(cold, lrulink));
+	assert_false(cds_list_empty(&cold->headers));
 	assert_int_equal(
 		dns_db_deleterdataset(db, nodes[1], NULL, dns_rdatatype_a, 0),
 		ISC_R_SUCCESS);
-	assert_false(ISC_SIEVE_LINKED(cold, lrulink));
+	assert_false(atomic_load_relaxed(&cold->visited));
+
+	/* Evict other buckets without waiting on their locks. */
+	if (qpdb->buckets_count > 1) {
+		/* Empty and held exclusively by this test. */
+		cold->locknum = 1;
+		servestale_addrdataset(db, name, now, dns_rdatatype_a,
+				       "192.0.2.3", 3600, dns_trust_answer);
+		isc_rwlocktype_t other = isc_rwlocktype_none;
+		NODE_WRLOCK(&qpdb->buckets[1].lock, &other);
+		NODE_WRLOCK(lock, &nlocktype);
+		expire_clock_nodes(qpdb, newnode, 0, SIZE_MAX, &nlocktype,
+				   &tlocktype DNS__DB_FILELINE);
+		assert_false(cds_list_empty(&cold->headers));
+		NODE_UNLOCK(&qpdb->buckets[1].lock, &other);
+		expire_clock_nodes(qpdb, newnode, 0, SIZE_MAX, &nlocktype,
+				   &tlocktype DNS__DB_FILELINE);
+		assert_true(cds_list_empty(&cold->headers));
+		NODE_UNLOCK(lock, &nlocktype);
+	}
 
 	for (size_t i = 0; i < 3; i++) {
 		dns_db_detachnode(&nodes[i]);
@@ -493,6 +523,13 @@ ISC_LOOP_TEST_IMPL(table_entries_outlive_cache) {
 	qpcnode_t *found = NULL;
 
 	rcu_read_lock();
+	struct cds_lfht_iter iter1, iter2;
+	uint32_t hash = isc_hash32(name->ndata, name->length, false);
+	qpcache_entry_t *marker1 = table_addmarker(table, hash, &iter1);
+	qpcache_entry_t *marker2 = table_addmarker(table, hash, &iter2);
+	assert_int_equal(table_count(table), 0);
+	assert_int_equal(table_find(table, name, &found), ISC_R_NOTFOUND);
+	assert_int_equal(table_delete(table, name), ISC_R_NOTFOUND);
 	assert_int_equal(table_insert(table, first, &found), ISC_R_SUCCESS);
 	assert_int_equal(table_insert(table, second, &found), ISC_R_EXISTS);
 	assert_ptr_equal(found, first);
@@ -506,6 +543,11 @@ ISC_LOOP_TEST_IMPL(table_entries_outlive_cache) {
 	assert_int_equal(table_find(table, name, &found), ISC_R_SUCCESS);
 	assert_ptr_equal(found, second);
 	assert_int_equal(table_count(table), 1);
+
+	/* Removed markers may still be observed by overlapping scans. */
+	table_delmarker(table, marker1);
+	cds_lfht_next(table->ht, &iter1);
+	table_delmarker(table, marker2);
 
 	/* Only the entries now own these nodes. */
 	qpcnode_detach(&first);
@@ -572,22 +614,18 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
-
-	/*
-	 * Add a lot of data entries sufficient to push the context
-	 * above the hi_water mark.
-	 */
+	/* Fill before enabling eviction so this loop must reach hiwater. */
 	while (isc_mem_inuse(mctx) < hiwater) {
 		overmempurge_addrdataset(db, now, i, 50053, 0, true);
 		i++;
 	}
 	assert_true(isc_mem_inuse(mctx) >= hiwater);
 	assert_true(isc_mem_inuse(mctx) < maxcache);
+	isc_mem_setwater(mctx, hiwater, lowater);
 
 	/*
 	 * Then try to add the same number of entries, each has very large data.
-	 * Probabilistic LRU cleaning should keep the total cache size from
+	 * Second-chance eviction should keep the total cache size from
 	 * exceeding the 'hiwater' mark too much. So we should be able to
 	 * assume the cache size doesn't reach the "max".
 	 */
@@ -624,22 +662,18 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	isc_mem_setwater(mctx, hiwater, lowater);
-
-	/*
-	 * Add a lot of data entries sufficient to push the context
-	 * above the hi_water mark.
-	 */
+	/* Fill before enabling eviction so this loop must reach hiwater. */
 	while (isc_mem_inuse(mctx) < hiwater) {
 		overmempurge_addrdataset(db, now, i, 50053, 0, true);
 		i++;
 	}
 	assert_true(isc_mem_inuse(mctx) >= hiwater);
 	assert_true(isc_mem_inuse(mctx) < maxcache);
+	isc_mem_setwater(mctx, hiwater, lowater);
 
 	/*
 	 * Then try to add the same number of entries, each has very long name.
-	 * Probabilistic LRU cleaning should keep the total cache size from
+	 * Second-chance eviction should keep the total cache size from
 	 * exceeding the 'hiwater' mark too much. So we should be able to
 	 * assume the cache size doesn't reach the "max".
 	 */
@@ -663,7 +697,7 @@ ISC_TEST_ENTRY_CUSTOM(removed_node_cannot_reactivate, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(table_entries_outlive_cache, setup_managers,
 		      teardown_managers)
-ISC_TEST_ENTRY_CUSTOM(sieve_nodes, setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(clock_nodes, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(destroy_with_pending_entry, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
