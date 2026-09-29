@@ -50,6 +50,14 @@ ISC_RUN_TEST_IMPL(isc_tm_timegm) {
 			  .tm_min = 0,
 			  .tm_sec = 0 },
 		  .result = 0 },
+		/* Wed 31 Dec 1980 23:59:59 UTC */
+		{ .tm = { .tm_year = 1980 - 1900,
+			  .tm_mon = 11,
+			  .tm_mday = 31,
+			  .tm_hour = 23,
+			  .tm_min = 59,
+			  .tm_sec = 59 },
+		  .result = 347155199 },
 		/* Tue 19 Jan 2038 03:14:07 UTC */
 		{ .tm = { .tm_year = 2038 - 1900,
 			  .tm_mon = 0,

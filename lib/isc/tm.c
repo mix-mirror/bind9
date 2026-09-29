@@ -123,7 +123,7 @@ isc_tm_timegm(struct tm *tm) {
 	mdays[1] += leapday;
 
 	yday = tm->tm_mday - 1;
-	for (i = 1; i <= tm->tm_mon; i++) {
+	for (i = 1; i <= tm->tm_mon && (size_t)i <= ARRAY_SIZE(mdays); i++) {
 		yday += mdays[i - 1];
 	}
 	ret = tm->tm_sec + (60 * tm->tm_min) + (3600 * tm->tm_hour) +
