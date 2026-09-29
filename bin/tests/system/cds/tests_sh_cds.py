@@ -9,26 +9,10 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import pytest
 
-pytestmark = pytest.mark.extra_artifacts(
-    [
-        "CDNSKEY.*",
-        "CDS.*",
-        "DS.*",
-        "K*",
-        "UP.*",
-        "brk.*",
-        "db.*",
-        "empty",
-        "err.*",
-        "out.*",
-        "sig.*",
-        "vars.sh",
-        "xerr",
-        "xout",
-    ]
-)
+from cds.common import EXTRA_ARTIFACTS
+
+pytestmark = EXTRA_ARTIFACTS
 
 
 def test_cds(run_tests_sh):
