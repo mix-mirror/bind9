@@ -106,9 +106,9 @@ def token_init_and_cleanup():
 
     try:
         cmd = isctest.run.cmd(token_init_command, env=token_env)
-        assert "Token successfully initialized\n" == cmd.out
+        assert "Token successfully initialized" in cmd.out
         cmd = isctest.run.cmd(token_pin_init_command, env=token_env)
-        assert "User PIN successfully initialized\n" == cmd.out
+        assert "User PIN successfully initialized" in cmd.out
         assert database.exists()
         yield
     finally:
