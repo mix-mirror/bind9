@@ -397,7 +397,6 @@ struct fetchctx {
 	dns_adbfind_t *altfind;
 	dns_adbaddrinfolist_t forwaddrs;
 	dns_adbaddrinfolist_t altaddrs;
-	dns_forwarderlist_t forwarders;
 	dns_fwdpolicy_t fwdpolicy;
 	isc_sockaddrlist_t bad;
 	ISC_LIST(struct tried) edns;
@@ -3543,57 +3542,45 @@ fctx_getaddresses_allowed(fetchctx_t *fctx) {
 
 static isc_result_t
 fctx_getaddresses_forwarders(fetchctx_t *fctx) {
+	isc_result_t result;
 	dns_resolver_t *res = fctx->res;
+	dns_forwarder_t *fwd = NULL;
+	dns_forwarders_t *forwarders = NULL;
+	dns_name_t suffix = DNS_NAME_INITEMPTY;
+	dns_name_t *name = fctx->name;
+
 	/*
-	 * If this fctx has forwarders, use them; otherwise use any
-	 * selective forwarders specified in the view; otherwise use the
-	 * resolver's forwarders (if any).
+	 * DS records are found in the parent server.
+	 * Strip label to get the correct forwarder (if any).
 	 */
-	dns_forwarder_t *fwd = ISC_LIST_HEAD(fctx->forwarders);
-	if (fwd == NULL) {
-		dns_forwarders_t *forwarders = NULL;
-		dns_name_t *name = fctx->name;
-		dns_name_t suffix;
-		isc_result_t result;
+	if (dns_rdatatype_atparent(fctx->type) && dns_name_belowroot(name)) {
+		unsigned int labels;
+		labels = dns_name_countlabels(name);
+		dns_name_getlabelsequence(name, 1, labels - 1, &suffix);
+		name = &suffix;
+	}
 
-		/*
-		 * DS records are found in the parent server.
-		 * Strip label to get the correct forwarder (if any).
-		 */
-		if (dns_rdatatype_atparent(fctx->type) &&
-		    dns_name_belowroot(name))
+	result = dns_fwdtable_find(res->view->fwdtable, name, &forwarders);
+	if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
+		fwd = ISC_LIST_HEAD(forwarders->fwdrs);
+		fctx->fwdpolicy = forwarders->fwdpolicy;
+		dns_name_copy(&forwarders->name, fctx->fwdname);
+		if (fctx->fwdpolicy == dns_fwdpolicy_only &&
+		    isstrictsubdomain(&forwarders->name, fctx->domain))
 		{
-			unsigned int labels;
-			dns_name_init(&suffix);
-			labels = dns_name_countlabels(name);
-			dns_name_getlabelsequence(name, 1, labels - 1, &suffix);
-			name = &suffix;
-		}
-
-		result = dns_fwdtable_find(res->view->fwdtable, name,
-					   &forwarders);
-		if (result == ISC_R_SUCCESS || result == DNS_R_PARTIALMATCH) {
-			fwd = ISC_LIST_HEAD(forwarders->fwdrs);
-			fctx->fwdpolicy = forwarders->fwdpolicy;
-			dns_name_copy(&forwarders->name, fctx->fwdname);
-			if (fctx->fwdpolicy == dns_fwdpolicy_only &&
-			    isstrictsubdomain(&forwarders->name, fctx->domain))
-			{
-				fcount_decr(fctx);
-				dns_name_copy(&forwarders->name, fctx->domain);
-				result = fcount_incr(fctx, true);
-				if (result != ISC_R_SUCCESS) {
-					dns_forwarders_detach(&forwarders);
-					return result;
-				}
+			fcount_decr(fctx);
+			dns_name_copy(&forwarders->name, fctx->domain);
+			result = fcount_incr(fctx, true);
+			if (result != ISC_R_SUCCESS) {
+				dns_forwarders_detach(&forwarders);
+				return result;
 			}
-			dns_forwarders_detach(&forwarders);
 		}
+		dns_forwarders_detach(&forwarders);
 	}
 
 	while (fwd != NULL) {
-		isc_result_t result;
-		dns_adbaddrinfo_t *ai;
+		dns_adbaddrinfo_t *ai = NULL;
 		if ((isc_sockaddr_pf(&fwd->addr) == AF_INET &&
 		     res->dispatches4 == NULL) ||
 
@@ -4958,7 +4945,6 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 			      .altfinds = ISC_LIST_INITIALIZER,
 			      .forwaddrs = ISC_LIST_INITIALIZER,
 			      .altaddrs = ISC_LIST_INITIALIZER,
-			      .forwarders = ISC_LIST_INITIALIZER,
 			      .bad = ISC_LIST_INITIALIZER,
 			      .edns = ISC_LIST_INITIALIZER,
 			      .validators = ISC_LIST_INITIALIZER,
