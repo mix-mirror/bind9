@@ -81,6 +81,7 @@ ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	char tsigbuf[DNS_NAME_FORMATSIZE * 2 + sizeof(": TSIG '' ()")];
 	char typebuf[DNS_RDATATYPE_FORMATSIZE];
 	dns_tsigkey_t *tsigkey;
+	int loglevel = ISC_LOG_DEBUG(3);
 
 	/*
 	 * Attach to the request handle
@@ -117,10 +118,15 @@ ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 		goto done;
 	}
 
-	/* The one rdataset must be an SOA. */
-	if (zone_rdataset->type != dns_rdatatype_soa) {
+	/* The one rdataset must be an SOA, CDS, or CSYNC. */
+	switch (zone_rdataset->type) {
+	case dns_rdatatype_soa:
+	case dns_rdatatype_cds:
+	case dns_rdatatype_csync:
+		break;
+	default:
 		notify_log(client, ISC_LOG_NOTICE,
-			   "notify question section contains no SOA");
+			   "notify question section contains invalid type");
 		result = DNS_R_FORMERR;
 		goto done;
 	}
@@ -145,6 +151,11 @@ ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 
 	dns_rdatatype_format(zone_rdataset->type, typebuf, sizeof(typebuf));
 	dns_name_format(zonename, namebuf, sizeof(namebuf));
+
+	if (zone_rdataset->type != dns_rdatatype_soa) {
+		result = DNS_R_NOTIMP;
+		goto done;
+	}
 	result = dns_view_findzone(client->inner.view, zonename,
 				   DNS_ZTFIND_EXACT, &zone);
 	if (result == ISC_R_SUCCESS) {
@@ -167,11 +178,12 @@ ns_notify_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	}
 
 	result = DNS_R_NOTAUTH;
-	notify_log(client, ISC_LOG_NOTICE,
-		   "received NOTIFY(%s) for zone '%s'%s: %s", typebuf, namebuf,
-		   tsigbuf, isc_result_totext(result));
+	loglevel = ISC_LOG_NOTICE;
 
 done:
+	notify_log(client, loglevel, "received NOTIFY(%s) for zone '%s'%s: %s",
+		   typebuf, namebuf, tsigbuf, isc_result_totext(result));
+
 	if (zone != NULL) {
 		dns_zone_detach(&zone);
 	}
