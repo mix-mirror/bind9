@@ -6644,8 +6644,8 @@ tat_send(void *arg) {
 		result = dns_resolver_createfetch(
 			tat->view->resolver, tatname, dns_rdatatype_null,
 			domain, delegset, NULL, NULL, 0, 0, 0, NULL, NULL, NULL,
-			tat->loop, tat_done, tat, NULL, &tat->rdataset,
-			&tat->sigrdataset, &tat->fetch);
+			false, NULL, tat->loop, tat_done, tat, NULL,
+			&tat->rdataset, &tat->sigrdataset, &tat->fetch);
 
 		/*
 		 * dns_resolver_createfetch() will internally attach delegset.

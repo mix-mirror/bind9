@@ -2911,8 +2911,9 @@ fetch_name(dns_adbname_t *adbname, bool start_at_zone, bool no_validation,
 	dns_adbname_ref(adbname);
 	result = dns_resolver_createfetch(
 		adb->res, adbname->name, type, name, delegset, NULL, NULL, 0,
-		options, depth, qc, gqc, parent, isc_loop(), fetch_callback,
-		adbname, NULL, &fetch->rdataset, NULL, &fetch->fetch);
+		options, depth, qc, gqc, NULL, false, parent, isc_loop(),
+		fetch_callback, adbname, NULL, &fetch->rdataset, NULL,
+		&fetch->fetch);
 	if (result != ISC_R_SUCCESS) {
 		DP(ENTER_LEVEL, "fetch_name: createfetch failed with %s",
 		   isc_result_totext(result));

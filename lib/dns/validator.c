@@ -1363,8 +1363,8 @@ create_fetch(dns_validator_t *val, dns_name_t *name, dns_rdatatype_t type,
 	dns_validator_ref(val);
 	result = dns_resolver_createfetch(
 		val->view->resolver, name, type, domain, delegset, NULL, NULL,
-		0, fopts, 0, val->qc, val->gqc, val->parent_fetch, val->loop,
-		callback, val, &val->edectx, &val->frdataset,
+		0, fopts, 0, val->qc, val->gqc, NULL, false, val->parent_fetch,
+		val->loop, callback, val, &val->edectx, &val->frdataset,
 		&val->fsigrdataset, &val->fetch);
 	if (result != ISC_R_SUCCESS) {
 		dns_validator_detach(&val);

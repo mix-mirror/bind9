@@ -74,7 +74,7 @@ options {\n\
 	prefetch 2 9;\n\
 #	querylog <boolean>;\n\
 	recursing-file \"named.recursing\";\n\
-	recursive-clients 1000;\n\
+	recursive-clients 100000;\n\
 	request-nsid false;\n\
 	request-zoneversion false;\n\
 	resolver-query-timeout 10;\n\

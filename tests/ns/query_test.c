@@ -598,7 +598,6 @@ typedef struct {
 	ns_hookpoint_t hookpoint2; /* expected hook point used after resume */
 	ns_hook_action_t action;   /* action for the hook point */
 	isc_result_t start_result; /* result of 'runasync' */
-	bool quota_ok;		   /* true if recursion quota should be okay */
 	bool do_cancel;		   /* true if query should be canceled
 				    * in test */
 } ns__query_hookasync_test_params_t;
@@ -860,16 +859,6 @@ run_hookasync_test(const ns__query_hookasync_test_params_t *test) {
 		qctx->client->inner.sendcb = send_noop;
 	}
 
-	/*
-	 * Set recursion quota to the lowest possible value, then make it full
-	 * if we want to exercise a quota failure case.
-	 */
-	isc_quota_max(&sctx->recursionquota, 1);
-	if (!test->quota_ok) {
-		result = isc_quota_acquire(&sctx->recursionquota);
-		INSIST(result == ISC_R_SUCCESS);
-	}
-
 	/* Remember SERVFAIL counter */
 	srvfail_cnt = ns_stats_get_counter(qctx->client->manager->sctx->nsstats,
 					   ns_statscounter_servfail);
@@ -880,9 +869,7 @@ run_hookasync_test(const ns__query_hookasync_test_params_t *test) {
 	 * 'reqhandle' attach to the client's handle as it's detached in
 	 * query_error.
 	 */
-	if (test->start_result != ISC_R_SUCCESS || !test->quota_ok ||
-	    test->do_cancel)
-	{
+	if (test->start_result != ISC_R_SUCCESS || test->do_cancel) {
 		expect_servfail = true;
 		isc_nmhandle_attach(qctx->client->inner.handle,
 				    &qctx->client->inner.reqhandle);
@@ -897,11 +884,10 @@ run_hookasync_test(const ns__query_hookasync_test_params_t *test) {
 	INSIST(result == ISC_R_UNSET);
 
 	/*
-	 * hook-triggered async event should be happening unless it hits
-	 * recursion quota limit or 'runasync' callback fails.
+	 * hook-triggered async event should be happening unless the
+	 * 'runasync' callback fails.
 	 */
-	INSIST(asdata.async ==
-	       (test->quota_ok && test->start_result == ISC_R_SUCCESS));
+	INSIST(asdata.async == (test->start_result == ISC_R_SUCCESS));
 
 	/*
 	 * Emulate cancel if so specified.
@@ -952,9 +938,6 @@ run_hookasync_test(const ns__query_hookasync_test_params_t *test) {
 	 */
 	ns_test_qctx_destroy(&qctx);
 	ns_hooktable_free(isc_g_mctx, (void **)&ns__hook_table);
-	if (!test->quota_ok) {
-		isc_quota_release(&sctx->recursionquota);
-	}
 }
 
 ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
@@ -967,16 +950,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_START_BEGIN,
 			hook_async_query_start_begin,
 			ISC_R_SUCCESS,
-			true,
-			false,
-		},
-		{
-			NS_TEST_ID("quota fail"),
-			NS_QUERY_START_BEGIN,
-			NS_QUERY_START_BEGIN,
-			hook_async_query_start_begin,
-			ISC_R_SUCCESS,
-			false,
 			false,
 		},
 		{
@@ -985,7 +958,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_START_BEGIN,
 			hook_async_query_start_begin,
 			ISC_R_FAILURE,
-			true,
 			false,
 		},
 		{
@@ -994,7 +966,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_START_BEGIN,
 			hook_async_query_start_begin,
 			ISC_R_SUCCESS,
-			true,
 			true,
 		},
 		/*
@@ -1007,7 +978,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_SETUP,
 			hook_async_query_setup,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1016,7 +986,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_LOOKUP_BEGIN,
 			hook_async_query_lookup_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1025,7 +994,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_RESUME_BEGIN,
 			hook_async_query_resume_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1034,7 +1002,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_RESUME_BEGIN,
 			hook_async_query_resume_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1043,7 +1010,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_GOT_ANSWER_BEGIN,
 			hook_async_query_got_answer_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1052,7 +1018,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_RESPOND_ANY_BEGIN,
 			hook_async_query_respond_any_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1061,7 +1026,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_ADDANSWER_BEGIN,
 			hook_async_query_addanswer_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1070,7 +1034,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_NOTFOUND_BEGIN,
 			hook_async_query_notfound_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1079,7 +1042,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_ZONE_DELEGATION_BEGIN,
 			hook_async_query_zone_delegation_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1088,7 +1050,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_DELEGATION_RECURSE_BEGIN,
 			hook_async_query_delegation_recurse_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1097,7 +1058,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_NODATA_BEGIN,
 			hook_async_query_nodata_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1106,7 +1066,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_NXDOMAIN_BEGIN,
 			hook_async_query_nxdomain_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1115,7 +1074,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_NCACHE_BEGIN,
 			hook_async_query_ncache_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1124,7 +1082,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_CNAME_BEGIN,
 			hook_async_query_cname_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1133,7 +1090,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_DNAME_BEGIN,
 			hook_async_query_dname_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1142,7 +1098,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_PREP_RESPONSE_BEGIN,
 			hook_async_query_response_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1151,7 +1106,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_RESPOND_BEGIN,
 			hook_async_query_respond_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1160,7 +1114,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_DONE_BEGIN,
 			hook_async_query_done_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 		{
@@ -1169,7 +1122,6 @@ ISC_LOOP_TEST_IMPL(ns__query_hookasync) {
 			NS_QUERY_DONE_BEGIN,
 			hook_async_query_done_begin,
 			ISC_R_SUCCESS,
-			true,
 			false,
 		},
 	};

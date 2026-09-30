@@ -179,11 +179,17 @@ query_prepare_delegation_response(query_ctx_t *qctx);
 static isc_result_t
 query_prepare_zone_delegation_response(query_ctx_t *qctx);
 
-static isc_result_t
-acquire_recursionquota(ns_client_t *client);
+static void
+recursion_gauge_increment(ns_client_t *client);
 
 static void
-release_recursionquota(ns_client_t *client);
+recursion_gauge_decrement(ns_client_t *client);
+
+static void
+client_recursing_begin(ns_client_t *client);
+
+static void
+client_recursing_end(ns_client_t *client);
 
 static bool
 use_zone_delegation(query_ctx_t *qctx);
@@ -2371,57 +2377,6 @@ free_fresp(ns_client_t *client, dns_fetchresponse_t **frespp) {
 	dns_resolver_freefresp(frespp);
 }
 
-static isc_result_t
-recursionquotatype_attach(ns_client_t *client, bool soft_limit) {
-	isc_result_t result;
-
-	result = isc_quota_acquire(&client->manager->sctx->recursionquota);
-	switch (result) {
-	case ISC_R_SUCCESS:
-		break;
-	case ISC_R_SOFTQUOTA:
-		if (soft_limit) {
-			/*
-			 * Exceeding soft quota was allowed, so continue as if
-			 * 'result' was ISC_R_SUCCESS while retaining the
-			 * original result code.
-			 */
-			break;
-		}
-
-		isc_quota_release(&client->manager->sctx->recursionquota);
-		FALLTHROUGH;
-	default:
-		return result;
-	}
-
-	isc_statscounter_t recurscount =
-		isc_stats_increment(client->manager->sctx->nshighwaterstats,
-				    ns_highwater_recursclients) +
-		1;
-	isc_stats_update_if_greater(client->manager->sctx->nshighwaterstats,
-				    ns_highwater_recursive, recurscount);
-
-	return result;
-}
-
-static isc_result_t
-recursionquotatype_attach_hard(ns_client_t *client) {
-	return recursionquotatype_attach(client, false);
-}
-
-static isc_result_t
-recursionquotatype_attach_soft(ns_client_t *client) {
-	return recursionquotatype_attach(client, true);
-}
-
-static void
-recursionquotatype_detach(ns_client_t *client) {
-	isc_quota_release(&client->manager->sctx->recursionquota);
-	isc_stats_decrement(client->manager->sctx->nshighwaterstats,
-			    ns_highwater_recursclients);
-}
-
 static void
 stale_refresh_aftermath(ns_client_t *client, isc_result_t result) {
 	dns_db_t *db = NULL;
@@ -2527,7 +2482,7 @@ cleanup_after_fetch(dns_fetchresponse_t *resp, const char *ctracestr,
 		stale_refresh_aftermath(client, result);
 	}
 
-	recursionquotatype_detach(client);
+	recursion_gauge_decrement(client);
 	free_fresp(client, &resp);
 	isc_nmhandle_detach(handlep);
 }
@@ -2558,26 +2513,14 @@ stale_refresh_done(void *arg) {
 static void
 fetch_and_forget(ns_client_t *client, dns_name_t *qname, dns_rdatatype_t qtype,
 		 ns_query_rectype_t recursion_type) {
-	dns_rdataset_t *tmprdataset;
-	isc_sockaddr_t *peeraddr;
+	dns_rdataset_t *tmprdataset = ns_client_newrdataset(client);
+	isc_sockaddr_t *peeraddr = !client->inner.tcp ? &client->inner.peeraddr
+						      : NULL;
 	unsigned int options;
 	isc_job_cb cb;
 	isc_nmhandle_t **handlep;
 	dns_fetch_t **fetchp;
 	isc_result_t result;
-
-	result = recursionquotatype_attach_hard(client);
-	if (result != ISC_R_SUCCESS) {
-		return;
-	}
-
-	tmprdataset = ns_client_newrdataset(client);
-
-	if (!client->inner.tcp) {
-		peeraddr = &client->inner.peeraddr;
-	} else {
-		peeraddr = NULL;
-	}
 
 	switch (recursion_type) {
 	case RECTYPE_PREFETCH:
@@ -2599,17 +2542,20 @@ fetch_and_forget(ns_client_t *client, dns_name_t *qname, dns_rdatatype_t qtype,
 	handlep = &client->query.recursions[recursion_type].handle;
 	fetchp = &client->query.recursions[recursion_type].fetch;
 
+	recursion_gauge_increment(client);
 	isc_nmhandle_attach(client->inner.handle, handlep);
 	maybe_init_fetch_counter(client);
 	result = dns_resolver_createfetch(
 		client->inner.view->resolver, qname, qtype, NULL, NULL, NULL,
 		peeraddr, client->message->id, options, 0, NULL,
-		client->query.qc, NULL, client->manager->loop, cb, client, NULL,
-		tmprdataset, NULL, fetchp);
+		client->query.qc, &client->manager->sctx->recursionquota, false,
+		NULL, client->manager->loop, cb, client, NULL, tmprdataset,
+		NULL, fetchp);
 	if (result != ISC_R_SUCCESS) {
+		recursion_gauge_decrement(client);
 		ns_client_putrdataset(client, &tmprdataset);
 		isc_nmhandle_detach(handlep);
-		recursionquotatype_detach(client);
+		return;
 	}
 }
 
@@ -5854,15 +5800,25 @@ fetch_callback(void *arg) {
 	fetch = MOVE_OWNERSHIP(resp->fetch);
 
 	/*
-	 * We're done recursing, detach from quota and unlink from
-	 * the manager's recursing-clients list.
+	 * The resolver evicted this fetch to make room under the
+	 * recursive-clients quota; account for it the same way the
+	 * old kill-oldest-query path did.  (ISC_R_QUOTA, by contrast,
+	 * means the fetch exhausted its own query counters.)
 	 */
-	release_recursionquota(client);
+	if (resp->result == ISC_R_SOFTQUOTA) {
+		ns_stats_increment(client->manager->sctx->nsstats,
+				   ns_statscounter_reclimitdropped);
+	}
+
+	/*
+	 * We're done recursing: unlink from the manager's recursing-clients
+	 * list and return the client to the WORKING state.
+	 */
+	client_recursing_end(client);
 
 	isc_nmhandle_detach(&HANDLE_RECTYPE_NORMAL(client));
 
 	client->query.recursing = false;
-	client->inner.state = NS_CLIENTSTATE_WORKING;
 
 	/*
 	 * Initialize a new qctx and use it to either resume from
@@ -5910,68 +5866,58 @@ fetch_callback(void *arg) {
 	dns_resolver_destroyfetch(&fetch);
 }
 
+/*%
+ * Track the number of outstanding recursions started on behalf of
+ * clients (including background prefetch, RPZ and stale-refresh fetches)
+ * for the statistics channel.  The recursion quota itself is enforced by
+ * the resolver in dns_resolver_createfetch().
+ */
 static void
-recursionquota_log(ns_client_t *client, atomic_uint_fast32_t *last_log_time,
-		   const char *format, isc_quota_t *quota) {
-	isc_stdtime_t now = isc_stdtime_now();
-	if (now == atomic_load_relaxed(last_log_time)) {
-		return;
-	}
-
-	atomic_store_relaxed(last_log_time, now);
-	ns_client_log(client, NS_LOGCATEGORY_CLIENT, NS_LOGMODULE_QUERY,
-		      ISC_LOG_WARNING, format, isc_quota_getused(quota),
-		      isc_quota_getsoft(quota), isc_quota_getmax(quota));
+recursion_gauge_increment(ns_client_t *client) {
+	isc_statscounter_t recurscount =
+		isc_stats_increment(client->manager->sctx->nshighwaterstats,
+				    ns_highwater_recursclients) +
+		1;
+	isc_stats_update_if_greater(client->manager->sctx->nshighwaterstats,
+				    ns_highwater_recursive, recurscount);
 }
 
-static atomic_uint_fast32_t last_soft, last_hard;
+static void
+recursion_gauge_decrement(ns_client_t *client) {
+	isc_stats_decrement(client->manager->sctx->nshighwaterstats,
+			    ns_highwater_recursclients);
+}
 
 /*%
- * Acquire recursion quota before making the current client "recursing".
+ * Mark the client as recursing: it goes into the RECURSING state and onto
+ * the manager's recursing-clients list (for 'rndc recursing' and for
+ * cancellation at shutdown).  Only call this once the fetch (or the
+ * asynchronous hook) has been started successfully; the client must be
+ * in the WORKING state, so this must never be used for the background
+ * fetches started by fetch_and_forget().
  */
-static isc_result_t
-acquire_recursionquota(ns_client_t *client) {
-	isc_result_t result;
-
-	result = recursionquotatype_attach_soft(client);
-	switch (result) {
-	case ISC_R_SOFTQUOTA:
-		recursionquota_log(client, &last_soft,
-				   "recursive-clients soft limit exceeded "
-				   "(%u/%u/%u), aborting oldest query",
-				   &client->manager->sctx->recursionquota);
-		ns_client_killoldestquery(client);
-		FALLTHROUGH;
-	case ISC_R_SUCCESS:
-		break;
-	case ISC_R_QUOTA:
-		recursionquota_log(client, &last_hard,
-				   "no more recursive clients (%u/%u/%u)",
-				   &client->manager->sctx->recursionquota);
-		ns_client_killoldestquery(client);
-		return result;
-	default:
-		UNREACHABLE();
-	}
-
-	dns_message_clonebuffer(client->message);
+static void
+client_recursing_begin(ns_client_t *client) {
+	recursion_gauge_increment(client);
 	ns_client_recursing(client);
-
-	return ISC_R_SUCCESS;
 }
 
 /*%
- * Release recursion quota and remove the client from the "recursing" list.
+ * The client is done recursing: remove it from the recursing-clients list
+ * and return it to the WORKING state.  Both happen under 'reclock' so that
+ * ns_client_dumprecursing() never sees a listed client that isn't
+ * RECURSING.
  */
 static void
-release_recursionquota(ns_client_t *client) {
-	recursionquotatype_detach(client);
+client_recursing_end(ns_client_t *client) {
+	recursion_gauge_decrement(client);
 
 	LOCK(&client->manager->reclock);
 	if (ISC_LINK_LINKED(client, inner.rlink)) {
 		ISC_LIST_UNLINK(client->manager->recursing, client,
 				inner.rlink);
 	}
+	client->inner.state = NS_CLIENTSTATE_WORKING;
 	UNLOCK(&client->manager->reclock);
 }
 
@@ -5987,8 +5933,6 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 	if (!resuming) {
 		inc_stats(client, ns_statscounter_recursion);
 	}
-
-	RETERR(acquire_recursionquota(client));
 
 	/*
 	 * Invoke the resolver.
@@ -6011,33 +5955,42 @@ ns_query_recurse(ns_client_t *client, dns_rdatatype_t qtype, dns_name_t *qname,
 		peeraddr = &client->inner.peeraddr;
 	}
 
+	/*
+	 * The message has to outlive the request buffer while we wait
+	 * for the fetch to complete.
+	 */
+	dns_message_clonebuffer(client->message);
+
 	isc_nmhandle_attach(client->inner.handle,
 			    &HANDLE_RECTYPE_NORMAL(client));
 	maybe_init_fetch_counter(client);
 	result = dns_resolver_createfetch(
 		client->inner.view->resolver, qname, qtype, NULL, NULL, NULL,
 		peeraddr, client->message->id, client->query.fetchoptions, 0,
-		NULL, client->query.qc, NULL, client->manager->loop,
-		fetch_callback, client, &client->edectx, rdataset, sigrdataset,
+		NULL, client->query.qc, &client->manager->sctx->recursionquota,
+		true, NULL, client->manager->loop, fetch_callback, client,
+		&client->edectx, rdataset, sigrdataset,
 		&FETCH_RECTYPE_NORMAL(client));
 	if (result != ISC_R_SUCCESS) {
-		release_recursionquota(client);
-
 		ns_client_putrdataset(client, &rdataset);
 		if (sigrdataset != NULL) {
 			ns_client_putrdataset(client, &sigrdataset);
 		}
 
 		isc_nmhandle_detach(&HANDLE_RECTYPE_NORMAL(client));
+		return result;
 	}
 
 	/*
-	 * We're now waiting for a fetch event. A client which is
+	 * We're now waiting for a fetch event.  It is always delivered
+	 * asynchronously on this loop, so it's safe to mark the client as
+	 * recursing only now that the fetch exists.  A client which is
 	 * shutting down will not be destroyed until all the events
 	 * have been received.
 	 */
+	client_recursing_begin(client);
 
-	return result;
+	return ISC_R_SUCCESS;
 }
 
 /*%
@@ -6270,7 +6223,7 @@ query_hookresume(void *arg) {
 	UNLOCK(&client->query.fetchlock);
 	hctx = MOVE_OWNERSHIP(rev->ctx);
 
-	release_recursionquota(client);
+	client_recursing_end(client);
 
 	/*
 	 * The fetch handle should be detached before resuming query processing
@@ -6381,14 +6334,15 @@ ns_query_hookasync(query_ctx_t *qctx, ns_query_starthookasync_t runasync,
 	REQUIRE(client->query.hookasyncctx == NULL);
 	REQUIRE(FETCH_RECTYPE_NORMAL(client) == NULL);
 
-	CHECK(acquire_recursionquota(client));
+	dns_message_clonebuffer(client->message);
+	client_recursing_begin(client);
 
 	qctx_save(qctx, &saved_qctx);
 	result = runasync(saved_qctx, client->manager->mctx, arg,
 			  client->manager->loop, query_hookresume, client,
 			  &client->query.hookasyncctx);
 	if (result != ISC_R_SUCCESS) {
-		goto cleanup_and_detach_from_quota;
+		goto cleanup;
 	}
 
 	/* Record that an asynchronous copy of the qctx has been started */
@@ -6408,9 +6362,9 @@ ns_query_hookasync(query_ctx_t *qctx, ns_query_starthookasync_t runasync,
 	isc_nmhandle_attach(client->inner.handle, &HANDLE_RECTYPE_HOOK(client));
 	return ISC_R_SUCCESS;
 
-cleanup_and_detach_from_quota:
-	release_recursionquota(client);
 cleanup:
+	client_recursing_end(client);
+
 	/*
 	 * If we fail, send SERVFAIL now.  It may be better to let the caller
 	 * decide what to do on failure of this function, but hooks don't have
