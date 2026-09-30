@@ -106,24 +106,6 @@ static struct parse_map map[] = { { TAG_RSA_MODULUS, "Modulus:" },
 				  { TAG_EDDSA_ENGINE, "Engine:" },
 				  { TAG_EDDSA_LABEL, "Label:" },
 
-				  { TAG_HMACMD5_KEY, "Key:" },
-				  { TAG_HMACMD5_BITS, "Bits:" },
-
-				  { TAG_HMACSHA1_KEY, "Key:" },
-				  { TAG_HMACSHA1_BITS, "Bits:" },
-
-				  { TAG_HMACSHA224_KEY, "Key:" },
-				  { TAG_HMACSHA224_BITS, "Bits:" },
-
-				  { TAG_HMACSHA256_KEY, "Key:" },
-				  { TAG_HMACSHA256_BITS, "Bits:" },
-
-				  { TAG_HMACSHA384_KEY, "Key:" },
-				  { TAG_HMACSHA384_BITS, "Bits:" },
-
-				  { TAG_HMACSHA512_KEY, "Key:" },
-				  { TAG_HMACSHA512_BITS, "Bits:" },
-
 				  { 0, NULL } };
 
 static int
@@ -291,60 +273,7 @@ check_eddsa(const dst_private_t *priv, bool external) {
 }
 
 static isc_result_t
-check_hmac_md5(const dst_private_t *priv, bool old) {
-	int i, j;
-
-	if (priv->nelements != HMACMD5_NTAGS) {
-		/*
-		 * If this is a good old format and we are accepting
-		 * the old format return success.
-		 */
-		if (old && priv->nelements == OLD_HMACMD5_NTAGS &&
-		    priv->elements[0].tag == TAG_HMACMD5_KEY)
-		{
-			return ISC_R_SUCCESS;
-		}
-		return DST_R_INVALIDPRIVATEKEY;
-	}
-	/*
-	 * We must be new format at this point.
-	 */
-	for (i = 0; i < HMACMD5_NTAGS; i++) {
-		for (j = 0; j < priv->nelements; j++) {
-			if (priv->elements[j].tag == TAG(DST_ALG_HMACMD5, i)) {
-				break;
-			}
-		}
-		if (j == priv->nelements) {
-			return DST_R_INVALIDPRIVATEKEY;
-		}
-	}
-	return 0;
-}
-
-static isc_result_t
-check_hmac_sha(const dst_private_t *priv, unsigned int ntags,
-	       unsigned int alg) {
-	unsigned int i, j;
-	if (priv->nelements != ntags) {
-		return DST_R_INVALIDPRIVATEKEY;
-	}
-	for (i = 0; i < ntags; i++) {
-		for (j = 0; j < priv->nelements; j++) {
-			if (priv->elements[j].tag == TAG(alg, i)) {
-				break;
-			}
-		}
-		if (j == priv->nelements) {
-			return DST_R_INVALIDPRIVATEKEY;
-		}
-	}
-	return ISC_R_SUCCESS;
-}
-
-static isc_result_t
-check_data(const dst_private_t *priv, const unsigned int alg, bool old,
-	   bool external) {
+check_data(const dst_private_t *priv, const unsigned int alg, bool external) {
 	switch (alg) {
 	case DST_ALG_RSA:
 	case DST_ALG_RSASHA1:
@@ -360,18 +289,6 @@ check_data(const dst_private_t *priv, const unsigned int alg, bool old,
 	case DST_ALG_ED25519:
 	case DST_ALG_ED448:
 		return check_eddsa(priv, external);
-	case DST_ALG_HMACMD5:
-		return check_hmac_md5(priv, old);
-	case DST_ALG_HMACSHA1:
-		return check_hmac_sha(priv, HMACSHA1_NTAGS, alg);
-	case DST_ALG_HMACSHA224:
-		return check_hmac_sha(priv, HMACSHA224_NTAGS, alg);
-	case DST_ALG_HMACSHA256:
-		return check_hmac_sha(priv, HMACSHA256_NTAGS, alg);
-	case DST_ALG_HMACSHA384:
-		return check_hmac_sha(priv, HMACSHA384_NTAGS, alg);
-	case DST_ALG_HMACSHA512:
-		return check_hmac_sha(priv, HMACSHA512_NTAGS, alg);
 	default:
 		return DST_R_UNSUPPORTEDALG;
 	}
@@ -572,7 +489,7 @@ done:
 		goto cleanup;
 	}
 
-	CHECK(check_data(priv, alg, true, external));
+	CHECK(check_data(priv, alg, external));
 
 	key->external = external;
 
@@ -607,7 +524,7 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 
 	REQUIRE(priv != NULL);
 
-	ret = check_data(priv, dst_key_alg(key), false, key->external);
+	ret = check_data(priv, dst_key_alg(key), key->external);
 	if (ret < 0) {
 		return DST_R_INVALIDPRIVATEKEY;
 	} else if (ret != ISC_R_SUCCESS) {
@@ -674,24 +591,6 @@ dst__privstruct_writefile(const dst_key_t *key, const dst_private_t *priv,
 		break;
 	case DST_ALG_ED448:
 		fprintf(fp, "(ED448)\n");
-		break;
-	case DST_ALG_HMACMD5:
-		fprintf(fp, "(HMAC_MD5)\n");
-		break;
-	case DST_ALG_HMACSHA1:
-		fprintf(fp, "(HMAC_SHA1)\n");
-		break;
-	case DST_ALG_HMACSHA224:
-		fprintf(fp, "(HMAC_SHA224)\n");
-		break;
-	case DST_ALG_HMACSHA256:
-		fprintf(fp, "(HMAC_SHA256)\n");
-		break;
-	case DST_ALG_HMACSHA384:
-		fprintf(fp, "(HMAC_SHA384)\n");
-		break;
-	case DST_ALG_HMACSHA512:
-		fprintf(fp, "(HMAC_SHA512)\n");
 		break;
 	case DST_ALG_RSASHA256PRIVATEOID:
 		fprintf(fp, "(OID:RSASHA256)\n");
