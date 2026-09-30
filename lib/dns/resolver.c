@@ -2528,9 +2528,7 @@ resquery_send(resquery_t *query) {
 	 * Set RD if the client has requested that we do a recursive
 	 * query, or if we're sending to a forwarder.
 	 */
-	if ((query->options & DNS_FETCHOPT_RECURSIVE) != 0 ||
-	    ISFORWARDER(query->addrinfo))
-	{
+	if (ISFORWARDER(query->addrinfo)) {
 		fctx->qmessage->flags |= DNS_MESSAGEFLAG_RD;
 	}
 
@@ -3869,13 +3867,13 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	INSIST(ISC_LIST_EMPTY(fctx->altaddrs));
 
 	/*
-	 * Skip forwarders only if DNS_FETCHOPT_NOFORWARD is not set or if the
+	 * Skip forwarders only if DNS_FETCHOPT_PRIMING is not set or if the
 	 * forwarding policy doesn't allow us to not forward.
 	 *
 	 * This is currently used to make sure that priming query gets root
 	 * servers' IP addresses in ADDITIONAL section.
 	 */
-	if ((fctx->options & DNS_FETCHOPT_NOFORWARD) == 0 ||
+	if ((fctx->options & DNS_FETCHOPT_PRIMING) == 0 ||
 	    (fctx->fwdpolicy == dns_fwdpolicy_only))
 	{
 		result = fctx_getaddresses_forwarders(fctx);
@@ -10449,9 +10447,9 @@ dns_resolver_prime(dns_resolver_t *res) {
 		LOCK(&res->primelock);
 		result = dns_resolver_createfetch(
 			res, dns_rootname, dns_rdatatype_ns, NULL, NULL, NULL,
-			NULL, 0, DNS_FETCHOPT_NOFORWARD | DNS_FETCHOPT_PRIMING,
-			0, NULL, NULL, NULL, isc_loop(), prime_done, res, NULL,
-			rdataset, NULL, &res->primefetch);
+			NULL, 0, DNS_FETCHOPT_PRIMING, 0, NULL, NULL, NULL,
+			isc_loop(), prime_done, res, NULL, rdataset, NULL,
+			&res->primefetch);
 		UNLOCK(&res->primelock);
 
 		if (result != ISC_R_SUCCESS) {
