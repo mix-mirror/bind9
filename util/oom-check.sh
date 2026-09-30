@@ -33,6 +33,23 @@ read_file() {
   cat "$1" 2>/dev/null || true
 }
 
+# The Docker executor runs after_script by restarting the job's
+# container, which starts the cgroup counters from zero.  So the check
+# reads copies of them instead, which "oom-check.sh monitor" keeps while
+# the tests run; stopping it with SIGTERM makes it take a last copy.
+saved="${TMPDIR:-/tmp}/oom-check"
+if [ "${1:-}" = "monitor" ]; then
+  save() {
+    cp "$cgroup/memory.events" "$saved.events" 2>/dev/null \
+      && cp "$cgroup/memory.peak" "$saved.peak" 2>/dev/null
+  }
+  trap 'save; exit 0' TERM
+  while save; do
+    sleep 1
+  done
+  exit 0
+fi
+
 oom_kill_count() {
   awk '$1 == "oom_kill" { print $2 }'
 }
@@ -49,7 +66,7 @@ oom_messages() {
 # the kernel's messages.  The machine is fresh, so no baseline is needed.
 where="on this machine"
 if [ -r "$cgroup/memory.events" ]; then
-  kills=$(read_file "$cgroup/memory.events" | oom_kill_count)
+  kills=$(read_file "$saved.events" | oom_kill_count)
   where="in this container"
 elif [ -r /proc/vmstat ]; then
   kills=$(read_file /proc/vmstat | oom_kill_count)
@@ -59,7 +76,7 @@ fi
 
 # Only a cgroup keeps a high water mark, so jobs outside a container get
 # the kill check alone.
-peak=$(read_file "$cgroup/memory.peak")
+peak=$(read_file "$saved.peak")
 max=$(read_file "$cgroup/memory.max")
 
 percent=

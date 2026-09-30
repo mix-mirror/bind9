@@ -549,8 +549,12 @@ stages:
     - ( if [ "${CI_DISPOSABLE_ENVIRONMENT}" = "true" ]; then sleep 3000; "$PYTHON" "${CI_PROJECT_DIR}/bind9-qa/ci/get_running_system_tests.py"; fi ) &
     - cd bin/tests/system
     - RET=0
+    - sh "$CI_PROJECT_DIR"/util/oom-check.sh monitor >/dev/null 2>&1 &
+    - OOM_MONITOR_PID=$!
     - >
       ("$PYTEST" --junit-xml="$CI_PROJECT_DIR"/junit_pytest.xml -n "$TEST_PARALLEL_JOBS" | tee pytest.out.txt) || RET=1
+    - kill "$OOM_MONITOR_PID" 2>/dev/null || true
+    - wait "$OOM_MONITOR_PID" || true
     - sh "$CI_PROJECT_DIR"/util/oom-check.sh || RET=1
     - >
       "$PYTHON" "$CI_PROJECT_DIR"/bind9-qa/ci/postprocess_junit_files.py "$CI_PROJECT_DIR"/junit_pytest.xml --output "$CI_PROJECT_DIR"/junit.xml
