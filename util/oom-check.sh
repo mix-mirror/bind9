@@ -11,8 +11,8 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-# Fail the job if the kernel OOM killer ran during the tests.  Silent
-# otherwise.
+# Fail the job if the kernel OOM killer ran during the tests.  Report the
+# peak memory use either way.
 #
 # A SIGKILLed process logs nothing, and start.pl detaches the servers it
 # starts, so their exit status is lost too.  All that is left is a
@@ -82,6 +82,8 @@ max=$(read_file "$cgroup/memory.max")
 percent=
 if [ -n "$peak" ] && [ "$max" -gt 0 ] 2>/dev/null; then
   percent=$((100 * peak / max))
+  echo "I:OOM check: peak memory use was ${percent}% of the container limit" \
+    "($((peak / 1048576)) of $((max / 1048576)) MiB)"
 fi
 
 if [ "${kills:-0}" -gt 0 ]; then
