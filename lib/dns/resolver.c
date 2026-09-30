@@ -3547,6 +3547,18 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 	dns_name_t suffix = DNS_NAME_INITEMPTY;
 	dns_name_t *name = fctx->name;
 
+	if ((fctx->options & DNS_FETCHOPT_PRIMING) != 0 &&
+	    fctx->fwdpolicy != dns_fwdpolicy_only)
+	{
+		/*
+		 * For priming queries, we prefer to avoid forwarders,
+		 * because they might return minimal answers, and then we
+		 * wouldn't get the addresses from the ADDITIONAL section.
+		 * We use one only if the policy requires it.
+		 */
+		return DNS_R_CONTINUE;
+	}
+
 	/*
 	 * DS records are found in the parent server.
 	 * Strip label to get the correct forwarder (if any).
@@ -3615,6 +3627,14 @@ fctx_getaddresses_forwarders(fetchctx_t *fctx) {
 		}
 	next:
 		fwd = ISC_LIST_NEXT(fwd, link);
+	}
+
+	if (fctx->fwdpolicy == dns_fwdpolicy_only) {
+		/*
+		 * COMPLETE means we're only forwarding and won't
+		 * need any regular name servers.
+		 */
+		return ISC_R_COMPLETE;
 	}
 
 	return DNS_R_CONTINUE;
@@ -3866,28 +3886,15 @@ fctx_getaddresses(fetchctx_t *fctx) {
 	INSIST(ISC_LIST_EMPTY(fctx->forwaddrs));
 	INSIST(ISC_LIST_EMPTY(fctx->altaddrs));
 
-	/*
-	 * Skip forwarders only if DNS_FETCHOPT_PRIMING is not set or if the
-	 * forwarding policy doesn't allow us to not forward.
-	 *
-	 * This is currently used to make sure that priming query gets root
-	 * servers' IP addresses in ADDITIONAL section.
-	 */
-	if ((fctx->options & DNS_FETCHOPT_PRIMING) == 0 ||
-	    (fctx->fwdpolicy == dns_fwdpolicy_only))
-	{
-		result = fctx_getaddresses_forwarders(fctx);
-		if (result != DNS_R_CONTINUE) {
-			return result;
-		}
-
-		/*
-		 * If the forwarding policy is "only", we don't need the
-		 * addresses of the nameservers.
-		 */
-		if (fctx->fwdpolicy == dns_fwdpolicy_only) {
-			goto out;
-		}
+	/* Forwarding? */
+	result = fctx_getaddresses_forwarders(fctx);
+	switch (result) {
+	case ISC_R_COMPLETE:
+		goto out;
+	case DNS_R_CONTINUE:
+		break;
+	default:
+		return result;
 	}
 
 	/*
