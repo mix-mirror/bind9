@@ -14,6 +14,7 @@
 /*! \file */
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include <isc/base64.h>
 #include <isc/buffer.h>
@@ -35,6 +36,101 @@ mem_tobuffer(isc_buffer_t *target, void *base, unsigned int length);
 static const char base64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw"
 			     "xyz0123456789+/=";
 /*@}*/
+
+/*
+ * Use simdutf's scalar approach: four position-specific lookups contribute
+ * one base64 digit each to a three-byte result.  The four high bits mark
+ * which input positions held valid base64 characters.
+ */
+#define BASE64_DIGITS(X) \
+	X('A', 0)        \
+	X('B', 1)        \
+	X('C', 2)        \
+	X('D', 3)        \
+	X('E', 4)        \
+	X('F', 5)        \
+	X('G', 6)        \
+	X('H', 7)        \
+	X('I', 8)        \
+	X('J', 9)        \
+	X('K', 10)       \
+	X('L', 11)       \
+	X('M', 12)       \
+	X('N', 13)       \
+	X('O', 14)       \
+	X('P', 15)       \
+	X('Q', 16)       \
+	X('R', 17)       \
+	X('S', 18)       \
+	X('T', 19)       \
+	X('U', 20)       \
+	X('V', 21)       \
+	X('W', 22)       \
+	X('X', 23)       \
+	X('Y', 24)       \
+	X('Z', 25)       \
+	X('a', 26)       \
+	X('b', 27)       \
+	X('c', 28)       \
+	X('d', 29)       \
+	X('e', 30)       \
+	X('f', 31)       \
+	X('g', 32)       \
+	X('h', 33)       \
+	X('i', 34)       \
+	X('j', 35)       \
+	X('k', 36)       \
+	X('l', 37)       \
+	X('m', 38)       \
+	X('n', 39)       \
+	X('o', 40)       \
+	X('p', 41)       \
+	X('q', 42)       \
+	X('r', 43)       \
+	X('s', 44)       \
+	X('t', 45)       \
+	X('u', 46)       \
+	X('v', 47)       \
+	X('w', 48)       \
+	X('x', 49)       \
+	X('y', 50)       \
+	X('z', 51)       \
+	X('0', 52)       \
+	X('1', 53)       \
+	X('2', 54)       \
+	X('3', 55)       \
+	X('4', 56)       \
+	X('5', 57)       \
+	X('6', 58)       \
+	X('7', 59)       \
+	X('8', 60)       \
+	X('9', 61)       \
+	X('+', 62)       \
+	X('/', 63)
+
+#define BASE64_D0(c, v) [c] = 0x01000000U | ((uint32_t)(v) << 2),
+#define BASE64_D1(c, v)                            \
+	[c] = 0x02000000U | ((uint32_t)(v) >> 4) | \
+	      (((uint32_t)(v) & 0x0fU) << 12),
+#define BASE64_D2(c, v)                                 \
+	[c] = 0x04000000U | ((uint32_t)(v) >> 2 << 8) | \
+	      (((uint32_t)(v) & 0x03U) << 22),
+#define BASE64_D3(c, v) [c] = 0x08000000U | ((uint32_t)(v) << 16),
+
+/*
+ * The tables cover every byte value, so they can be indexed by any input
+ * byte without a range check; bytes that are not base64 digits are zero.
+ */
+static const uint32_t base64_d0[256] = { BASE64_DIGITS(BASE64_D0) };
+static const uint32_t base64_d1[256] = { BASE64_DIGITS(BASE64_D1) };
+static const uint32_t base64_d2[256] = { BASE64_DIGITS(BASE64_D2) };
+static const uint32_t base64_d3[256] = { BASE64_DIGITS(BASE64_D3) };
+
+#undef BASE64_D0
+#undef BASE64_D1
+#undef BASE64_D2
+#undef BASE64_D3
+#undef BASE64_DIGITS
 
 isc_result_t
 isc_base64_totext(isc_region_t *source, int wordlength, const char *wordbreak,
@@ -102,16 +198,17 @@ base64_decode_init(base64_decode_ctx_t *ctx, int length, isc_buffer_t *target) {
 }
 
 static isc_result_t
-base64_decode_char(base64_decode_ctx_t *ctx, int c) {
-	const char *s;
-
+base64_decode_char(base64_decode_ctx_t *ctx, unsigned char c) {
 	if (ctx->seen_end) {
 		return ISC_R_BADBASE64;
 	}
-	if ((s = strchr(base64, c)) == NULL) {
+	if (c == '=') {
+		ctx->val[ctx->digits++] = 64;
+	} else if (base64_d0[c] != 0) {
+		ctx->val[ctx->digits++] = (base64_d0[c] & 0xffU) >> 2;
+	} else {
 		return ISC_R_BADBASE64;
 	}
-	ctx->val[ctx->digits++] = (int)(s - base64);
 	if (ctx->digits == 4) {
 		int n;
 		unsigned char buf[3];
@@ -161,6 +258,58 @@ base64_decode_char(base64_decode_ctx_t *ctx, int c) {
 }
 
 static isc_result_t
+base64_decode_chars(base64_decode_ctx_t *ctx, const unsigned char *input,
+		    size_t length) {
+	while (length > 0) {
+		if (ctx->digits == 0 && !ctx->seen_end) {
+			/*
+			 * Fast path: decode whole quanta at once, as far as
+			 * the input, the desired length, and the space in the
+			 * target allow.  Padding, errors, and anything past
+			 * those limits fall through to base64_decode_char().
+			 */
+			isc_region_t avail;
+			unsigned char *dst;
+			size_t n = length / 4;
+			size_t i;
+
+			isc_buffer_availableregion(ctx->target, &avail);
+			if (n > avail.length / 3) {
+				n = avail.length / 3;
+			}
+			if (ctx->length >= 0 && n > (size_t)ctx->length / 3) {
+				n = (size_t)ctx->length / 3;
+			}
+			dst = avail.base;
+			for (i = 0; i < n; i++, input += 4, dst += 3) {
+				const uint32_t x = base64_d0[input[0]] |
+						   base64_d1[input[1]] |
+						   base64_d2[input[2]] |
+						   base64_d3[input[3]];
+
+				if ((x & 0x0f000000U) != 0x0f000000U) {
+					break;
+				}
+				dst[0] = x;
+				dst[1] = x >> 8;
+				dst[2] = x >> 16;
+			}
+			isc_buffer_add(ctx->target, (unsigned int)(3 * i));
+			length -= 4 * i;
+			if (ctx->length >= 0) {
+				ctx->length -= 3 * i;
+			}
+			if (length == 0) {
+				break;
+			}
+		}
+		RETERR(base64_decode_char(ctx, *input++));
+		length--;
+	}
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
 base64_decode_finish(base64_decode_ctx_t *ctx) {
 	if (ctx->length > 0) {
 		return ISC_R_UNEXPECTEDEND;
@@ -185,8 +334,6 @@ isc_base64_tobuffer(isc_lex_t *lexer, isc_buffer_t *target, int length) {
 
 	before = isc_buffer_usedlength(target);
 	while (!ctx.seen_end && (ctx.length != 0)) {
-		unsigned int i;
-
 		if (length > 0) {
 			eol = false;
 		} else {
@@ -198,9 +345,8 @@ isc_base64_tobuffer(isc_lex_t *lexer, isc_buffer_t *target, int length) {
 			break;
 		}
 		tr = &token.value.as_textregion;
-		for (i = 0; i < tr->length; i++) {
-			RETERR(base64_decode_char(&ctx, tr->base[i]));
-		}
+		RETERR(base64_decode_chars(
+			&ctx, (const unsigned char *)tr->base, tr->length));
 	}
 	after = isc_buffer_usedlength(target);
 	if (ctx.length < 0 && !ctx.seen_end) {
