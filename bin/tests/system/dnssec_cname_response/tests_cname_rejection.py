@@ -283,10 +283,14 @@ def test_apex_cname_coexists_with_other_types(ns3):
     # Cache MX first; a cached CNAME would answer the MX query via the alias.
     ns3.rndc("flushtree insecure.parent")
 
-    check_mx(_query_insecure_parent(ns3, "MX"))
+    res = _query_insecure_parent(ns3, "MX")
+    check_mx(res)
+
     res = _query_insecure_parent(ns3, "A")
     _check_insecure_cname_chain(res)
-    check_mx(_query_insecure_parent(ns3, "MX"))
+
+    res = _query_insecure_parent(ns3, "MX")
+    check_mx(res)
 
     with ns3.watch_log_from_here() as watcher:
         ns3.rndc("dumpdb -cache")
