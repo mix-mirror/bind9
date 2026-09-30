@@ -22,11 +22,10 @@ options {
 	allow-transfer { any; };
 	recursion yes;
 	dnssec-validation yes;
-	synth-from-dnssec yes;
 };
 
-trust-anchors {
-	@root.domain@ @root.type@ @root.contents@;
+trusted-keys {
+	@root.domain@ @root.contents@;
 };
 
 zone "." {
