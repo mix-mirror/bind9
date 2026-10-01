@@ -1715,6 +1715,10 @@ tsan:stress:
     include:
       - artifact: tsan-stress-test-configs.yml
         job: generate-tsan-stress-test-configs
+    # Forward pipeline variables so that a CI_REGISTRY_IMAGE override
+    # (e.g., staging images from the images repo) reaches the child.
+    forward:
+      pipeline_variables: true
   needs:
     - job: generate-tsan-stress-test-configs
       artifacts: true
@@ -2519,6 +2523,10 @@ stress-test-child-pipeline:
     include:
       - artifact: stress-test-configs.yml
         job: generate-stress-test-configs
+    # Forward pipeline variables so that a CI_REGISTRY_IMAGE override
+    # (e.g., staging images from the images repo) reaches the child.
+    forward:
+      pipeline_variables: true
   needs:
     - job: generate-stress-test-configs
       artifacts: true
