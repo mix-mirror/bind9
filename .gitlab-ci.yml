@@ -237,16 +237,16 @@ stages:
 
 # Fedora
 
-.tsan-fedora-44-amd64: &tsan_fedora_44_amd64_image
-  image: "$CI_REGISTRY_IMAGE:tsan-fedora-44-amd64"
+.tsan-fedora-45-amd64: &tsan_fedora_45_amd64_image
+  image: "$CI_REGISTRY_IMAGE:tsan-fedora-45-amd64"
   <<: *linux_amd64
 
-.fedora-44-amd64: &fedora_44_amd64_image
-  image: "$CI_REGISTRY_IMAGE:fedora-44-amd64"
+.fedora-45-amd64: &fedora_45_amd64_image
+  image: "$CI_REGISTRY_IMAGE:fedora-45-amd64"
   <<: *linux_amd64
 
-.fedora-44-arm64: &fedora_44_arm64_image
-  image: "$CI_REGISTRY_IMAGE:fedora-44-arm64"
+.fedora-45-arm64: &fedora_45_arm64_image
+  image: "$CI_REGISTRY_IMAGE:fedora-45-arm64"
   <<: *linux_arm64
 
 # Ubuntu
@@ -1599,25 +1599,25 @@ unit:gcc:resolute:amd64:
     - job: gcc:resolute:amd64
       artifacts: true
 
-# Jobs for ASAN builds on Fedora 44 (amd64)
+# Jobs for ASAN builds on Fedora 45 (amd64)
 
 gcc:asan:
   variables:
     EXTRA_SETUP_FILES: "--native-file ci/asan.ini"
-  <<: *fedora_44_amd64_image
+  <<: *fedora_45_amd64_image
   <<: *build_job
 
 system:gcc:asan:
   variables:
     TEST_PARALLEL_JOBS: 3
-  <<: *fedora_44_amd64_image
+  <<: *fedora_45_amd64_image
   <<: *system_test_job
   needs:
     - job: gcc:asan
       artifacts: true
 
 unit:gcc:asan:
-  <<: *fedora_44_amd64_image
+  <<: *fedora_45_amd64_image
   <<: *unit_test_job
   needs:
     - job: gcc:asan
@@ -1647,18 +1647,18 @@ unit:clang:asan:
     - job: clang:asan
       artifacts: true
 
-# Jobs for TSAN builds on Fedora 44 (amd64)
+# Jobs for TSAN builds on Fedora 45 (amd64)
 
 gcc:tsan:
   variables:
     EXTRA_SETUP_FILES: "--native-file ci/tsan.ini --native-file ci/tsan-gcc.ini"
-  <<: *tsan_fedora_44_amd64_image
+  <<: *tsan_fedora_45_amd64_image
   <<: *build_job
 
 system:gcc:tsan:
   variables:
     TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_FEDORA}"
-  <<: *tsan_fedora_44_amd64_image
+  <<: *tsan_fedora_45_amd64_image
   <<: *system_test_tsan_job
   <<: *extra_system_tests_triggering_rules
   needs:
@@ -1668,7 +1668,7 @@ system:gcc:tsan:
 unit:gcc:tsan:
   variables:
     TSAN_SYMBOLIZER_PATH: "${TSAN_SYMBOLIZER_PATH_FEDORA}"
-  <<: *tsan_fedora_44_amd64_image
+  <<: *tsan_fedora_45_amd64_image
   <<: *unit_test_tsan_job
   <<: *api_pipelines_schedules_tags_triggers_web_triggering_rules
   needs:
