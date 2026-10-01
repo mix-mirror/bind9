@@ -190,15 +190,21 @@ Before running :iscman:`dnssec-signzone`, ensure that the delegations
 are up-to-date by running :program:`dnssec-cds` on every ``dsset-`` file.
 
 To fetch the child records required by :program:`dnssec-cds`, invoke
-:iscman:`dig` as in the script below. It is acceptable if the :iscman:`dig` fails, since
-:program:`dnssec-cds` performs all the necessary checking.
+:iscman:`dig` as in the script below. It is acceptable if the
+:iscman:`dig` fails, since :program:`dnssec-cds` performs all the
+necessary checking.  Note we need to see the NSEC/NSEC3 records
+that prove the non-existence of the CDS and CDNSKEY RRsets hence
+the +authority argument to :iscman:`dig`.  The +tcp +keepalive helps
+keep :iscman:`dig` talking to the same nameserver instance when
+there are anycast servers so that the set of answers is internally
+consistent.
 
 ::
 
    for f in dsset-*
    do
        d=${f#dsset-}
-       dig +dnssec +noall +answer +tcp +keepalive $d DNSKEY $d CDNSKEY $d CDS |
+       dig +dnssec +noall +answer +authority +tcp +keepalive $d DNSKEY $d CDNSKEY $d CDS |
        dnssec-cds -i -f /dev/stdin -d $f $d
    done
 
@@ -210,7 +216,7 @@ protection time.
 
 ::
 
-   dig +dnssec +noall +answer +tcp +keepalive $d DNSKEY $d CDNSKEY $d CDS |
+   dig +dnssec +noall +answer +authority +tcp +keepalive $d DNSKEY $d CDNSKEY $d CDS |
    dnssec-cds -u -i -f /dev/stdin -d $f $d |
    nsupdate -l
 
