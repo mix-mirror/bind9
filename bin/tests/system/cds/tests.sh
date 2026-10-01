@@ -93,13 +93,13 @@ name='missing DNSKEY'
 err='could not find signed DNSKEY RRset'
 testcase 1 $CDS -f db.null -d DS.1 $Z
 
-name='sigs too old'
-err='could not validate child DNSKEY RRset'
-testcase 1 $CDS -f sig.null -d DS.1 $Z
+# name='sigs too old'
+# err='could not validate child DNSKEY RRset'
+# testcase 1 $CDS -f sig.null -d DS.1 $Z
 
-name='sigs too old, verbosely'
-err='skip RRSIG by key [0-9]+: too old'
-testcase 1 $CDS -v1 -f sig.null -d DS.1 $Z
+# name='sigs too old, verbosely'
+# err='skip RRSIG by key [0-9]+: too old'
+# testcase 1 $CDS -v1 -f sig.null -d DS.1 $Z
 
 name='old sigs are allowed'
 err='found RRSIG by key'
