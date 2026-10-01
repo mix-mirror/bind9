@@ -45,7 +45,7 @@ following systems:
 
 -  Debian 12, 13
 -  Ubuntu LTS 22.04, 24.04, 26.04
--  Fedora 44
+-  Fedora 45
 -  Red Hat Enterprise Linux / CentOS / AlmaLinux 8, 9, 10
 -  FreeBSD 14, 15
 -  Alpine Linux 3.24
