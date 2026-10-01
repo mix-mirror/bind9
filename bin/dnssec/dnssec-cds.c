@@ -48,6 +48,8 @@
 #include <dns/lib.h>
 #include <dns/master.h>
 #include <dns/name.h>
+#include <dns/nsec.h>
+#include <dns/nsec3.h>
 #include <dns/rdata.h>
 #include <dns/rdataclass.h>
 #include <dns/rdatalist.h>
@@ -68,9 +70,18 @@ static dns_fixedname_t fixed;
 static dns_name_t *name = NULL;
 static dns_rdataclass_t rdclass = dns_rdataclass_in;
 
+/*
+ * The NSEC3 name and record that matches the apex.
+ */
+static dns_rdata_t nsec3rdata = DNS_RDATA_INIT;
+static dns_fixedname_t *nsec3fixed;
+
 static const char *startstr = NULL; /* from which we derive notbefore */
 static isc_stdtime_t notbefore = 0; /* restrict sig inception times */
-static dns_rdata_rrsig_t oldestsig; /* for recording inception time */
+
+static size_t orig_argc;
+
+static const char **child_paths;
 
 static int nkey; /* number of child zone DNSKEY records */
 
@@ -118,16 +129,21 @@ typedef isc_result_t
 ds_maker_func_t(isc_buffer_t *buf, dns_rdata_t *ds, dns_dsdigest_t dt,
 		dns_rdata_t *crdata);
 
-static dns_rdataset_t cdnskey_set = DNS_RDATASET_INIT;
-static dns_rdataset_t cdnskey_sig = DNS_RDATASET_INIT;
-static dns_rdataset_t cds_set = DNS_RDATASET_INIT;
-static dns_rdataset_t cds_sig = DNS_RDATASET_INIT;
-static dns_rdataset_t dnskey_set = DNS_RDATASET_INIT;
-static dns_rdataset_t dnskey_sig = DNS_RDATASET_INIT;
+static dns_rdataset_t *cdnskey_sets;
+static dns_rdataset_t *cdnskey_sigs;
+static dns_rdataset_t *cds_sets;
+static dns_rdataset_t *cds_sigs;
+static dns_rdataset_t *dnskey_sets;
+static dns_rdataset_t *dnskey_sigs;
+static dns_rdataset_t *nsec_sets;
+static dns_rdataset_t *nsec_sigs;
+static dns_rdataset_t *nsec3_sets;
+static dns_rdataset_t *nsec3_sigs;
 static dns_rdataset_t old_ds_set = DNS_RDATASET_INIT;
 static dns_rdataset_t new_ds_set = DNS_RDATASET_INIT;
 
 static keyinfo_t *old_key_tbl = NULL, *new_key_tbl = NULL;
+static keyinfo_t *cur_key_tbl = NULL;
 
 isc_buffer_t *new_ds_buf = NULL; /* backing store for new_ds_set */
 
@@ -218,12 +234,23 @@ freelist(dns_rdataset_t *rdataset) {
 
 static void
 free_all_sets(void) {
-	freeset(&cdnskey_set);
-	freeset(&cdnskey_sig);
-	freeset(&cds_set);
-	freeset(&cds_sig);
-	freeset(&dnskey_set);
-	freeset(&dnskey_sig);
+#define FREESET(X)                                                  \
+	if (X != NULL) {                                            \
+		for (size_t i = 0; i < orig_argc; i++) {            \
+			freeset(&X[i]);                             \
+		}                                                   \
+		isc_mem_cput(isc_g_mctx, X, orig_argc, sizeof(*X)); \
+	}
+	FREESET(cdnskey_sets);
+	FREESET(cdnskey_sigs);
+	FREESET(cds_sets);
+	FREESET(cds_sigs);
+	FREESET(dnskey_sets);
+	FREESET(dnskey_sigs);
+	FREESET(nsec_sets);
+	FREESET(nsec_sigs);
+	FREESET(nsec3_sets);
+	FREESET(nsec3_sigs);
 	freeset(&old_ds_set);
 	freelist(&new_ds_set);
 	if (new_ds_buf != NULL) {
@@ -264,14 +291,89 @@ free_db(dns_db_t **dbp, dns_dbnode_t **nodep, dns_dbversion_t **versionp) {
 	}
 }
 
+static bool
+is_apex_nsec3(dns_name_t *curname, dns_rdata_t *rdata) {
+	isc_result_t result;
+	dns_fixedname_t myfixed;
+	dns_rdata_nsec3_t nsec3;
+	unsigned char hash[NSEC3_MAX_HASH_LENGTH];
+	size_t hash_len = sizeof(hash);
+
+	dns_fixedname_init(&myfixed);
+
+	dns_rdata_tostruct(rdata, &nsec3);
+
+	CHECK(dns_nsec3_hashname(&myfixed, hash, &hash_len, name, name,
+				 nsec3.hash, nsec3.iterations, nsec3.salt.base,
+				 nsec3.salt.length));
+	if (dns_name_equal(curname, dns_fixedname_name(&myfixed))) {
+		return true;
+	}
+cleanup:
+	return false;
+}
+
+/*
+ * Find the nsec3 record that matches the zone's name.
+ *
+ * Save rdata  nsec3rdata first is true.  Regardless of
+ * first, return the found nsec3name and associated rrset
+ * and signatures.
+ */
 static void
-load_child_sets(const char *file) {
-	load_db(file, &child_db, &child_node);
-	findset(child_db, child_node, dns_rdatatype_dnskey, &dnskey_set,
-		&dnskey_sig);
-	findset(child_db, child_node, dns_rdatatype_cdnskey, &cdnskey_set,
-		&cdnskey_sig);
-	findset(child_db, child_node, dns_rdatatype_cds, &cds_set, &cds_sig);
+findnsec3set(dns_db_t *db, dns_name_t *nsec3name, dns_rdataset_t *rdataset,
+	     dns_rdataset_t *sigrdataset, bool first) {
+	isc_result_t result;
+	dns_dbiterator_t *dbit = NULL;
+	dns_dbnode_t *node = NULL;
+
+	CHECK(dns_db_createiterator(db, DNS_DB_NSEC3ONLY, &dbit));
+
+	DNS_DBITERATOR_FOREACH(dbit) {
+		CHECK(dns_dbiterator_current(dbit, &node, nsec3name));
+		findset(db, node, dns_rdatatype_nsec3, rdataset, sigrdataset);
+		DNS_RDATASET_FOREACH(rdataset) {
+			dns_rdata_t rdata = DNS_RDATA_INIT;
+			dns_rdataset_current(rdataset, &rdata);
+			if (is_apex_nsec3(nsec3name, &rdata)) {
+				if (first) {
+					nsec3rdata = rdata;
+				}
+				dns_db_detachnode(&node);
+				goto cleanup;
+			}
+		}
+		dns_rdataset_disassociate(rdataset);
+		dns_rdataset_cleanup(sigrdataset);
+		dns_db_detachnode(&node);
+	}
+cleanup:
+	if (dbit != NULL) {
+		dns_dbiterator_destroy(&dbit);
+	}
+}
+
+static void
+load_child_sets(size_t i) {
+	load_db(child_paths[i], &child_db, &child_node);
+	findset(child_db, child_node, dns_rdatatype_dnskey, &dnskey_sets[i],
+		&dnskey_sigs[i]);
+	findset(child_db, child_node, dns_rdatatype_cdnskey, &cdnskey_sets[i],
+		&cdnskey_sigs[i]);
+	findset(child_db, child_node, dns_rdatatype_cds, &cds_sets[i],
+		&cds_sigs[i]);
+	/*
+	 * Do we need to prove non-existence?
+	 */
+	if (!dns_rdataset_isassociated(&cds_sets[i]) &&
+	    !dns_rdataset_isassociated(&cdnskey_sets[i]))
+	{
+		dns_name_t *nsec3name = dns_fixedname_initname(&nsec3fixed[i]);
+		findset(child_db, child_node, dns_rdatatype_nsec, &nsec_sets[i],
+			&nsec_sigs[i]);
+		findnsec3set(child_db, nsec3name, &nsec3_sets[i],
+			     &nsec3_sigs[i], i == 0);
+	}
 	free_db(&child_db, &child_node, NULL);
 }
 
@@ -388,7 +490,7 @@ formatset(dns_rdataset_t *rdataset) {
 
 static void
 write_parent_set(const char *path, const char *inplace, bool nsupdate,
-		 dns_rdataset_t *rdataset) {
+		 dns_rdataset_t *rdataset, dns_rdata_rrsig_t *oldestsig) {
 	isc_result_t result;
 	isc_buffer_t *buf = NULL;
 	isc_region_t r;
@@ -436,12 +538,14 @@ write_parent_set(const char *path, const char *inplace, bool nsupdate,
 		fatal("error writing to %s: %s", tmpname, strerror(err));
 	}
 
-	isc_time_set(&filetime, oldestsig.timesigned, 0);
-	result = isc_file_settime(tmpname, &filetime);
-	if (result != ISC_R_SUCCESS) {
-		isc_file_remove(tmpname);
-		fatal("can't set modification time of %s: %s", tmpname,
-		      isc_result_totext(result));
+	if (oldestsig != NULL) {
+		isc_time_set(&filetime, oldestsig->timesigned, 0);
+		result = isc_file_settime(tmpname, &filetime);
+		if (result != ISC_R_SUCCESS) {
+			isc_file_remove(tmpname);
+			fatal("can't set modification time of %s: %s", tmpname,
+			      isc_result_totext(result));
+		}
 	}
 
 	if (inplace[0] != '\0') {
@@ -478,8 +582,8 @@ match_key_dsset(keyinfo_t *ki, dns_rdataset_t *dsset, strictness_t strictness) {
 					   dsbuf, sizeof(dsbuf), &newdsrdata);
 		if (result != ISC_R_SUCCESS) {
 			vbprintf(3,
-				 "dns_ds_buildrdata("
-				 "keytag=%d, algo=%d, digest=%d): %s\n",
+				 "dns_ds_buildrdata(keytag=%d, algo=%d, "
+				 "digest=%d): %s\n",
 				 ds.key_tag, ds.algorithm, ds.digest_type,
 				 isc_result_totext(result));
 			continue;
@@ -494,8 +598,8 @@ match_key_dsset(keyinfo_t *ki, dns_rdataset_t *dsset, strictness_t strictness) {
 			return true;
 		} else if (strictness == TIGHT) {
 			vbprintf(0,
-				 "key does not match %s %d %d %d "
-				 "when it looks like it should\n",
+				 "key does not match %s %d %d %d when it looks "
+				 "like it should\n",
 				 c ? "CDS" : "DS", ds.key_tag, ds.algorithm,
 				 ds.digest_type);
 			return false;
@@ -519,7 +623,6 @@ match_keyset_dsset(dns_rdataset_t *keyset, dns_rdataset_t *dsset,
 		   strictness_t strictness) {
 	isc_result_t result;
 	keyinfo_t *keytable = NULL, *ki = NULL;
-	int i = 0;
 
 	nkey = dns_rdataset_count(keyset);
 
@@ -531,7 +634,7 @@ match_keyset_dsset(dns_rdataset_t *keyset, dns_rdataset_t *dsset,
 		dns_rdata_t *keyrdata = NULL;
 		isc_region_t r;
 
-		INSIST(i++ < nkey);
+		INSIST(ki < (keytable + nkey));
 		keyrdata = &ki->rdata;
 
 		dns_rdata_init(keyrdata);
@@ -554,8 +657,52 @@ match_keyset_dsset(dns_rdataset_t *keyset, dns_rdataset_t *dsset,
 						 &ki->dst);
 		if (result != ISC_R_SUCCESS) {
 			vbprintf(3,
-				 "dns_dnssec_keyfromrdata("
-				 "keytag=%d, algo=%d): %s\n",
+				 "dns_dnssec_keyfromrdata(keytag=%d, algo=%d): "
+				 "%s\n",
+				 ki->tag, ki->algo, isc_result_totext(result));
+		}
+		ki++;
+	}
+
+	return keytable;
+}
+
+static keyinfo_t *
+keytbl(dns_rdataset_t *keyset) {
+	isc_result_t result;
+	keyinfo_t *keytable = NULL, *ki = NULL;
+
+	nkey = dns_rdataset_count(keyset);
+
+	keytable = isc_mem_cget(isc_g_mctx, nkey, sizeof(keytable[0]));
+	ki = keytable;
+
+	DNS_RDATASET_FOREACH(keyset) {
+		dns_rdata_dnskey_t dnskey;
+		dns_rdata_t *keyrdata = NULL;
+		isc_region_t r;
+
+		INSIST(ki < (keytable + nkey));
+		keyrdata = &ki->rdata;
+
+		dns_rdata_init(keyrdata);
+		dns_rdataset_current(keyset, keyrdata);
+
+		result = dns_rdata_tostruct(keyrdata, &dnskey);
+		check_result(result, "dns_rdata_tostruct(DNSKEY)");
+		ki->algo = dnskey.algorithm;
+
+		dns_rdata_toregion(keyrdata, &r);
+		ki->tag = dst_region_computeid(&r);
+
+		ki->dst = NULL;
+
+		result = dns_dnssec_keyfromrdata(name, keyrdata, isc_g_mctx,
+						 &ki->dst);
+		if (result != ISC_R_SUCCESS) {
+			vbprintf(3,
+				 "dns_dnssec_keyfromrdata(keytag=%d, algo=%d): "
+				 "%s\n",
 				 ki->tag, ki->algo, isc_result_totext(result));
 		}
 		ki++;
@@ -592,8 +739,8 @@ free_keytable(keyinfo_t **keytable_p) {
  * check functions below.
  */
 static dns_secalg_t *
-matching_sigs(keyinfo_t *keytbl, dns_rdataset_t *rdataset,
-	      dns_rdataset_t *sigset) {
+matching_sigs(keyinfo_t *keytbl, dns_name_t *owner, dns_rdataset_t *rdataset,
+	      dns_rdataset_t *sigset, dns_rdata_rrsig_t *oldestsig) {
 	isc_result_t result;
 	dns_secalg_t *algo = NULL;
 	int i;
@@ -612,8 +759,16 @@ matching_sigs(keyinfo_t *keytbl, dns_rdataset_t *rdataset,
 
 		/*
 		 * Replay attack protection: check against current age limit
+		 *
+		 * Only check CDS, CDNSKEY, NSEC and NSEC3.  DNSKEY needs to
+		 * validate regardless of when it was signed.
 		 */
-		if (isc_serial_lt(sig.timesigned, notbefore)) {
+		if ((sig.covered == dns_rdatatype_cds ||
+		     sig.covered == dns_rdatatype_cdnskey ||
+		     sig.covered == dns_rdatatype_nsec ||
+		     sig.covered == dns_rdatatype_nsec3) &&
+		    isc_serial_lt(sig.timesigned, notbefore))
+		{
 			vbprintf(1, "skip RRSIG by key %d: too old\n",
 				 sig.keyid);
 			continue;
@@ -628,13 +783,13 @@ matching_sigs(keyinfo_t *keytbl, dns_rdataset_t *rdataset,
 			}
 			if (ki->dst == NULL) {
 				vbprintf(1,
-					 "skip RRSIG by key %d:"
-					 " no matching (C)DS\n",
+					 "skip RRSIG by key %d: no matching "
+					 "(C)DS\n",
 					 sig.keyid);
 				continue;
 			}
 
-			result = dns_dnssec_verify(name, rdataset, ki->dst,
+			result = dns_dnssec_verify(owner, rdataset, ki->dst,
 						   false, isc_g_mctx, &sigrdata,
 						   NULL, NULL);
 
@@ -642,8 +797,8 @@ matching_sigs(keyinfo_t *keytbl, dns_rdataset_t *rdataset,
 			    result != DNS_R_FROMWILDCARD)
 			{
 				vbprintf(1,
-					 "skip RRSIG by key %d:"
-					 " verification failed: %s\n",
+					 "skip RRSIG by key %d: verification "
+					 "failed: %s\n",
 					 sig.keyid, isc_result_totext(result));
 				continue;
 			}
@@ -656,18 +811,23 @@ matching_sigs(keyinfo_t *keytbl, dns_rdataset_t *rdataset,
 			 * only after the signature has been verified
 			 */
 			if (sig.covered != dns_rdatatype_cds &&
-			    sig.covered != dns_rdatatype_cdnskey)
+			    sig.covered != dns_rdatatype_cdnskey &&
+			    sig.covered != dns_rdatatype_nsec &&
+			    sig.covered != dns_rdatatype_nsec3)
 			{
 				continue;
 			}
-			if (oldestsig.timesigned == 0 ||
-			    isc_serial_lt(sig.timesigned, oldestsig.timesigned))
+
+			if (oldestsig != NULL &&
+			    (oldestsig->timesigned == 0 ||
+			     isc_serial_lt(sig.timesigned,
+					   oldestsig->timesigned)))
 			{
 				verbose_time(2,
 					     "update oldest acceptable "
 					     "inception time to",
 					     sig.timesigned);
-				oldestsig = sig;
+				*oldestsig = sig;
 			}
 		}
 	}
@@ -720,10 +880,10 @@ signed_strict(dns_rdataset_t *dsset, dns_secalg_t *algo) {
 			}
 		}
 		if (!ds_ok) {
-			vbprintf(0,
-				 "missing signature for algorithm %d "
-				 "(key %d)\n",
-				 ds.algorithm, ds.key_tag);
+			vbprintf(
+				0,
+				"missing signature for algorithm %d (key %d)\n",
+				ds.algorithm, ds.key_tag);
 			all_ok = false;
 		}
 	}
@@ -1015,6 +1175,34 @@ nsdiff(uint32_t ttl, dns_rdataset_t *oldset, dns_rdataset_t *newset) {
 	}
 }
 
+static void
+cleanup(void) {
+	free_db(&child_db, &child_node, NULL);
+	free_db(&parent_db, &parent_node, NULL);
+	free_db(&update_db, &update_node, &update_version);
+	if (old_key_tbl != NULL) {
+		free_keytable(&old_key_tbl);
+	}
+	if (new_key_tbl != NULL) {
+		free_keytable(&new_key_tbl);
+	}
+	if (cur_key_tbl != NULL) {
+		free_keytable(&cur_key_tbl);
+	}
+	free_all_sets();
+	if (nsec3fixed != NULL) {
+		isc_mem_cput(isc_g_mctx, nsec3fixed, orig_argc,
+			     sizeof(*nsec3fixed));
+	}
+	if (child_paths != NULL) {
+		isc_mem_cput(isc_g_mctx, child_paths, orig_argc,
+			     sizeof(*child_paths));
+	}
+	if (print_mem_stats && verbose > 10) {
+		isc_mem_stats(isc_g_mctx, stdout);
+	}
+}
+
 ISC_NORETURN static void
 usage(void);
 
@@ -1042,29 +1230,71 @@ usage(void) {
 			"    -T <ttl>           TTL of DS records\n"
 			"    -V                 print version\n"
 			"    -v <verbosity>\n");
+	cleanup();
 	exit(EXIT_FAILURE);
 }
 
-static void
-cleanup(void) {
-	free_db(&child_db, &child_node, NULL);
-	free_db(&parent_db, &parent_node, NULL);
-	free_db(&update_db, &update_node, &update_version);
-	if (old_key_tbl != NULL) {
-		free_keytable(&old_key_tbl);
+static bool
+rdataset_equal(dns_rdataset_t *a, dns_rdataset_t *b) {
+	size_t i;
+	bool equal = true;
+	dns_rdata_t *arrdata, *brrdata;
+
+	if (a->type != b->type ||
+	    dns_rdataset_count(a) != dns_rdataset_count(b))
+	{
+		return false;
 	}
-	if (new_key_tbl != NULL) {
-		free_keytable(&new_key_tbl);
+
+	size_t n = dns_rdataset_count(a);
+	arrdata = isc_mem_cget(isc_g_mctx, n, sizeof(dns_rdata_t));
+	brrdata = isc_mem_cget(isc_g_mctx, n, sizeof(dns_rdata_t));
+
+	i = 0;
+	DNS_RDATASET_FOREACH(a) {
+		dns_rdata_init(&arrdata[i]);
+		dns_rdataset_current(a, &arrdata[i]);
+		i++;
 	}
-	free_all_sets();
-	if (print_mem_stats && verbose > 10) {
-		isc_mem_stats(isc_g_mctx, stdout);
+	qsort(arrdata, n, sizeof(dns_rdata_t), rdata_cmp);
+
+	i = 0;
+	DNS_RDATASET_FOREACH(b) {
+		dns_rdata_init(&brrdata[i]);
+		dns_rdataset_current(b, &brrdata[i]);
+		i++;
 	}
+	qsort(brrdata, n, sizeof(dns_rdata_t), rdata_cmp);
+
+	for (i = 0; i < n; i++) {
+		if (dns_rdata_compare(&arrdata[i], &brrdata[i]) != 0) {
+			equal = false;
+			break;
+		}
+	}
+
+	isc_mem_cput(isc_g_mctx, arrdata, n, sizeof(dns_rdata_t));
+	isc_mem_cput(isc_g_mctx, brrdata, n, sizeof(dns_rdata_t));
+
+	return equal;
+}
+
+static bool
+has_type(dns_rdataset_t *set, dns_rdatatype_t type) {
+	DNS_RDATASET_FOREACH(set) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdataset_current(set, &rdata);
+		if (set->type == dns_rdatatype_nsec) {
+			if (dns_nsec_typepresent(&rdata, type)) {
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 int
 main(int argc, char *argv[]) {
-	const char *child_path = NULL;
 	const char *ds_path = NULL;
 	const char *inplace = NULL;
 	bool prefer_cdnskey = false;
@@ -1072,6 +1302,10 @@ main(int argc, char *argv[]) {
 	uint32_t ttl = 0;
 	int ch;
 	char *endp;
+	size_t nchild_paths = 0;
+	dns_rdata_rrsig_t oldestsig = { 0 };
+
+	orig_argc = argc;
 
 	setfatalcallback(cleanup);
 
@@ -1079,7 +1313,68 @@ main(int argc, char *argv[]) {
 
 	isc_commandline_errprint = false;
 
+	/*
+	 * Extract memory debugging option first.
+	 */
 #define OPTIONS "a:c:Dd:f:i:ms:T:uv:V"
+	while ((ch = isc_commandline_parse(argc, argv, OPTIONS)) != -1) {
+		switch (ch) {
+		case 'i':
+			/*
+			 * This is a bodge to make the argument optional,
+			 * so that it works just like sed(1).  The actual
+			 * inplace assignment is done on the next parsing.
+			 */
+			if (isc_commandline_argument ==
+			    argv[isc_commandline_index - 1])
+			{
+				isc_commandline_index--;
+			}
+			break;
+		case 'm':
+			isc_mem_debugon(ISC_MEM_DEBUGTRACE |
+					ISC_MEM_DEBUGRECORD);
+			break;
+		default:
+			break;
+		}
+	}
+
+	isc_commandline_reset = true;
+
+	/*
+	 * Allocate arrays that are big enough that there is an entry
+	 * for each child path.
+	 */
+	child_paths = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*child_paths));
+
+	cdnskey_sets = isc_mem_cget(isc_g_mctx, orig_argc,
+				    sizeof(*cdnskey_sets));
+	cdnskey_sigs = isc_mem_cget(isc_g_mctx, orig_argc,
+				    sizeof(*cdnskey_sigs));
+	cds_sets = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*cds_sets));
+	cds_sigs = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*cds_sigs));
+	dnskey_sets = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*dnskey_sets));
+	dnskey_sigs = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*dnskey_sigs));
+	nsec_sets = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*nsec_sets));
+	nsec_sigs = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*nsec_sigs));
+	nsec3_sets = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*nsec3_sets));
+	nsec3_sigs = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*nsec3_sigs));
+	nsec3fixed = isc_mem_cget(isc_g_mctx, orig_argc, sizeof(*nsec3fixed));
+
+	for (size_t i = 0; i < orig_argc; i++) {
+		dns_rdataset_init(&cdnskey_sets[i]);
+		dns_rdataset_init(&cdnskey_sigs[i]);
+		dns_rdataset_init(&cds_sets[i]);
+		dns_rdataset_init(&cds_sigs[i]);
+		dns_rdataset_init(&dnskey_sets[i]);
+		dns_rdataset_init(&dnskey_sigs[i]);
+		dns_rdataset_init(&nsec_sets[i]);
+		dns_rdataset_init(&nsec_sigs[i]);
+		dns_rdataset_init(&nsec3_sets[i]);
+		dns_rdataset_init(&nsec3_sigs[i]);
+	}
+
 	while ((ch = isc_commandline_parse(argc, argv, OPTIONS)) != -1) {
 		switch (ch) {
 		case 'a':
@@ -1095,7 +1390,8 @@ main(int argc, char *argv[]) {
 			ds_path = isc_commandline_argument;
 			break;
 		case 'f':
-			child_path = isc_commandline_argument;
+			INSIST(nchild_paths < orig_argc);
+			child_paths[nchild_paths++] = isc_commandline_argument;
 			break;
 		case 'i':
 			/*
@@ -1112,8 +1408,6 @@ main(int argc, char *argv[]) {
 			}
 			break;
 		case 'm':
-			isc_mem_debugon(ISC_MEM_DEBUGTRACE |
-					ISC_MEM_DEBUGRECORD);
 			break;
 		case 's':
 			startstr = isc_commandline_argument;
@@ -1125,6 +1419,8 @@ main(int argc, char *argv[]) {
 			nsupdate = true;
 			break;
 		case 'V':
+			/* Cleanup allocated memory. */
+			cleanup();
 			/* Does not return. */
 			version(isc_commandline_progname);
 			break;
@@ -1168,69 +1464,145 @@ main(int argc, char *argv[]) {
 		ttl = old_ds_set.ttl;
 	}
 
-	if (child_path == NULL) {
+	if (child_paths[0] == NULL) {
 		fatal("path to file containing child data must be specified");
 	}
 
-	load_child_sets(child_path);
+	for (size_t i = 0; child_paths[i] != NULL; i++) {
+		if (nchild_paths > 1) {
+			vbprintf(1, "examining child file: %s\n",
+				 child_paths[i]);
+		}
+		load_child_sets(i);
 
-	/*
-	 * Check child records have accompanying RRSIGs and DNSKEYs
-	 */
+		/*
+		 * Check child records have accompanying RRSIGs and DNSKEYs
+		 */
 
-	if (!dns_rdataset_isassociated(&dnskey_set) ||
-	    !dns_rdataset_isassociated(&dnskey_sig))
-	{
-		fatal("could not find signed DNSKEY RRset for %s", namestr);
-	}
-
-	if (dns_rdataset_isassociated(&cdnskey_set) &&
-	    !dns_rdataset_isassociated(&cdnskey_sig))
-	{
-		fatal("missing RRSIG CDNSKEY records for %s", namestr);
-	}
-	if (dns_rdataset_isassociated(&cds_set) &&
-	    !dns_rdataset_isassociated(&cds_sig))
-	{
-		fatal("missing RRSIG CDS records for %s", namestr);
-	}
-
-	vbprintf(1, "which child DNSKEY records match parent DS records?\n");
-	old_key_tbl = match_keyset_dsset(&dnskey_set, &old_ds_set, LOOSE);
-
-	/*
-	 * We have now identified the keys that are allowed to
-	 * authenticate the DNSKEY RRset (RFC 4035 section 5.2 bullet
-	 * 2), and CDNSKEY and CDS RRsets (RFC 7344 section 4.1 bullet
-	 * 2).
-	 */
-
-	vbprintf(1, "verify DNSKEY signature(s)\n");
-	if (!signed_loose(matching_sigs(old_key_tbl, &dnskey_set, &dnskey_sig)))
-	{
-		fatal("could not validate child DNSKEY RRset for %s", namestr);
-	}
-
-	if (dns_rdataset_isassociated(&cdnskey_set)) {
-		vbprintf(1, "verify CDNSKEY signature(s)\n");
-		if (!signed_loose(matching_sigs(old_key_tbl, &cdnskey_set,
-						&cdnskey_sig)))
+		if (!dns_rdataset_isassociated(&dnskey_sets[i]) ||
+		    !dns_rdataset_isassociated(&dnskey_sigs[i]))
 		{
-			fatal("could not validate child CDNSKEY RRset for %s",
+			fatal("could not find signed DNSKEY RRset for %s",
 			      namestr);
 		}
-	}
-	if (dns_rdataset_isassociated(&cds_set)) {
-		vbprintf(1, "verify CDS signature(s)\n");
-		if (!signed_loose(
-			    matching_sigs(old_key_tbl, &cds_set, &cds_sig)))
+
+		if (dns_rdataset_isassociated(&cdnskey_sets[i]) &&
+		    !dns_rdataset_isassociated(&cdnskey_sigs[i]))
 		{
-			fatal("could not validate child CDS RRset for %s",
+			fatal("missing RRSIG CDNSKEY records for %s", namestr);
+		}
+
+		if (dns_rdataset_isassociated(&cds_sets[i]) &&
+		    !dns_rdataset_isassociated(&cds_sigs[i]))
+		{
+			fatal("missing RRSIG CDS records for %s", namestr);
+		}
+
+		vbprintf(1, "which child DNSKEY records match parent DS "
+			    "records?\n");
+		old_key_tbl = match_keyset_dsset(&dnskey_sets[i], &old_ds_set,
+						 LOOSE);
+
+		/*
+		 * We have now identified the keys that are allowed to
+		 * authenticate the DNSKEY RRset (RFC 4035 section 5.2 bullet
+		 * 2), and CDNSKEY and CDS RRsets (RFC 7344 section 4.1 bullet
+		 * 2).
+		 */
+
+		vbprintf(1, "verify DNSKEY signature(s)\n");
+		if (!signed_loose(matching_sigs(old_key_tbl, name,
+						&dnskey_sets[i],
+						&dnskey_sigs[i], NULL)))
+		{
+			fatal("could not validate child DNSKEY RRset for %s",
 			      namestr);
 		}
+
+		cur_key_tbl = keytbl(&dnskey_sets[i]);
+
+		if (dns_rdataset_isassociated(&cdnskey_sets[i])) {
+			vbprintf(1, "verify CDNSKEY signature(s)\n");
+			if (!signed_loose(matching_sigs(
+				    old_key_tbl, name, &cdnskey_sets[i],
+				    &cdnskey_sigs[i], &oldestsig)))
+			{
+				fatal("could not validate child CDNSKEY RRset "
+				      "for %s",
+				      namestr);
+			}
+		}
+
+		if (dns_rdataset_isassociated(&cds_sets[i])) {
+			vbprintf(1, "verify CDS signature(s)\n");
+			if (!signed_loose(matching_sigs(
+				    old_key_tbl, name, &cds_sets[i],
+				    &cds_sigs[i], &oldestsig)))
+			{
+				fatal("could not validate child CDS RRset for "
+				      "%s",
+				      namestr);
+			}
+		}
+
+		if (dns_rdataset_isassociated(&nsec_sets[i])) {
+			vbprintf(1, "verify NSEC signature(s)\n");
+			if (!signed_loose(matching_sigs(
+				    cur_key_tbl, name, &nsec_sets[i],
+				    &nsec_sigs[i], &oldestsig)))
+			{
+				fatal("could not validate child NSEC RRset for "
+				      "%s",
+				      namestr);
+			}
+		}
+		if (dns_rdataset_isassociated(&nsec3_sets[i])) {
+			dns_name_t *nsec3name =
+				dns_fixedname_name(&nsec3fixed[i]);
+			vbprintf(1, "verify NSEC3 signature(s)\n");
+			if (!signed_loose(matching_sigs(
+				    cur_key_tbl, nsec3name, &nsec3_sets[i],
+				    &nsec3_sigs[i], &oldestsig)))
+			{
+				fatal("could not validate child NSEC3 RRset "
+				      "for %s",
+				      namestr);
+			}
+		}
+
+		free_keytable(&cur_key_tbl);
+		free_keytable(&old_key_tbl);
 	}
 
-	free_keytable(&old_key_tbl);
+	/*
+	 * Check that CDS / CDNSKEY rrsets from all child servers are
+	 * consistent.
+	 */
+	for (size_t i = 1; child_paths[i] != NULL; i++) {
+		if (dns_rdataset_isassociated(&cds_sets[i - 1]) !=
+		    dns_rdataset_isassociated(&cds_sets[i]))
+		{
+			fatal("CDS RRsets are not consistent");
+		}
+
+		if (dns_rdataset_isassociated(&cdnskey_sets[i - 1]) !=
+		    dns_rdataset_isassociated(&cdnskey_sets[i]))
+		{
+			fatal("CDNSKEY RRsets are not consistent");
+		}
+
+		if (dns_rdataset_isassociated(&cds_sets[i - 1]) &&
+		    !rdataset_equal(&cds_sets[i - 1], &cds_sets[i]))
+		{
+			fatal("CDS RRsets are not consistent");
+		}
+
+		if (dns_rdataset_isassociated(&cdnskey_sets[i - 1]) &&
+		    !rdataset_equal(&cdnskey_sets[i - 1], &cdnskey_sets[i]))
+		{
+			fatal("CDNSKEY RRsets are not consistent");
+		}
+	}
 
 	/*
 	 * Report the result of the replay attack protection checks
@@ -1248,12 +1620,41 @@ main(int argc, char *argv[]) {
 	 * Successfully do nothing if there's neither CDNSKEY nor CDS
 	 * RFC 7344 section 4.1 first paragraph
 	 */
-	if (!dns_rdataset_isassociated(&cdnskey_set) &&
-	    !dns_rdataset_isassociated(&cds_set))
+	if (!dns_rdataset_isassociated(&cdnskey_sets[0]) &&
+	    !dns_rdataset_isassociated(&cds_sets[0]))
 	{
+		/*
+		 * There should be a NSEC / NSEC3 record that doesn't have
+		 * bits for CDS and CDNSKEY.
+		 */
 		vbprintf(1, "%s has neither CDS nor CDNSKEY records\n",
 			 namestr);
-		write_parent_set(ds_path, inplace, nsupdate, &old_ds_set);
+
+		if (dns_rdataset_isassociated(&nsec_sets[0])) {
+			if (has_type(&nsec_sets[0], dns_rdatatype_cds)) {
+				fatal("CDS should exist (NSEC)");
+			}
+			if (has_type(&nsec_sets[0], dns_rdatatype_cdnskey)) {
+				fatal("CDNSKEY should exist (NSEC)");
+			}
+		} else if (dns_rdataset_isassociated(&nsec3_sets[0])) {
+			if (dns_nsec3_typepresent(&nsec3rdata,
+						  dns_rdatatype_cds))
+			{
+				fatal("CDS should exist (NSEC3)");
+			}
+			if (dns_nsec3_typepresent(&nsec3rdata,
+						  dns_rdatatype_cdnskey))
+			{
+				fatal("CDNSKEY should exist (NSEC3)");
+			}
+		} else {
+			fatal("Unable to prove non-existence of CDS and "
+			      "CDNSKEY");
+		}
+
+		write_parent_set(ds_path, inplace, nsupdate, &old_ds_set,
+				 &oldestsig);
 		goto cleanup;
 	}
 
@@ -1261,12 +1662,12 @@ main(int argc, char *argv[]) {
 	 * Make DS records from the CDS or CDNSKEY records
 	 * Prefer CDS if present, unless run with -D
 	 */
-	if (prefer_cdnskey && dns_rdataset_isassociated(&cdnskey_set)) {
-		make_new_ds_set(ds_from_cdnskey, ttl, &cdnskey_set);
-	} else if (dns_rdataset_isassociated(&cds_set)) {
-		make_new_ds_set(ds_from_cds, ttl, &cds_set);
+	if (prefer_cdnskey && dns_rdataset_isassociated(&cdnskey_sets[0])) {
+		make_new_ds_set(ds_from_cdnskey, ttl, &cdnskey_sets[0]);
+	} else if (dns_rdataset_isassociated(&cds_sets[0])) {
+		make_new_ds_set(ds_from_cds, ttl, &cds_sets[0]);
 	} else {
-		make_new_ds_set(ds_from_cdnskey, ttl, &cdnskey_set);
+		make_new_ds_set(ds_from_cdnskey, ttl, &cdnskey_sets[0]);
 	}
 
 	/*
@@ -1274,42 +1675,49 @@ main(int argc, char *argv[]) {
 	 * or did not match.
 	 */
 	if (dns_rdataset_count(&new_ds_set) == 0 &&
-	    dns_rdataset_isassociated(&cdnskey_set))
+	    dns_rdataset_isassociated(&cdnskey_sets[0]))
 	{
-		vbprintf(1, "CDS records have no allowed digest types; "
-			    "using CDNSKEY instead\n");
+		vbprintf(1, "CDS records have no allowed digest types; using "
+			    "CDNSKEY instead\n");
 		freelist(&new_ds_set);
 		isc_buffer_free(&new_ds_buf);
-		make_new_ds_set(ds_from_cdnskey, ttl, &cdnskey_set);
+		make_new_ds_set(ds_from_cdnskey, ttl, &cdnskey_sets[0]);
 	}
+
 	if (dns_rdataset_count(&new_ds_set) == 0) {
 		fatal("CDS records at %s do not match any -a digest types",
 		      namestr);
 	}
 
-	/*
-	 * Now we have a candidate DS RRset, we need to check it
-	 * won't break the delegation.
-	 */
-	vbprintf(1, "which child DNSKEY records match new DS records?\n");
-	new_key_tbl = match_keyset_dsset(&dnskey_set, &new_ds_set, TIGHT);
+	for (size_t i = 0; child_paths[i] != NULL; i++) {
+		/*
+		 * Now we have a candidate DS RRset, we need to check it
+		 * won't break the delegation.
+		 */
+		vbprintf(1,
+			 "which child DNSKEY records match new DS records?\n");
+		new_key_tbl = match_keyset_dsset(&dnskey_sets[i], &new_ds_set,
+						 TIGHT);
 
-	if (!consistent_digests(&new_ds_set)) {
-		fatal("CDS records at %s do not cover each key "
-		      "with the same set of digest types",
-		      namestr);
+		if (!consistent_digests(&new_ds_set)) {
+			fatal("CDS records at %s do not cover each key with "
+			      "the same set of digest types",
+			      namestr);
+		}
+
+		vbprintf(1, "verify DNSKEY signature(s)\n");
+		if (!signed_strict(&new_ds_set,
+				   matching_sigs(new_key_tbl, name,
+						 &dnskey_sets[i],
+						 &dnskey_sigs[i], NULL)))
+		{
+			fatal("could not validate child DNSKEY RRset with new "
+			      "DS records for %s",
+			      namestr);
+		}
+
+		free_keytable(&new_key_tbl);
 	}
-
-	vbprintf(1, "verify DNSKEY signature(s)\n");
-	if (!signed_strict(&new_ds_set, matching_sigs(new_key_tbl, &dnskey_set,
-						      &dnskey_sig)))
-	{
-		fatal("could not validate child DNSKEY RRset "
-		      "with new DS records for %s",
-		      namestr);
-	}
-
-	free_keytable(&new_key_tbl);
 
 	/*
 	 * OK, it's all good!
@@ -1318,7 +1726,7 @@ main(int argc, char *argv[]) {
 		nsdiff(ttl, &old_ds_set, &new_ds_set);
 	}
 
-	write_parent_set(ds_path, inplace, nsupdate, &new_ds_set);
+	write_parent_set(ds_path, inplace, nsupdate, &new_ds_set, &oldestsig);
 
 cleanup:
 	print_mem_stats = true;
