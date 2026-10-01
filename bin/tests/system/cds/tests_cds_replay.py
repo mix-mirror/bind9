@@ -69,10 +69,10 @@ def render_and_sign_zone(
 
 
 def extract_from_signedzone(rrtype: str, signed_zone: str) -> list[str]:
-    """Extract the RRset and its RRSIGs from a signed zone file."""
+    """
+    Extract the RRset and its RRSIGs from a signed zone file.
+    """
     records = []
-
-    filepath = Path(signed_zone)
 
     with open(signed_zone, "r", encoding="utf-8") as file:
         for line in file:
@@ -257,7 +257,7 @@ def test_cds_replay():
 
     output = cds(child_file, dsset_file, zone, raise_on_exception=False)
     assert (
-        f"dnssec-cds: fatal: could not validate child DNSKEY RRset for example.test"
+        "dnssec-cds: fatal: could not validate child CDS RRset for example.test"
         in output.err
     )
 
