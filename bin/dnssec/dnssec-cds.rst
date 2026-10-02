@@ -226,6 +226,42 @@ protection time.
    dnssec-cds -u -i -f /dev/stdin -d $f $d |
    nsupdate -l
 
+
+An example shell script (bash) that gets the required data from all
+of the servers for a zone and runs dnssec-cds across the results
+from all of them.
+
+::
+
+   #!/bin/bash -e
+   #
+   # Usage: domain dsset-file [extra dnssec-cds arguments]
+   #
+   # domain name
+   d=$1
+   shift
+   # dsset file
+   p=$1
+   shift
+   # Create a temporary directory for child files
+   dir=$(mktemp -d -t cds)
+   # Cleanup on exit
+   trap "/bin/rm -rf $dir" EXIT
+   # Find all the address for all the nameservers for the zone and
+   # get the CDS, CDNS, and DNSKEY sets and their RRSIGS from them.
+   # Also adds non-existence proofs if needed.
+   A=$(dig +short ns "$d" | dig -f - +short A)
+   AAAA=$(dig +short ns "$d" | dig -f - +short AAAA)
+   FLAGS="+dnssec +tcp +keepalive +noall +answer +authority"
+   for s in $A $AAAA; do
+     dig $FLAGS @$s "$d" DNSKEY "$d" CDS "$d" CDNSKEY >$dir/$s
+   done
+   # Construct the set of child files
+   child_arg=$(find $dir -type f -print | sed -e 's/^/-f /')
+   # Run dnssec-cds over all the files
+   dnssec-cds $child_arg -d "$p" "$@" "$d"
+
+
 See Also
 ~~~~~~~~
 
