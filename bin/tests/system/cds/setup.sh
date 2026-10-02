@@ -123,6 +123,7 @@ cat db.null CDS.1 CDS.2 | sign cds.both
 
 tac <sig.cds.1 >sig.cds.rev1
 
+cat db.null CDNSKEY.1 | sign cdnskey.1
 cat db.null CDNSKEY.2 | sign cdnskey.2
 cat db.null CDS.2 CDNSKEY.2 | sign cds.cdnskey.2
 cat db.null CDS.1 CDNSKEY.2 | sign cds1.cdnskey2

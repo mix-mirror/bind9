@@ -124,9 +124,25 @@ err='has neither CDS nor CDNSKEY records'
 out=DS.1
 testcase 0 $CDS -v1 -s -7200 -f sig.null.nsec3 -d DS.1 $Z
 
+name='no CDS/CDNSKEY records (multi-signer: nsec + nsec)'
+out=DS.1
+testcase 0 $CDS -s -7200 -f sig.null -f sig.null -d DS.1 $Z
+
+name='no CDS/CDNSKEY records (multi-signer: nsec3 + nsec3)'
+out=DS.1
+testcase 0 $CDS -s -7200 -f sig.null.nsec3 -f sig.null.nsec3 -d DS.1 $Z
+
+name='no CDS/CDNSKEY records (multi-signer: nsec + nsec3)'
+out=DS.1
+testcase 0 $CDS -s -7200 -f sig.null -f sig.null.nsec3 -d DS.1 $Z
+
 name='unsigned CDS'
 err='missing RRSIG CDS records'
 testcase 1 $CDS -f brk.unsigned-cds -d DS.1 $Z
+
+name='multi-signer: unsigned CDS + signed CDS'
+err='missing RRSIG CDS records'
+testcase 1 $CDS -f brk.unsigned-cds -f sig.cds.1 -d DS.1 $Z
 
 name='correct signature inception time'
 $CDS -v3 -s -7200 -f sig.cds.1 -d DS.1 $Z 1>xout 2>xerr
@@ -268,6 +284,22 @@ name='CDS algorithm unavailable, use CDNSKEY'
 err='using CDNSKEY instead'
 out=DS.2-2
 testcase 0 $CDS -v1 -a SHA256 -s -7200 -f sig.cds.cdnskey.2.sha1 -d DS.1 $Z
+
+name='multi-signer: inconsistent CDS'
+err='CDS RRsets are not consistent'
+testcase 1 $CDS -s -7200 -f sig.cds.2 -f sig.cds.1 -d DS.1 $Z
+
+name='multi-signer: inconsistent CDNSKEY'
+err='CDNSKEY RRsets are not consistent'
+testcase 1 $CDS -s -7200 -f sig.cdnskey.2 -f sig.cdnskey.1 -d DS.1 $Z
+
+name='multi-signer: inconsistent CDS'
+err='CDS RRsets are not consistent'
+testcase 1 $CDS -s -7200 -f sig.cds.cdnskey.2 -f sig.cdnskey.1 -d DS.1 $Z
+
+name='multi-signer: inconsistent CDNSKEY'
+err='CDNSKEY RRsets are not consistent'
+testcase 1 $CDS -s -7200 -f sig.cds.cdnskey.2 -f sig.cds.1 -d DS.1 $Z
 
 echo_i "exit status: $status"
 [ $status -eq 0 ] || exit 1
