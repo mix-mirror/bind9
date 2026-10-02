@@ -115,6 +115,15 @@ err='has neither CDS nor CDNSKEY records'
 out=DS.1
 testcase 0 $CDS -v1 -s -7200 -f sig.null -d DS.1 $Z
 
+name='no CDS/CDNSKEY records (nsec3)'
+out=DS.1
+testcase 0 $CDS -s -7200 -f sig.null.nsec3 -d DS.1 $Z
+
+name='no child records, verbosely (nsec3)'
+err='has neither CDS nor CDNSKEY records'
+out=DS.1
+testcase 0 $CDS -v1 -s -7200 -f sig.null.nsec3 -d DS.1 $Z
+
 name='unsigned CDS'
 err='missing RRSIG CDS records'
 testcase 1 $CDS -f brk.unsigned-cds -d DS.1 $Z
