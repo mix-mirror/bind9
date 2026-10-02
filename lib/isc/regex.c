@@ -17,18 +17,11 @@
 #include <isc/regex.h>
 #include <isc/string.h>
 
-#if VALREGEX_REPORT_REASON
 #define FAIL(x)               \
-	do {                  \
+	{                     \
 		reason = (x); \
 		goto error;   \
-	} while (0)
-#else /* if VALREGEX_REPORT_REASON */
-#define FAIL(x)             \
-	{                   \
-		goto error; \
 	}
-#endif /* if VALREGEX_REPORT_REASON */
 
 /*
  * Validate the regular expression 'C' locale.
@@ -63,9 +56,7 @@ isc_regex_validate(const char *c) {
 	unsigned int high = 0;
 	const char *ccname = NULL;
 	int range_start = 0;
-#if VALREGEX_REPORT_REASON
 	const char *reason = "";
-#endif /* if VALREGEX_REPORT_REASON */
 
 	if (c == NULL || *c == 0) {
 		FAIL("empty string");
@@ -433,6 +424,8 @@ isc_regex_validate(const char *c) {
 error:
 #if VALREGEX_REPORT_REASON
 	fprintf(stderr, "%s\n", reason);
+#else
+	UNUSED(reason);
 #endif /* if VALREGEX_REPORT_REASON */
 	return -1;
 }

@@ -728,26 +728,26 @@ rrset_exists_action(void *data ISC_ATTR_UNUSED, rr_t *rr ISC_ATTR_UNUSED) {
 }
 
 /*%
- * Utility macro for RR existence checking functions.
+ * Utility function for RR existence checking functions.
  *
- * If the variable 'result' has the value ISC_R_EXISTS or
+ * If 'result' has the value ISC_R_EXISTS or
  * ISC_R_SUCCESS, set *exists to true or false,
  * respectively, and return success.
  *
  * If 'result' has any other value, there was a failure.
  * Return the failure result code and do not set *exists.
  */
-#define RETURN_EXISTENCE_FLAG                  \
-	{                                      \
-		if (result == ISC_R_EXISTS) {  \
-			*exists = true;        \
-			return ISC_R_SUCCESS;  \
-		}                              \
-		if (result == ISC_R_SUCCESS) { \
-			*exists = false;       \
-		}                              \
-		return result;                 \
+static isc_result_t
+existence_flag(isc_result_t result, bool *exists) {
+	if (result == ISC_R_EXISTS) {
+		*exists = true;
+		return ISC_R_SUCCESS;
 	}
+	if (result == ISC_R_SUCCESS) {
+		*exists = false;
+	}
+	return result;
+}
 
 /*%
  * Set '*exists' to true iff an rrset of the given type exists,
@@ -759,7 +759,7 @@ rrset_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	isc_result_t result;
 	result = foreach_rr(db, ver, name, type, covers, rrset_exists_action,
 			    NULL);
-	RETURN_EXISTENCE_FLAG;
+	return existence_flag(result, exists);
 }
 
 /*%
@@ -788,7 +788,7 @@ cname_incompatible_rrset_exists(dns_db_t *db, dns_dbversion_t *ver,
 				dns_name_t *name, bool *exists) {
 	isc_result_t result;
 	result = foreach_rrset(db, ver, name, cname_compatibility_action, NULL);
-	RETURN_EXISTENCE_FLAG;
+	return existence_flag(result, exists);
 }
 
 /*%
@@ -829,7 +829,7 @@ name_exists(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	    bool *exists) {
 	isc_result_t result;
 	result = foreach_rrset(db, ver, name, name_exists_action, NULL);
-	RETURN_EXISTENCE_FLAG;
+	return existence_flag(result, exists);
 }
 
 /*
