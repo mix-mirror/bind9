@@ -17,6 +17,7 @@
 /* Drop the thread-local qualifier; unwrap _Atomic to keep the type. */
 #define thread_local MACROANNOTATION
 #define _Atomic(type) type
+#define atomic_ptr(type) type *
 
 /* Coccinelle cannot parse fixed underlying types or packed enums. */
 #define ISC_FIXED_ENUM(name, type) name
