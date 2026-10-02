@@ -242,8 +242,9 @@ loadctx_destroy(dns_loadctx_t *lctx);
 				read_till_eol = true;                        \
 				err;                                         \
 				goto next_line;                              \
-			} else                                               \
+			} else {                                             \
 				goto log_and_cleanup;                        \
+			}                                                    \
 		}                                                            \
 		if ((token)->type == isc_tokentype_special) {                \
 			result = DNS_R_SYNTAX;                               \
