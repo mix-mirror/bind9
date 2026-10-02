@@ -334,7 +334,7 @@ secure_db_create_from_raw(dns_zone_t *zone, dns_db_t *rawdb, dns_db_t **dbp);
 static void
 zone_notify(dns_zone_t *zone, isc_time_t *now);
 static void
-zone_notifycds(dns_zone_t *zone);
+zone_notifycds(dns_zone_t *zone, isc_time_t *now);
 static void
 dump_done(void *arg, isc_result_t result);
 static isc_result_t
@@ -9903,7 +9903,7 @@ static void
 zone_maintenance(dns_zone_t *zone) {
 	isc_time_t now;
 	isc_result_t result;
-	bool load_pending, exiting, dumping, viewok = false, notify;
+	bool load_pending, exiting, dumping, viewok = false, notify, notifycds;
 	bool refreshkeys, rekey;
 	bool sign = false, resign = false, chain = false, warn_expire = false;
 	inline_sync_action_t inline_sync = inline_sync_none;
@@ -9988,12 +9988,15 @@ zone_maintenance(dns_zone_t *zone) {
 	 */
 	LOCK_ZONE(zone);
 	dns_notifyctx_defer(&zone->notifysoa, now);
-	notify = (zone->type == dns_zone_secondary ||
-		  zone->type == dns_zone_mirror) &&
-		 dns_notifyctx_notify_needed(&zone->notifysoa);
+	notify = dns_notifyctx_notify_needed(&zone->notifysoa, now);
+
+	dns_notifyctx_defer(&zone->notifycds, now);
+	notifycds = dns_notifyctx_notify_needed(&zone->notifycds, now);
 	UNLOCK_ZONE(zone);
 
-	if (notify) {
+	if (notify &&
+	    (zone->type == dns_zone_secondary || zone->type == dns_zone_mirror))
+	{
 		zone_notify(zone, &now);
 	}
 
@@ -10050,6 +10053,13 @@ zone_maintenance(dns_zone_t *zone) {
 		}
 	default:
 		break;
+	}
+
+	/*
+	 * Do we need to send NOTIFY(CDS)?
+	 */
+	if (notifycds) {
+		zone_notifycds(zone, &now);
 	}
 
 	LOCK_ZONE(zone);
@@ -13187,6 +13197,12 @@ zone_shutdown(void *arg) {
 	}
 }
 
+static bool
+notify_needed(dns_notifyctx_t *nctx) {
+	return dns_notifyctx_hasflag(nctx, DNS_NOTIFY_NEEDSEND) ||
+	       dns_notifyctx_hasflag(nctx, DNS_NOTIFY_NEEDSTARTUP);
+}
+
 static void
 zone_timer(void *arg) {
 	dns_zone_t *zone = (dns_zone_t *)arg;
@@ -13249,12 +13265,11 @@ zone__settimer(void *arg) {
 		}
 		FALLTHROUGH;
 	case dns_zone_primary:
-		if (dns_notifyctx_hasflag(&zone->notifysoa,
-					  DNS_NOTIFY_NEEDSEND) ||
-		    dns_notifyctx_hasflag(&zone->notifysoa,
-					  DNS_NOTIFY_NEEDSTARTUP))
-		{
+		if (notify_needed(&zone->notifysoa)) {
 			next = zone->notifysoa.notifytime;
+		}
+		if (notify_needed(&zone->notifycds)) {
+			next = time_min(next, zone->notifycds.notifytime);
 		}
 		if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_NEEDDUMP) &&
 		    !DNS_ZONE_FLAG(zone, DNS_ZONEFLG_DUMPING))
@@ -13283,12 +13298,11 @@ zone__settimer(void *arg) {
 	case dns_zone_secondary:
 	case dns_zone_mirror:
 	treat_as_secondary:
-		if (dns_notifyctx_hasflag(&zone->notifysoa,
-					  DNS_NOTIFY_NEEDSEND) ||
-		    dns_notifyctx_hasflag(&zone->notifysoa,
-					  DNS_NOTIFY_NEEDSTARTUP))
-		{
+		if (notify_needed(&zone->notifysoa)) {
 			next = zone->notifysoa.notifytime;
+		}
+		if (notify_needed(&zone->notifycds)) {
+			next = time_min(next, zone->notifycds.notifytime);
 		}
 		FALLTHROUGH;
 	case dns_zone_stub:
@@ -18402,8 +18416,25 @@ done:
 }
 
 static void
-zone_notifycds(dns_zone_t *zone) {
+zone_notifycds(dns_zone_t *zone, isc_time_t *now) {
 	dns_notifytype_t notifytype = zone->notifycds.notifytype;
+
+	ENTER;
+
+	LOCK_ZONE(zone);
+	dns_notifyctx_clearflag(&zone->notifycds,
+				DNS_NOTIFY_NEEDSEND | DNS_NOTIFY_NEEDSTARTUP |
+					DNS_NOTIFY_NODEFER |
+					DNS_NOTIFY_DEFERRED);
+	DNS_ZONE_TIME_ADD(now, zone->notifycds.notifydelay,
+			  &zone->notifycds.notifytime);
+	UNLOCK_ZONE(zone);
+
+	if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_EXITING) ||
+	    !DNS_ZONE_FLAG(zone, DNS_ZONEFLG_LOADED))
+	{
+		return;
+	}
 
 	if (notifytype == dns_notifytype_no) {
 		return;
@@ -19086,6 +19117,14 @@ zone_rekey(dns_zone_t *zone) {
 			dns_zone_getdnssecsignstats(zone);
 
 		dns_notifyctx_setflag(&zone->notifysoa, DNS_NOTIFY_NEEDSEND);
+		/*
+		 * If the CDS/CDNSKEY RRset has changed, send NOTIFY(CDS)
+		 * to endpoints.
+		 */
+		if (notifycds) {
+			dns_notifyctx_setflag(&zone->notifycds,
+					      DNS_NOTIFY_NEEDSEND);
+		}
 
 		zone_needdump(zone, DNS_DUMP_DELAY);
 
@@ -19327,13 +19366,6 @@ zone_rekey(dns_zone_t *zone) {
 
 		dns_name_format(&zone->origin, namebuf, sizeof(namebuf));
 		dnssec_log(zone, ISC_LOG_DEBUG(3), "keymgr: %s done", namebuf);
-	}
-
-	/*
-	 * If the CDS/CDNSKEY RRset has changed, send NOTIFY(CDS) to endpoints.
-	 */
-	if (notifycds) {
-		zone_notifycds(zone);
 	}
 
 	result = ISC_R_SUCCESS;
