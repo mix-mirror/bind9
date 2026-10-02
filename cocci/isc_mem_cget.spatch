@@ -123,7 +123,7 @@ type T;
 )
  )
 
-@replacement6@
+@replacement6 depends on !(file in "tests/isc/mem_test.c")@
 expression MCTX, OLD_PTR, OLD_SIZE, NEW_SIZE;
 @@
 -isc_mem_reget
