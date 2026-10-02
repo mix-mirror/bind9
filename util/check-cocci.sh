@@ -70,6 +70,20 @@ generate_macro_definitions() {
   done
 }
 
+# Coccinelle silently skips code it cannot parse.  Make sure every file
+# parses, except for macro bodies, which are often not C on their own.
+check_parse() {
+  local file
+
+  echo "Checking that Coccinelle parses all code..."
+  for file in $(git ls-files -- '*.c' '*.h'); do
+    if ! spatch --parse-c --filter-define-error --macro-file-builtins "$COCCI_MACROS_FILE" "$file" 2>&1 | grep -q "nb bad = 0 "; then
+      echo "Coccinelle cannot parse $file, see: spatch --parse-c --macro-file-builtins $COCCI_MACROS_FILE $file"
+      ret=1
+    fi
+  done
+}
+
 run_spatch() {
   local spatch=$1
   shift
@@ -115,6 +129,7 @@ generate_macro_definitions || exit 1
 if [ -n "$spatchfile" ]; then
   run_spatch $spatchfile $spatchargs
 else
+  check_parse
   for spatch in cocci/*.spatch; do
     run_spatch $spatch --very-quiet $spatchargs
   done
