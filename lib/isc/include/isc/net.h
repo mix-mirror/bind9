@@ -74,31 +74,33 @@
 
 #include <isc/types.h>
 
+/* clang-format off */
 #ifndef IN6ADDR_LOOPBACK_INIT
 #ifdef s6_addr
 /*% IPv6 address loopback init */
-#define IN6ADDR_LOOPBACK_INIT \
-	((struct in6_addr){   \
-		{ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 } } })
+#define IN6ADDR_LOOPBACK_INIT                           \
+	((struct in6_addr){ { { 0, 0, 0, 0, 0, 0, 0, 0, \
+				0, 0, 0, 0, 0, 0, 0, 1 } } })
 #else /* ifdef s6_addr */
-#define IN6ADDR_LOOPBACK_INIT \
-	((struct in6_addr){   \
-		{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 } })
+#define IN6ADDR_LOOPBACK_INIT                         \
+	((struct in6_addr){ { 0, 0, 0, 0, 0, 0, 0, 0, \
+			      0, 0, 0, 0, 0, 0, 0, 1 } })
 #endif /* ifdef s6_addr */
 #endif /* ifndef IN6ADDR_LOOPBACK_INIT */
 
 #ifndef IN6ADDR_V4MAPPED_INIT
 #ifdef s6_addr
 /*% IPv6 v4mapped prefix init */
-#define IN6ADDR_V4MAPPED_INIT                                                \
-	((struct in6_addr){ { { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, \
-				0, 0, 0 } } })
+#define IN6ADDR_V4MAPPED_INIT                           \
+	((struct in6_addr){ { { 0, 0, 0, 0, 0, 0, 0, 0, \
+				0, 0, 0xff, 0xff, 0, 0, 0, 0 } } })
 #else /* ifdef s6_addr */
-#define IN6ADDR_V4MAPPED_INIT \
-	((struct in6_addr){   \
-		{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0 } })
+#define IN6ADDR_V4MAPPED_INIT                         \
+	((struct in6_addr){ { 0, 0, 0, 0, 0, 0, 0, 0, \
+			      0, 0, 0xff, 0xff, 0, 0, 0, 0 } })
 #endif /* ifdef s6_addr */
 #endif /* ifndef IN6ADDR_V4MAPPED_INIT */
+/* clang-format on */
 
 #ifndef IN6_IS_ADDR_V4MAPPED
 /*% Is IPv6 address V4 mapped? */

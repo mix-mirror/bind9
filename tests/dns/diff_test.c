@@ -63,7 +63,7 @@ prepare_rdata(dns_rdata_t *rdata, unsigned char *dest, size_t dest_size) {
 	dns_rdatatype_t type = dns_rdatatype_wallet;
 	const char text[] = "cid-example wid-example";
 
-	*rdata = (dns_rdata_t)DNS_RDATA_INIT;
+	*rdata = DNS_RDATA_INIT;
 	isc_result_t result = dns_test_rdatafromstring(
 		rdata, rdclass, type, dest, dest_size, text, false);
 	INSIST(result == ISC_R_SUCCESS);

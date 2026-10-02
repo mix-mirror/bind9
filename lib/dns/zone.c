@@ -11567,7 +11567,7 @@ stub_request_nameserver_address(struct stub_cb_args *args, bool ipv4,
 	sgr = isc_mem_get(zone->mctx, sizeof(*sgr));
 	*sgr = (struct stub_glue_request){
 		.args = args,
-		.name = (dns_name_t)DNS_NAME_INITEMPTY,
+		.name = DNS_NAME_INITEMPTY,
 		.ipv4 = ipv4,
 	};
 

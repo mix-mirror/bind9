@@ -5778,14 +5778,14 @@ get_and_check_signer_name(dns_name_t *signer, dns_rdataset_t *sigrdataset) {
 		return false;
 	}
 
-	rdata = (dns_rdata_t)DNS_RDATA_INIT;
+	rdata = DNS_RDATA_INIT;
 	dns_rdataset_current(sigrdataset, &rdata);
 	result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
 	INSIST(result == ISC_R_SUCCESS);
 	dns_name_copy(&rrsig.signer, signer);
 
 	while (dns_rdataset_next(sigrdataset) == ISC_R_SUCCESS) {
-		rdata = (dns_rdata_t)DNS_RDATA_INIT;
+		rdata = DNS_RDATA_INIT;
 		dns_rdataset_current(sigrdataset, &rdata);
 		result = dns_rdata_tostruct(&rdata, &rrsig, NULL);
 		INSIST(result == ISC_R_SUCCESS);

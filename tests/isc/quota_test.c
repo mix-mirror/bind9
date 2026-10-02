@@ -173,14 +173,14 @@ ISC_RUN_TEST_IMPL(isc_quota_callback) {
 	isc_quota_soft(&quota, 10);
 
 	for (i = 0; i < 10; i++) {
-		cbs[i] = (isc_job_t)ISC_JOB_INITIALIZER;
+		cbs[i] = ISC_JOB_INITIALIZER;
 		result = isc_quota_acquire_cb(&quota, &cbs[i], callback,
 					      &ints[i]);
 		assert_int_equal(result, ISC_R_SUCCESS);
 		assert_int_equal(isc_quota_getused(&quota), i + 1);
 	}
 	for (i = 10; i < 20; i++) {
-		cbs[i] = (isc_job_t)ISC_JOB_INITIALIZER;
+		cbs[i] = ISC_JOB_INITIALIZER;
 		result = isc_quota_acquire_cb(&quota, &cbs[i], callback,
 					      &ints[i]);
 		assert_int_equal(result, ISC_R_SOFTQUOTA);
@@ -188,7 +188,7 @@ ISC_RUN_TEST_IMPL(isc_quota_callback) {
 	}
 
 	for (i = 20; i < 30; i++) {
-		cbs[i] = (isc_job_t)ISC_JOB_INITIALIZER;
+		cbs[i] = ISC_JOB_INITIALIZER;
 		result = isc_quota_acquire_cb(&quota, &cbs[i], callback,
 					      &ints[i]);
 		assert_int_equal(result, ISC_R_QUOTA);
@@ -256,7 +256,7 @@ static void *
 quota_thread(void *qtip) {
 	qthreadinfo_t *qti = (qthreadinfo_t *)qtip;
 	for (int i = 0; i < 100; i++) {
-		qti->callbacks[i] = (isc_job_t)ISC_JOB_INITIALIZER;
+		qti->callbacks[i] = ISC_JOB_INITIALIZER;
 		isc_result_t result = isc_quota_acquire_cb(
 			&quota, &qti->callbacks[i], quota_callback, qti);
 		if (result == ISC_R_SUCCESS) {
