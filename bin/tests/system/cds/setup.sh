@@ -92,6 +92,13 @@ sign() {
     -O full -o $Z -f sig.$1 db.$1 $keyz $key1 $key2
 }
 
+sign3() {
+  cat >db.$1
+  cat $keyz.key $key1.key $key2.key >>db.$1
+  $SIGNER >/dev/null \
+    -3 - -O full -o $Z -f sig.$1 db.$1 $keyz $key1 $key2
+}
+
 sign null <<EOF
 \$TTL 1h
 @	SOA	localhost.	root.localhost. (
@@ -107,6 +114,8 @@ sign null <<EOF
 EOF
 
 cat sig.null CDS.1 >brk.unsigned-cds
+
+cat db.null | sign3 null.nsec3
 
 cat db.null CDS.1 | sign cds.1
 cat db.null CDS.2 | sign cds.2
