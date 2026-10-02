@@ -26,6 +26,14 @@
 #define FALLTHROUGH
 
 /*
+ * Declare the liburcu loops that isc/urcu.h redefines.  Otherwise
+ * Coccinelle learns they are loops from a file using them and then cannot
+ * parse their definitions in isc/urcu.h.
+ */
+#define cds_lfht_for_each_entry(ht, iter, pos, member) YACFE_ITERATOR
+#define cds_lfht_for_each_entry_duplicate(ht, hash, match, key, iter, pos, member) YACFE_ITERATOR
+
+/*
  * Ignore declaration attributes and optional tracing parameters.
  * Leave assertion macros intact for semantic patches.
  */
