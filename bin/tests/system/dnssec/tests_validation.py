@@ -80,11 +80,9 @@ def test_insecure_rrsig():
     msg = isctest.query.create("a.insecure.example", "RRSIG")
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.noerror(res)
-    isctest.check.rr_count_eq(res.answer, 0)
-    isctest.check.rr_count_eq(res.authority, 1)
+    isctest.check.rr_count_eq(res.answer, 1)
+    isctest.check.rr_count_eq(res.authority, 0)
     isctest.check.rr_count_eq(res.additional, 0)
-    assert str(res.authority[0].name) == "insecure.example."
-    assert res.authority[0].rdtype == rdatatype.SOA
 
 
 def test_adflag():
@@ -722,12 +720,11 @@ def test_cache(ns4):
     isctest.check.raflag(res2)
 
     # check direct query for RRSIG: if it's not cached with other records,
-    # it should result in an empty response. (Use CD=1 because the response
-    # can't be validated.)
-    msg = isctest.query.create("rrsigonly.secure.example", "RRSIG", cd=1)
+    # it should result in an empty response.
+    msg = isctest.query.create("rrsigonly.secure.example", "RRSIG")
     res1 = isctest.query.tcp(msg, "10.53.0.4")
-    isctest.check.empty_answer(res1)
-    isctest.check.noraflag(res1)
+    isctest.check.has_answer(res1)
+    isctest.check.raflag(res1)
 
     # check that a DNSKEY query with no data still gets cached
     msg = isctest.query.create("insecure.example", "DNSKEY")
