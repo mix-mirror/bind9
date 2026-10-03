@@ -722,8 +722,9 @@ def test_cache(ns4):
     isctest.check.raflag(res2)
 
     # check direct query for RRSIG: if it's not cached with other records,
-    # it should result in an empty response.
-    msg = isctest.query.create("rrsigonly.secure.example", "RRSIG")
+    # it should result in an empty response. (Use CD=1 because the response
+    # can't be validated.)
+    msg = isctest.query.create("rrsigonly.secure.example", "RRSIG", cd=1)
     res1 = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.empty_answer(res1)
     isctest.check.noraflag(res1)

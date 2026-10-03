@@ -11428,9 +11428,7 @@ ns_query_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	 * We don't need to set DNS_DBFIND_PENDINGOK when validation is
 	 * disabled as there will be no pending data.
 	 */
-	if ((message->flags & DNS_MESSAGEFLAG_CD) != 0 ||
-	    qtype == dns_rdatatype_rrsig)
-	{
+	if ((message->flags & DNS_MESSAGEFLAG_CD) != 0) {
 		client->query.dboptions |= DNS_DBFIND_PENDINGOK;
 		client->query.fetchoptions |= DNS_FETCHOPT_NOVALIDATE;
 	} else if (!client->inner.view->enablevalidation) {
