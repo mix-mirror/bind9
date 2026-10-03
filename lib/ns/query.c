@@ -6154,7 +6154,10 @@ query_resume(query_ctx_t *qctx) {
 		CCTRACE(ISC_LOG_DEBUG(3), "resume from normal recursion");
 		qctx->authoritative = false;
 
-		qctx->qtype = qctx->fresp->qtype;
+		qctx->type = qctx->qtype = qctx->fresp->qtype;
+		if (qctx->type == dns_rdatatype_any) {
+			qctx->qtype = qctx->client->query.qtype;
+		}
 		qctx->db = MOVE_OWNERSHIP(qctx->fresp->cache);
 		qctx_set_foundname(qctx, qctx->fresp->foundname);
 		if (qctx->fresp->node != NULL) {
@@ -7423,6 +7426,13 @@ query_respond_any(query_ctx_t *qctx) {
 			CCTRACE(ISC_LOG_DEBUG(5), "query_respond_any: "
 						  "minimal-any skip rdataset");
 			dns_rdataset_disassociate(qctx->rdataset);
+		} else if (qctx->type == dns_rdatatype_any &&
+			   dns_rdatatype_issig(qctx->qtype) &&
+			   qctx->rdataset->type != qctx->qtype)
+		{
+			CCTRACE(ISC_LOG_DEBUG(5), "query_respond_any: "
+						  "skip non-sig rdataset");
+			dns_rdataset_disassociate(qctx->rdataset);
 		} else if ((qctx->qtype == dns_rdatatype_any ||
 			    qctx->rdataset->type == qctx->qtype) &&
 			   !qctx->rdataset->attributes.negative)
@@ -8393,7 +8403,7 @@ query_delegation_recurse(query_ctx_t *qctx) {
 	 * If DNS64 is used, look up for an A record so we can synthesize
 	 * DNS64.
 	 */
-	dns_rdatatype_t qtype = qctx->dns64 ? dns_rdatatype_a : qctx->qtype;
+	dns_rdatatype_t qtype = qctx->dns64 ? dns_rdatatype_a : qctx->type;
 	result = ns_query_recurse(qctx->client, qtype,
 				  qctx->client->query.qname, qctx->resuming);
 
