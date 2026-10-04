@@ -74,9 +74,13 @@ def test_load_transfer(qname, qtype):
 
 
 def test_insecure_rrsig():
-    # check that for a rrsig query against a validating resolver where the
+    # check that for an RRSIG query against a validating resolver where the
     # authoritative zone is unsigned (insecure delegation), noerror is
-    # returned.
+    # returned. (cache the answer first with an ANY query since recursion
+    # is disabled for qtype=RRSIG.)
+    msg = isctest.query.create("a.insecure.example", "ANY")
+    isctest.query.tcp(msg, "10.53.0.4");
+
     msg = isctest.query.create("a.insecure.example", "RRSIG")
     res = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.noerror(res)
@@ -717,14 +721,14 @@ def test_cache(ns4):
     res2 = isctest.query.tcp(msg, "10.53.0.4")
     isctest.check.same_answer(res1, res2)
     isctest.check.noerror(res2)
-    isctest.check.raflag(res2)
+    isctest.check.noraflag(res2)
 
     # check direct query for RRSIG: if it's not cached with other records,
     # it should result in an empty response.
     msg = isctest.query.create("rrsigonly.secure.example", "RRSIG")
     res1 = isctest.query.tcp(msg, "10.53.0.4")
-    isctest.check.has_answer(res1)
-    isctest.check.raflag(res1)
+    isctest.check.empty_answer(res1)
+    isctest.check.noraflag(res1)
 
     # check that a DNSKEY query with no data still gets cached
     msg = isctest.query.create("insecure.example", "DNSKEY")

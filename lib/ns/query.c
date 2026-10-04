@@ -11318,6 +11318,14 @@ ns_query_start(ns_client_t *client, isc_nmhandle_t *handle) {
 	dns_rdatatypestats_increment(client->manager->sctx->rcvquerystats,
 				     qtype);
 
+	/* Disable recursion for SIG/RRSIG queries */
+	if (dns_rdatatype_issig(qtype)) {
+		client->query.wantrecursion = true;
+		client->query.recursionok = false;
+		client->inner.ra = false;
+		client->inner.nosetfc = true;
+	}
+
 	log_tat(client);
 
 	if (dns_rdatatype_ismeta(qtype)) {

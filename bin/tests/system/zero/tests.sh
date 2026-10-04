@@ -36,7 +36,8 @@ i=0
 ret=0
 passes=10
 dig_with_opts @10.53.0.2 axfr example | grep -v "^ds0" \
-  | awk '$2 == "0" { print "-q", $1, $4; print "-q", "zzz"$1, $4;}' >query.list
+  | awk '$2 == "0" { print "-q", $1, $4; print "-q", "zzz"$1, $4;}' \
+  | grep -v RRSIG >query.list
 
 # add 1/5 second per query
 timeout=$(($(wc -l <query.list) / 5))
