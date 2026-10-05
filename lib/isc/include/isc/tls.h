@@ -33,6 +33,9 @@ isc_tlsctx_free(isc_tlsctx_t **ctpx);
  *\li	'ctxp' != NULL and '*ctxp' != NULL.
  */
 
+isc_tlsctx_t *
+isc_tlsctx_ref(isc_tlsctx_t *ctx);
+
 void
 isc_tlsctx_attach(isc_tlsctx_t *src, isc_tlsctx_t **ptarget);
 /*%<

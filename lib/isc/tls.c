@@ -67,6 +67,13 @@ isc_tlsctx_free(isc_tlsctx_t **ctxp) {
 	SSL_CTX_free(ctx);
 }
 
+isc_tlsctx_t *
+isc_tlsctx_ref(isc_tlsctx_t *ctx) {
+	REQUIRE(ctx != NULL);
+	RUNTIME_CHECK(SSL_CTX_up_ref(ctx) == 1);
+	return ctx;
+}
+
 void
 isc_tlsctx_attach(isc_tlsctx_t *src, isc_tlsctx_t **ptarget) {
 	REQUIRE(src != NULL);
