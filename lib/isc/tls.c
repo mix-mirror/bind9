@@ -109,181 +109,257 @@ sslkeylogfile_init(isc_tlsctx_t *ctx) {
 
 isc_result_t
 isc_tlsctx_createclient(isc_tlsctx_t **ctxp) {
-	unsigned long err;
-	char errbuf[256];
-	SSL_CTX *ctx = NULL;
 	const SSL_METHOD *method = NULL;
+	char errbuf[256];
+	unsigned long err;
+	SSL_CTX *ctx = NULL;
+	isc_result_t result;
 
 	REQUIRE(ctxp != NULL && *ctxp == NULL);
 
+	ERR_set_mark();
+
 	method = TLS_client_method();
 	if (method == NULL) {
-		goto ssl_error;
+		CLEANUP(ISC_R_TLSERROR);
 	}
+
 	ctx = SSL_CTX_new(method);
 	if (ctx == NULL) {
-		goto ssl_error;
+		CLEANUP(ISC_R_TLSERROR);
 	}
 
 	SSL_CTX_set_options(ctx, COMMON_SSL_OPTIONS);
 
-	SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+	if (SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION) != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
 
 	sslkeylogfile_init(ctx);
 
-	*ctxp = ctx;
+	*ctxp = MOVE_OWNERSHIP(ctx);
 
-	return ISC_R_SUCCESS;
+	result = ISC_R_SUCCESS;
 
-ssl_error:
-	err = ERR_get_error();
-	ERR_error_string_n(err, errbuf, sizeof(errbuf));
-	isc_log_write(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
-		      ISC_LOG_ERROR, "Error initializing TLS context: %s",
-		      errbuf);
+cleanup:
+	if (ctx != NULL) {
+		SSL_CTX_free(ctx);
+	}
 
-	return ISC_R_TLSERROR;
+	if (result != ISC_R_SUCCESS) {
+		err = ERR_get_error();
+		ERR_error_string_n(err, errbuf, sizeof(errbuf));
+		isc_log_write(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
+			      ISC_LOG_ERROR,
+			      "Error initializing TLS context: %s", errbuf);
+	}
+
+	ERR_pop_to_mark();
+	return result;
 }
 
 isc_result_t
 isc_tlsctx_load_certificate(isc_tlsctx_t *ctx, const char *keyfile,
 			    const char *certfile) {
-	int rv;
+	unsigned long error;
+	isc_result_t result;
+	const char *fn;
+	char buf[1024];
+	int r;
+
 	REQUIRE(ctx != NULL);
 	REQUIRE(keyfile != NULL);
 	REQUIRE(certfile != NULL);
 
-	rv = SSL_CTX_use_certificate_chain_file(ctx, certfile);
-	if (rv != 1) {
-		unsigned long err = ERR_peek_last_error();
-		char errbuf[1024] = { 0 };
-		ERR_error_string_n(err, errbuf, sizeof(errbuf));
-		isc_log_write(
-			ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_NETMGR,
-			ISC_LOG_ERROR,
-			"SSL_CTX_use_certificate_chain_file: '%s' failed: %s",
-			certfile, errbuf);
-		return ISC_R_TLSERROR;
-	}
-	rv = SSL_CTX_use_PrivateKey_file(ctx, keyfile, SSL_FILETYPE_PEM);
-	if (rv != 1) {
-		unsigned long err = ERR_peek_last_error();
-		char errbuf[1024] = { 0 };
-		ERR_error_string_n(err, errbuf, sizeof(errbuf));
-		isc_log_write(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_NETMGR,
-			      ISC_LOG_ERROR,
-			      "SSL_CTX_use_PrivateKey_file: '%s' failed: %s",
-			      keyfile, errbuf);
-		return ISC_R_TLSERROR;
+	ERR_set_mark();
+
+	r = SSL_CTX_use_certificate_chain_file(ctx, certfile);
+	if (r != 1) {
+		fn = "SSL_CTX_use_certificate_chain_file";
+		CLEANUP(ISC_R_TLSERROR);
 	}
 
-	return ISC_R_SUCCESS;
+	r = SSL_CTX_use_PrivateKey_file(ctx, keyfile, SSL_FILETYPE_PEM);
+	if (r != 1) {
+		fn = "SSL_CTX_use_PrivateKey_file";
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	result = ISC_R_SUCCESS;
+
+cleanup:
+	if (result != ISC_R_SUCCESS) {
+		error = ERR_peek_last_error();
+		ERR_error_string_n(error, buf, sizeof(buf));
+		isc_log_write(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_NETMGR,
+			      ISC_LOG_ERROR, "%s: '%s' failed: %s", fn,
+			      certfile, buf);
+	}
+
+	ERR_pop_to_mark();
+	return result;
+}
+
+static isc_result_t
+use_ephemeral_cert(SSL_CTX *ctx) {
+	isc_result_t result;
+	X509_NAME *name = NULL;
+	EVP_PKEY *pkey = NULL;
+	X509 *x509 = NULL;
+	char buf[512];
+	int r;
+
+	ERR_set_mark();
+
+	CHECK(isc_ossl_wrap_generate_p256_key(&pkey));
+
+	x509 = X509_new();
+	if (x509 == NULL) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	r = ASN1_INTEGER_set(X509_get_serialNumber(x509), (long)isc_random32());
+	if (r != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	/*
+	 * Set the "not before" property 5 minutes into the past to
+	 * accommodate with some possible clock skew across systems.
+	 */
+	if (X509_gmtime_adj(X509_getm_notBefore(x509), -300) == NULL) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	/*
+	 * We set the vailidy for 10 years.
+	 */
+	if (X509_gmtime_adj(X509_getm_notAfter(x509), 3650 * 24 * 3600) == NULL)
+	{
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	r = X509_set_pubkey(x509, pkey);
+	if (r != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	name = X509_NAME_dup(X509_get_subject_name(x509));
+	if (name == NULL) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	r = X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC,
+				       (const unsigned char *)"AQ", -1, -1, 0);
+	if (r != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	r = X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC,
+				       (const unsigned char *)"BIND9 ephemeral "
+							      "certificate",
+				       -1, -1, 0);
+	if (r != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	r = X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+				       (const unsigned char *)"bind9.local", -1,
+				       -1, 0);
+	if (r != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	r = X509_set_issuer_name(x509, name);
+	if (r != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	X509_NAME_free(name);
+
+	/*
+	 * Return signature size in bytes on success instead of 1
+	 */
+	r = X509_sign(x509, pkey, isc__crypto_md[ISC_MD_SHA256]);
+	if (r == 0) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	r = SSL_CTX_use_certificate(ctx, x509);
+	if (r != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	r = SSL_CTX_use_PrivateKey(ctx, pkey);
+	if (r != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
+
+	result = ISC_R_SUCCESS;
+
+cleanup:
+	if (result != ISC_R_SUCCESS) {
+		ERR_error_string_n(ERR_peek_last_error(), buf, sizeof(buf));
+		isc_log_write(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
+			      ISC_LOG_ERROR,
+			      "failed to create ephemeral certificate: %s",
+			      buf);
+	}
+
+	X509_free(x509);
+	EVP_PKEY_free(pkey);
+
+	ERR_pop_to_mark();
+	return result;
 }
 
 isc_result_t
 isc_tlsctx_createserver(const char *keyfile, const char *certfile,
 			isc_tlsctx_t **ctxp) {
-	int rv;
-	unsigned long err;
-	bool ephemeral = (keyfile == NULL && certfile == NULL);
-	X509 *cert = NULL;
+	const SSL_METHOD *method;
+	isc_result_t result;
 	EVP_PKEY *pkey = NULL;
 	SSL_CTX *ctx = NULL;
-	char errbuf[256];
-	const SSL_METHOD *method = NULL;
+	X509 *cert = NULL;
+	char buf[512];
 
 	REQUIRE(ctxp != NULL && *ctxp == NULL);
-	REQUIRE((keyfile == NULL) == (certfile == NULL));
+	REQUIRE(!(keyfile == NULL ^ certfile == NULL));
+
+	ERR_set_mark();
 
 	method = TLS_server_method();
 	if (method == NULL) {
-		goto ssl_error;
+		CLEANUP(ISC_R_TLSERROR);
 	}
+
 	ctx = SSL_CTX_new(method);
 	if (ctx == NULL) {
-		goto ssl_error;
+		CLEANUP(ISC_R_TLSERROR);
 	}
-	RUNTIME_CHECK(ctx != NULL);
+
+	if (SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION) != 1) {
+		CLEANUP(ISC_R_TLSERROR);
+	}
 
 	SSL_CTX_set_options(ctx, COMMON_SSL_OPTIONS);
 
-	SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
-
-	if (ephemeral) {
-		if (isc_ossl_wrap_generate_p256_key(&pkey) != ISC_R_SUCCESS) {
-			goto ssl_error;
-		}
-
-		cert = X509_new();
-		if (cert == NULL) {
-			goto ssl_error;
-		}
-
-		ASN1_INTEGER_set(X509_get_serialNumber(cert),
-				 (long)isc_random32());
-
-		/*
-		 * Set the "not before" property 5 minutes into the past to
-		 * accommodate with some possible clock skew across systems.
-		 */
-		X509_gmtime_adj(X509_getm_notBefore(cert), -300);
-
-		/*
-		 * We set the vailidy for 10 years.
-		 */
-		X509_gmtime_adj(X509_getm_notAfter(cert), 3650 * 24 * 3600);
-
-		X509_set_pubkey(cert, pkey);
-
-		X509_NAME *name = X509_NAME_dup(X509_get_subject_name(cert));
-
-		X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC,
-					   (const unsigned char *)"AQ", -1, -1,
-					   0);
-		X509_NAME_add_entry_by_txt(
-			name, "O", MBSTRING_ASC,
-			(const unsigned char *)"BIND9 ephemeral "
-					       "certificate",
-			-1, -1, 0);
-		X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
-					   (const unsigned char *)"bind9.local",
-					   -1, -1, 0);
-
-		X509_set_issuer_name(cert, name);
-
-		X509_NAME_free(name);
-
-		X509_sign(cert, pkey, isc__crypto_md[ISC_MD_SHA256]);
-		rv = SSL_CTX_use_certificate(ctx, cert);
-		if (rv != 1) {
-			goto ssl_error;
-		}
-		rv = SSL_CTX_use_PrivateKey(ctx, pkey);
-		if (rv != 1) {
-			goto ssl_error;
-		}
-
-		X509_free(cert);
-		EVP_PKEY_free(pkey);
+	if (keyfile == NULL && certfile == NULL) {
+		CHECK(use_ephemeral_cert(ctx));
 	} else {
-		isc_result_t result;
-		result = isc_tlsctx_load_certificate(ctx, keyfile, certfile);
-		if (result != ISC_R_SUCCESS) {
-			goto ssl_error;
-		}
+		CHECK(isc_tlsctx_load_certificate(ctx, keyfile, certfile));
 	}
 
 	sslkeylogfile_init(ctx);
 
 	*ctxp = ctx;
+	ERR_pop_to_mark();
 	return ISC_R_SUCCESS;
 
-ssl_error:
-	err = ERR_get_error();
-	ERR_error_string_n(err, errbuf, sizeof(errbuf));
+cleanup:
+	ERR_error_string_n(ERR_get_error(), buf, sizeof(buf));
 	isc_log_write(ISC_LOGCATEGORY_GENERAL, ISC_LOGMODULE_CRYPTO,
-		      ISC_LOG_ERROR, "Error initializing TLS context: %s",
-		      errbuf);
+		      ISC_LOG_ERROR, "Error initializing TLS context: %s", buf);
 
 	if (ctx != NULL) {
 		SSL_CTX_free(ctx);
@@ -294,6 +370,8 @@ ssl_error:
 	if (pkey != NULL) {
 		EVP_PKEY_free(pkey);
 	}
+
+	ERR_pop_to_mark();
 
 	return ISC_R_TLSERROR;
 }
