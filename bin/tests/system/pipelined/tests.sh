@@ -24,7 +24,7 @@ rndccmd() {
 }
 
 pipequeries() {
-  "$PIPEQUERIES" -p "${PORT}"
+  "$PYTHON" pipequeries.py -p "${PORT}"
 }
 
 status=0
