@@ -13,16 +13,12 @@
 
 /*! \file */
 
-#include <ctype.h>
-#include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #include <isc/ascii.h>
 #include <isc/buffer.h>
-#include <isc/parseint.h>
 #include <isc/region.h>
 #include <isc/result.h>
 #include <isc/string.h>
@@ -139,77 +135,67 @@ dns_ttl_fromtext(isc_textregion_t *source, uint32_t *ttl) {
 static isc_result_t
 bind_ttl(isc_textregion_t *source, uint32_t *ttl) {
 	uint64_t tmp = 0ULL;
-	uint32_t n;
-	char *s;
-	char buf[64];
-	char nbuf[64]; /* Number buffer */
+	uint64_t n = 0;
+	bool digits = false;
 
 	/*
-	 * Copy the buffer as it may not be NULL terminated.
-	 * No legal counter / ttl is longer that 63 characters.
+	 * No legal counter / ttl is longer than 63 characters.
 	 */
-	if (source->length > sizeof(buf) - 1) {
+	if (source->length == 0 || source->length > 63) {
 		return DNS_R_SYNTAX;
 	}
-	/* Copy source->length bytes and NUL terminate. */
-	snprintf(buf, sizeof(buf), "%.*s", (int)source->length, source->base);
-	s = buf;
 
-	do {
-		isc_result_t result;
-
-		char *np = nbuf;
-		while (*s != '\0' && isdigit((unsigned char)*s)) {
-			*np++ = *s++;
-		}
-		*np++ = '\0';
-		INSIST(np - nbuf <= (int)sizeof(nbuf));
-		result = isc_parse_uint32(&n, nbuf, 10);
-		if (result != ISC_R_SUCCESS) {
-			return DNS_R_SYNTAX;
-		}
-		switch (*s) {
+	for (size_t i = 0; i < source->length; i++) {
+		switch (source->base[i]) {
+		case '0' ... '9':
+			n = n * 10 + (source->base[i] - '0');
+			if (n > UINT32_MAX) {
+				return DNS_R_SYNTAX;
+			}
+			digits = true;
+			continue;
 		case 'w':
 		case 'W':
-			tmp += (uint64_t)n * 7 * 24 * 3600;
-			s++;
+			tmp += n * 7 * 24 * 3600;
 			break;
 		case 'd':
 		case 'D':
-			tmp += (uint64_t)n * 24 * 3600;
-			s++;
+			tmp += n * 24 * 3600;
 			break;
 		case 'h':
 		case 'H':
-			tmp += (uint64_t)n * 3600;
-			s++;
+			tmp += n * 3600;
 			break;
 		case 'm':
 		case 'M':
-			tmp += (uint64_t)n * 60;
-			s++;
+			tmp += n * 60;
 			break;
 		case 's':
 		case 'S':
-			tmp += (uint64_t)n;
-			s++;
-			break;
-		case '\0':
-			/* Plain number? */
-			if (tmp != 0ULL) {
-				return DNS_R_SYNTAX;
-			}
-			tmp = n;
+			tmp += n;
 			break;
 		default:
 			return DNS_R_SYNTAX;
 		}
-	} while (*s != '\0');
+		if (!digits) {
+			return DNS_R_SYNTAX;
+		}
+		n = 0;
+		digits = false;
+	}
 
-	if (tmp > 0xffffffffULL) {
+	if (digits) {
+		/* Plain number? */
+		if (tmp != 0ULL) {
+			return DNS_R_SYNTAX;
+		}
+		tmp = n;
+	}
+
+	if (tmp > UINT32_MAX) {
 		return ISC_R_RANGE;
 	}
 
-	*ttl = (uint32_t)(tmp & 0xffffffffUL);
+	*ttl = (uint32_t)tmp;
 	return ISC_R_SUCCESS;
 }

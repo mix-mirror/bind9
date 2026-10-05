@@ -49,6 +49,7 @@ dns_tests = [
     'time',
     'transport',
     'tsig',
+    'ttl',
     'unreachcache',
     'update',
     'vecheader',
