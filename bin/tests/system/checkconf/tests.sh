@@ -456,7 +456,9 @@ n=$((n + 1))
 echo_i "check that check-dup-records fails as configured ($n)"
 ret=0
 $CHECKCONF -z check-dup-records-fail.conf >checkconf.out$n 2>&1 && ret=1
-grep "has semantically identical records" <checkconf.out$n >/dev/null || ret=1
+for type in HIP IPSECKEY AMTRELAY LP NSEC; do
+  grep "/$type has semantically identical records" <checkconf.out$n >/dev/null || ret=1
+done
 grep "zone check-dup-records/IN: loaded serial" <checkconf.out$n >/dev/null && ret=1
 if [ $ret -ne 0 ]; then
   echo_i "failed"

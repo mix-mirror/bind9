@@ -2195,8 +2195,26 @@ zone_check_dup(dns_zone_t *zone, dns_db_t *db) {
 		DNS_RDATASETITER_FOREACH(rdsit) {
 			dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 			dns_rdatasetiter_current(rdsit, &rdataset);
-			if (!zone_rrset_check_dup(zone, name, &rdataset)) {
-				ok = false;
+			/*
+			 * The database removes duplicates using
+			 * dns_rdata_compare().  Only these types have a
+			 * dns_rdata_casecompare() that can find additional
+			 * duplicates by ignoring case in embedded names.
+			 */
+			switch (rdataset.type) {
+			case dns_rdatatype_hip:
+			case dns_rdatatype_ipseckey:
+			case dns_rdatatype_amtrelay:
+			case dns_rdatatype_lp:
+			case dns_rdatatype_nsec:
+				if (!zone_rrset_check_dup(zone, name,
+							  &rdataset))
+				{
+					ok = false;
+				}
+				break;
+			default:
+				break;
 			}
 			dns_rdataset_disassociate(&rdataset);
 		}
