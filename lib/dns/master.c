@@ -984,6 +984,127 @@ find_free_name(dns_incctx_t *incctx) {
 }
 
 static isc_result_t
+load_ttl(dns_loadctx_t *lctx, isc_token_t *token, const char *source,
+	 unsigned long line) {
+	dns_rdatacallbacks_t *callbacks = lctx->callbacks;
+	isc_result_t result;
+
+	result = dns_ttl_fromtext(&token->value.as_textregion, &lctx->ttl);
+	if (MANYERRS(lctx, result)) {
+		SETRESULT(lctx, result);
+		lctx->ttl = 0;
+	} else if (result != ISC_R_SUCCESS) {
+		return result;
+	}
+	limit_ttl(callbacks, source, line, &lctx->ttl);
+	lctx->default_ttl = lctx->ttl;
+	lctx->default_ttl_known = true;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+load_date(dns_loadctx_t *lctx, isc_token_t *token, const char *source,
+	  unsigned long line, uint32_t *ttl_offset) {
+	dns_rdatacallbacks_t *callbacks = lctx->callbacks;
+	isc_result_t result;
+	int64_t dump_time64;
+	isc_stdtime_t dump_time;
+	isc_stdtime_t current_time = isc_stdtime_now();
+
+	result = dns_time64_fromregion(token->value.as_textregion,
+				       &dump_time64);
+	if (MANYERRS(lctx, result)) {
+		SETRESULT(lctx, result);
+		LOGIT(result);
+		dump_time64 = 0;
+	} else if (result != ISC_R_SUCCESS) {
+		LOGIT(result);
+		return result;
+	}
+	dump_time = (isc_stdtime_t)dump_time64;
+	if (dump_time != dump_time64) {
+		UNEXPECTED_ERROR("%s: %s:%lu: $DATE "
+				 "outside epoch",
+				 "dns_master_load", source, line);
+		return ISC_R_UNEXPECTED;
+	}
+	if (dump_time > current_time) {
+		UNEXPECTED_ERROR("%s: %s:%lu: "
+				 "$DATE in future, "
+				 "using current date",
+				 "dns_master_load", source, line);
+		dump_time = current_time;
+	}
+	*ttl_offset = current_time - dump_time;
+	return ISC_R_SUCCESS;
+}
+
+static void
+load_origin(dns_incctx_t *ictx, dns_name_t *new_name, int new_in_use) {
+	if (ictx->origin_in_use != -1) {
+		ictx->in_use[ictx->origin_in_use] = false;
+	}
+	ictx->origin_in_use = new_in_use;
+	ictx->in_use[ictx->origin_in_use] = true;
+	ictx->origin = new_name;
+	ictx->origin_changed = true;
+}
+
+static isc_result_t
+load_include(dns_loadctx_t *lctx, const char *include_file, dns_name_t *origin,
+	     const char *source, unsigned long line) {
+	dns_rdatacallbacks_t *callbacks = lctx->callbacks;
+	isc_result_t result = pushfile(include_file, origin, lctx);
+
+	if (result != ISC_R_SUCCESS) {
+		LOGITFILE(result, include_file);
+	}
+	return result;
+}
+
+static isc_result_t
+load_generate(dns_loadctx_t *lctx, char *range, char *lhs, char *gtype,
+	      char *rhs, dns_rdataclass_t rdclass, bool explicit_ttl,
+	      const char *source, unsigned long line) {
+	dns_rdatacallbacks_t *callbacks = lctx->callbacks;
+	isc_result_t result;
+
+	if (!lctx->ttl_known && !lctx->default_ttl_known) {
+		(*callbacks->error)(callbacks,
+				    "%s: %s:%lu: no "
+				    "TTL specified",
+				    "dns_master_load", source, line);
+		result = DNS_R_NOTTL;
+		if (MANYERRS(lctx, result)) {
+			SETRESULT(lctx, result);
+			lctx->ttl = 0;
+		} else {
+			return result;
+		}
+	} else if (!explicit_ttl && lctx->default_ttl_known) {
+		lctx->ttl = lctx->default_ttl;
+	}
+	/*
+	 * If the class specified does not match the
+	 * zone's class print out a error message and
+	 * exit.
+	 */
+	if (rdclass != 0 && rdclass != lctx->zclass) {
+		char classname1[DNS_RDATACLASS_FORMATSIZE];
+		char classname2[DNS_RDATACLASS_FORMATSIZE];
+
+		dns_rdataclass_format(rdclass, classname1, sizeof(classname1));
+		dns_rdataclass_format(lctx->zclass, classname2,
+				      sizeof(classname2));
+		(callbacks->error)(callbacks,
+				   "%s:%lu: class '%s' != zone class '%s'",
+				   source, line, classname1, classname2);
+		return DNS_R_BADCLASS;
+	}
+	return generate(lctx, range, lhs, gtype, rhs, source, line);
+}
+
+static isc_result_t
 load_text(dns_loadctx_t *lctx) {
 	dns_rdataclass_t rdclass;
 	dns_rdatatype_t type, covers;
@@ -1131,17 +1252,10 @@ load_text(dns_loadctx_t *lctx) {
 				GETTOKENERR(lctx->lex, 0, &token, false,
 					    lctx->ttl = 0;
 					    lctx->default_ttl_known = true;);
-				result = dns_ttl_fromtext(
-					&token.value.as_textregion, &lctx->ttl);
-				if (MANYERRS(lctx, result)) {
-					SETRESULT(lctx, result);
-					lctx->ttl = 0;
-				} else if (result != ISC_R_SUCCESS) {
+				result = load_ttl(lctx, &token, source, line);
+				if (result != ISC_R_SUCCESS) {
 					goto insist_and_cleanup;
 				}
-				limit_ttl(callbacks, source, line, &lctx->ttl);
-				lctx->default_ttl = lctx->ttl;
-				lctx->default_ttl_known = true;
 				EXPECTEOL;
 				continue;
 			} else if (strcasecmp(DNS_AS_STR(token), "$INCLUDE") ==
@@ -1177,14 +1291,13 @@ load_text(dns_loadctx_t *lctx) {
 					/*
 					 * No origin field.
 					 */
-					result = pushfile(include_file,
-							  ictx->origin, lctx);
+					result = load_include(
+						lctx, include_file,
+						ictx->origin, source, line);
 					if (MANYERRS(lctx, result)) {
 						SETRESULT(lctx, result);
-						LOGITFILE(result, include_file);
 						continue;
 					} else if (result != ISC_R_SUCCESS) {
-						LOGITFILE(result, include_file);
 						goto insist_and_cleanup;
 					}
 					ictx = lctx->inc;
@@ -1202,38 +1315,12 @@ load_text(dns_loadctx_t *lctx) {
 				finish_include = true;
 			} else if (strcasecmp(DNS_AS_STR(token), "$DATE") == 0)
 			{
-				int64_t dump_time64;
-				isc_stdtime_t dump_time;
-				isc_stdtime_t current_time = isc_stdtime_now();
 				GETTOKEN(lctx->lex, 0, &token, false);
-				result = dns_time64_fromregion(
-					token.value.as_textregion,
-					&dump_time64);
-				if (MANYERRS(lctx, result)) {
-					SETRESULT(lctx, result);
-					LOGIT(result);
-					dump_time64 = 0;
-				} else if (result != ISC_R_SUCCESS) {
-					goto log_and_cleanup;
-				}
-				dump_time = (isc_stdtime_t)dump_time64;
-				if (dump_time != dump_time64) {
-					UNEXPECTED_ERROR("%s: %s:%lu: $DATE "
-							 "outside epoch",
-							 "dns_master_load",
-							 source, line);
-					result = ISC_R_UNEXPECTED;
+				result = load_date(lctx, &token, source, line,
+						   &ttl_offset);
+				if (result != ISC_R_SUCCESS) {
 					goto insist_and_cleanup;
 				}
-				if (dump_time > current_time) {
-					UNEXPECTED_ERROR("%s: %s:%lu: "
-							 "$DATE in future, "
-							 "using current date",
-							 "dns_master_load",
-							 source, line);
-					dump_time = current_time;
-				}
-				ttl_offset = current_time - dump_time;
 				EXPECTEOL;
 				continue;
 			} else if (strcasecmp(DNS_AS_STR(token), "$GENERATE") ==
@@ -1298,38 +1385,15 @@ load_text(dns_loadctx_t *lctx) {
 				GETTOKEN(lctx->lex, ISC_LEXOPT_QSTRING, &token,
 					 false);
 				rhs = isc_mem_strdup(mctx, DNS_AS_STR(token));
-				if (!lctx->ttl_known &&
-				    !lctx->default_ttl_known)
-				{
-					(*callbacks->error)(callbacks,
-							    "%s: %s:%lu: no "
-							    "TTL specified",
-							    "dns_master_load",
-							    source, line);
-					result = DNS_R_NOTTL;
-					if (MANYERRS(lctx, result)) {
-						SETRESULT(lctx, result);
-						lctx->ttl = 0;
-					} else {
-						goto insist_and_cleanup;
-					}
-				} else if (!explicit_ttl &&
-					   lctx->default_ttl_known)
-				{
-					lctx->ttl = lctx->default_ttl;
-				}
-				/*
-				 * If the class specified does not match the
-				 * zone's class print out a error message and
-				 * exit.
-				 */
-				if (rdclass != 0 && rdclass != lctx->zclass) {
-					goto bad_class;
-				}
-				result = generate(lctx, range, lhs, gtype, rhs,
-						  source, line);
+				result = load_generate(
+					lctx, range, lhs, gtype, rhs, rdclass,
+					explicit_ttl, source, line);
 				if (MANYERRS(lctx, result)) {
 					SETRESULT(lctx, result);
+					if (result == DNS_R_BADCLASS) {
+						read_till_eol = true;
+						continue;
+					}
 				} else if (result != ISC_R_SUCCESS) {
 					goto insist_and_cleanup;
 				}
@@ -1377,14 +1441,7 @@ load_text(dns_loadctx_t *lctx) {
 			 * Finish $ORIGIN / $INCLUDE processing if required.
 			 */
 			if (finish_origin) {
-				if (ictx->origin_in_use != -1) {
-					ictx->in_use[ictx->origin_in_use] =
-						false;
-				}
-				ictx->origin_in_use = new_in_use;
-				ictx->in_use[ictx->origin_in_use] = true;
-				ictx->origin = new_name;
-				ictx->origin_changed = true;
+				load_origin(ictx, new_name, new_in_use);
 				finish_origin = false;
 				EXPECTEOL;
 				continue;
@@ -1392,13 +1449,12 @@ load_text(dns_loadctx_t *lctx) {
 			if (finish_include) {
 				finish_include = false;
 				EXPECTEOL;
-				result = pushfile(include_file, new_name, lctx);
+				result = load_include(lctx, include_file,
+						      new_name, source, line);
 				if (MANYERRS(lctx, result)) {
 					SETRESULT(lctx, result);
-					LOGITFILE(result, include_file);
 					continue;
 				} else if (result != ISC_R_SUCCESS) {
-					LOGITFILE(result, include_file);
 					goto insist_and_cleanup;
 				}
 				ictx = lctx->inc;
@@ -1660,8 +1716,6 @@ load_text(dns_loadctx_t *lctx) {
 		 * print out a error message and exit.
 		 */
 		if (rdclass != 0 && rdclass != lctx->zclass) {
-		bad_class:
-
 			dns_rdataclass_format(rdclass, classname1,
 					      sizeof(classname1));
 			dns_rdataclass_format(lctx->zclass, classname2,

@@ -587,6 +587,105 @@ ISC_RUN_TEST_IMPL(neworigin) {
 	assert_true(warn_expect_result);
 }
 
+ISC_RUN_TEST_IMPL(directives) {
+	const struct {
+		const char *text;
+		isc_result_t result;
+	} tests[] = {
+		{ "$ORIGIN test.\n$TTL 300\n$GENERATE 1-2 host$ A 192.0.2.$\n"
+		  "ordinary A 192.0.2.3\n",
+		  ISC_R_SUCCESS },
+		{ "$origin test.\n$ttl 300\n$generate 1-2 host$ A 192.0.2.$\n",
+		  ISC_R_SUCCESS },
+		{ "$oRiGiN test.\n$tTl 300\n$gEnErAtE 1-2 host$ A 192.0.2.$\n",
+		  ISC_R_SUCCESS },
+		{ "$DATE 19700101000000\n", ISC_R_SUCCESS },
+		{ "$date 19700101000000\n", ISC_R_SUCCESS },
+		{ "$dAtE 19700101000000\n", ISC_R_SUCCESS },
+		{ "$INCLUDE \"" TESTS_DIR "/testdata/master/master1.data\"\n",
+		  DNS_R_SEENINCLUDE },
+		{ "$include \"" TESTS_DIR "/testdata/master/master1.data\"\n",
+		  DNS_R_SEENINCLUDE },
+		{ "$iNcLuDe \"" TESTS_DIR
+		  "/testdata/master/master1.data\" test.\n",
+		  DNS_R_SEENINCLUDE },
+		{ "$\n", DNS_R_SYNTAX },
+		{ "$O\n", DNS_R_SYNTAX },
+		{ "$ORIGINx test.\n", DNS_R_SYNTAX },
+		{ "$TTLx 300\n", DNS_R_SYNTAX },
+		{ "$INCLUDEx file\n", DNS_R_SYNTAX },
+		{ "$DATEx 19700101000000\n", DNS_R_SYNTAX },
+		{ "$GENERATEx 1-2 host$ A 192.0.2.$\n", DNS_R_SYNTAX },
+		{ "$UNKNOWN\n", DNS_R_SYNTAX },
+	};
+
+	for (size_t i = 0; i < ARRAY_SIZE(tests); i++) {
+		isc_buffer_t source;
+		isc_result_t result = setup_master(nullmsg, nullmsg);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		isc_buffer_constinit(&source, tests[i].text,
+				     strlen(tests[i].text));
+		isc_buffer_add(&source, strlen(tests[i].text));
+		result = dns_master_loadbuffer(&source, dns_origin, dns_origin,
+					       dns_rdataclass_in, 0, &callbacks,
+					       isc_g_mctx);
+		assert_int_equal(result, tests[i].result);
+	}
+}
+
+static isc_result_t
+count_records(void *arg, const dns_name_t *owner, dns_rdataset_t *dataset,
+	      dns_diffop_t op DNS__DB_FLARG) {
+	size_t *count = arg;
+
+	*count += dns_rdataset_count(dataset);
+	return add_callback(NULL, owner, dataset, op DNS__DB_FLARG_PASS);
+}
+
+ISC_RUN_TEST_IMPL(directive_errors) {
+	const struct {
+		const char *text;
+		isc_result_t result;
+		size_t records;
+	} tests[] = {
+		{ "$ORIGIN bad..test.\n", DNS_R_EMPTYLABEL, 0 },
+		{ "$TTL 300 extra\n", DNS_R_EXTRATOKEN, 1 },
+		{ "$TTL invalid\n", DNS_R_BADTTL, 1 },
+		{ "$TTL\n", ISC_R_UNEXPECTEDEND, 0 },
+		{ "$ORIGIN\n", ISC_R_UNEXPECTEDEND, 0 },
+		{ "$INCLUDE\n", ISC_R_UNEXPECTEDEND, 0 },
+		{ "$GENERATE 1-2 host$ CH A 192.0.2.$\n", DNS_R_BADCLASS, 1 },
+		{ "$GENERATE bad host$ A 192.0.2.$\n", DNS_R_SYNTAX, 1 },
+		{ "$DATE invalid\n", DNS_R_SYNTAX, 1 },
+	};
+
+	for (size_t i = 0; i < ARRAY_SIZE(tests); i++) {
+		char text[256];
+		isc_buffer_t source;
+		size_t count = 0;
+		isc_result_t result = setup_master(nullmsg, nullmsg);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		callbacks.update = count_records;
+		callbacks.add_private = &count;
+
+		int len = snprintf(text, sizeof(text),
+				   "$TTL 300\n%safter IN A 192.0.2.1\n",
+				   tests[i].text);
+		assert_true(len > 0 && (size_t)len < sizeof(text));
+		isc_buffer_init(&source, text, len);
+		isc_buffer_add(&source, len);
+		result = dns_master_loadbuffer(
+			&source, dns_origin, dns_origin, dns_rdataclass_in,
+			DNS_MASTER_MANYERRORS, &callbacks, isc_g_mctx);
+		assert_int_equal(result, tests[i].result);
+		if (count != tests[i].records) {
+			fail_msg("%s: expected %zu records, got %zu",
+				 tests[i].text, tests[i].records, count);
+		}
+	}
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(load)
 ISC_TEST_ENTRY(nulbyte)
@@ -608,6 +707,8 @@ ISC_TEST_ENTRY(dumpraw)
 ISC_TEST_ENTRY(toobig)
 ISC_TEST_ENTRY(maxrdata)
 ISC_TEST_ENTRY(neworigin)
+ISC_TEST_ENTRY(directives)
+ISC_TEST_ENTRY(directive_errors)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN
