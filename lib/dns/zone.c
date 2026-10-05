@@ -4901,9 +4901,8 @@ zone_iattach(dns_zone_t *source, dns_zone_t **target) {
 	REQUIRE(DNS_ZONE_VALID(source));
 	REQUIRE(LOCKED_ZONE(source));
 	REQUIRE(target != NULL && *target == NULL);
-	INSIST(isc_refcount_increment0(&source->irefs) +
-		       isc_refcount_current(&source->references) >
-	       0);
+	uint_fast32_t refs = isc_refcount_increment0(&source->irefs);
+	INSIST(refs + isc_refcount_current(&source->references) > 0);
 	*target = source;
 }
 
@@ -4934,9 +4933,8 @@ zone_idetach(dns_zone_t **zonep) {
 	zone = *zonep;
 	*zonep = NULL;
 
-	INSIST(isc_refcount_decrement(&zone->irefs) - 1 +
-		       isc_refcount_current(&zone->references) >
-	       0);
+	uint_fast32_t refs = isc_refcount_decrement(&zone->irefs) - 1;
+	INSIST(refs + isc_refcount_current(&zone->references) > 0);
 }
 
 void

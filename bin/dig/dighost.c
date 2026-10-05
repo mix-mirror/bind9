@@ -1615,7 +1615,7 @@ void
 destroy_lookup(dig_lookup_t *lookup) {
 	REQUIRE(DIG_VALID_LOOKUP(lookup));
 
-	REQUIRE(isc_refcount_decrement(&lookup->references) == 1);
+	isc_refcount_decrementz(&lookup->references);
 	_destroy_lookup(lookup);
 }
 

@@ -1554,8 +1554,9 @@ closeversion(dns_db_t *db, dns_dbversion_t **versionp,
 			 * case where we need to increment the counter from
 			 * zero and need to use isc_refcount_increment0().
 			 */
-			INSIST(isc_refcount_increment0(&version->references) ==
-			       0);
+			uint_fast32_t refs =
+				isc_refcount_increment0(&version->references);
+			INSIST(refs == 0);
 			ISC_LIST_PREPEND(qpdb->open_versions,
 					 qpdb->current_version, link);
 			resigned_list = version->resigned_list;

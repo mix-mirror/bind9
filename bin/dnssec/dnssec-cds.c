@@ -531,7 +531,8 @@ match_keyset_dsset(dns_rdataset_t *keyset, dns_rdataset_t *dsset,
 		dns_rdata_t *keyrdata = NULL;
 		isc_region_t r;
 
-		INSIST(i++ < nkey);
+		INSIST(i < nkey);
+		i++;
 		keyrdata = &ki->rdata;
 
 		dns_rdata_init(keyrdata);
