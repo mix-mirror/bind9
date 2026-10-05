@@ -79,6 +79,7 @@ import glob
 import os
 import platform
 import re
+import shlex
 import shutil
 import sys
 
@@ -179,16 +180,34 @@ def install(session, requirements):
     session.install("-r", requirements)
 
 
+# how much of a command line the log shows
+COMMAND_LOG_WIDTH = 80
+
+
+def run_command(session, *args, **kwargs):
+    """
+    session.run, logging the command truncated to COMMAND_LOG_WIDTH.
+
+    The linters get every tracked file on the command line, and nox
+    would log the whole list.
+    """
+    command = shlex.join(str(arg) for arg in args)
+    if len(command) > COMMAND_LOG_WIDTH:
+        command = f"{command[:COMMAND_LOG_WIDTH]}... [{len(args)} arguments]"
+    session.log("%s", command)
+    return session.run(*args, log=False, **kwargs)
+
+
 def run_tool(session, *args, **kwargs):
     """
-    session.run a tool installed by `install`.
+    run_command a tool installed by `install`.
 
     With NOX_SYSTEM_SITE_PACKAGES the tools the system already provides
     are not installed into the venv, so nox finds them outside it and
     warns about that; external=True silences the warning.
     """
     kwargs.setdefault("external", SYSTEM_SITE_PACKAGES)
-    return session.run(*args, **kwargs)
+    return run_command(session, *args, **kwargs)
 
 
 def python(session):
@@ -701,7 +720,8 @@ def vulture(session):
 @nox.session(python=False)
 def clang_format(session):
     "Check the C formatting with clang-format"
-    session.run(
+    run_command(
+        session,
         CLANG_FORMAT,
         "-style=file",
         "--dry-run",
@@ -715,7 +735,8 @@ def clang_format(session):
 @nox.session(python=False)
 def clang_format_fix(session):
     "Reformat the C files with clang-format"
-    session.run(
+    run_command(
+        session,
         CLANG_FORMAT,
         "-style=file",
         "-i",
