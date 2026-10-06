@@ -71,6 +71,7 @@ int verbose = 0;
 bool quiet = false;
 const char *journal = NULL;
 dns_dsdigest_t dtype[8];
+bool do_atexit = false;
 
 static fatalcallback_t *fatalcallback = NULL;
 
@@ -86,7 +87,7 @@ fatal(const char *format, ...) {
 	if (fatalcallback != NULL) {
 		(*fatalcallback)();
 	}
-	_exit(EXIT_FAILURE);
+	do_atexit ? exit(EXIT_FAILURE) : _exit(EXIT_FAILURE);
 }
 
 void

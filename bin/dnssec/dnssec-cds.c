@@ -1307,6 +1307,7 @@ main(int argc, char *argv[]) {
 
 	orig_argc = argc;
 
+	do_atexit = true;
 	setfatalcallback(cleanup);
 
 	isc_commandline_init(argc, argv);
