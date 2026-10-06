@@ -165,14 +165,14 @@ dumpdb(dns_delegdb_t *db, bool expired, const char *expected) {
 
 	fp = freopen(filename, "r", fp);
 	REQUIRE(fp != NULL);
-	REQUIRE(fread(buffer, sizeof(buffer) - 1, 1, fp) == 0);
+	RUNTIME_CHECK(fread(buffer, sizeof(buffer) - 1, 1, fp) == 0);
 
 	if (expected != NULL) {
 		assert_string_equal(expected, buffer);
 	}
 
-	REQUIRE(fclose(fp) == 0);
-	REQUIRE(unlink(filename) == 0);
+	RUNTIME_CHECK(fclose(fp) == 0);
+	RUNTIME_CHECK(unlink(filename) == 0);
 }
 
 static void

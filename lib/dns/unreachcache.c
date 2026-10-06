@@ -121,7 +121,7 @@ dns_unreachcache_destroy(dns_unreachcache_t **ucp) {
 	dns_ucentry_t *unreach = NULL;
 	struct cds_lfht_iter iter;
 	cds_lfht_for_each_entry(uc->ht, &iter, unreach, ht_node) {
-		INSIST(!cds_lfht_del(uc->ht, &unreach->ht_node));
+		RUNTIME_CHECK(!cds_lfht_del(uc->ht, &unreach->ht_node));
 		ucentry_destroy(&unreach->rcu_head);
 	}
 	RUNTIME_CHECK(!cds_lfht_destroy(uc->ht, NULL));

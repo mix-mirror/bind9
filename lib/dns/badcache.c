@@ -110,7 +110,7 @@ dns_badcache_destroy(dns_badcache_t **bcp) {
 	dns_bcentry_t *bad = NULL;
 	struct cds_lfht_iter iter;
 	cds_lfht_for_each_entry(bc->ht, &iter, bad, ht_node) {
-		INSIST(!cds_lfht_del(bc->ht, &bad->ht_node));
+		RUNTIME_CHECK(!cds_lfht_del(bc->ht, &bad->ht_node));
 		bcentry_destroy(&bad->rcu_head);
 	}
 	RUNTIME_CHECK(!cds_lfht_destroy(bc->ht, NULL));

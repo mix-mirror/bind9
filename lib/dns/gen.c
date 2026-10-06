@@ -655,7 +655,8 @@ main(int argc, char **argv) {
 	n = snprintf(buf, sizeof(buf), "%srdata", srcdir);
 	INSIST(n > 0 && (unsigned int)n < sizeof(srcdir));
 
-	INSIST(start_directory(buf, &dir));
+	bool found = start_directory(buf, &dir);
+	INSIST(found);
 
 	while (next_file(&dir)) {
 		if (sscanf(dir.filename, TYPECLASSFMT, classbuf, &rdclass) != 2)

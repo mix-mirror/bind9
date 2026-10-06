@@ -145,7 +145,7 @@ init_items(isc_mem_t *mctx) {
 			item[i].key[len] = SHIFT_NOBYTE;
 		} while (dns_qp_getkey(qp, item[i].key, item[i].len, NULL,
 				       NULL) == ISC_R_SUCCESS);
-		INSIST(dns_qp_insert(qp, &item[i], i) == ISC_R_SUCCESS);
+		RUNTIME_CHECK(dns_qp_insert(qp, &item[i], i) == ISC_R_SUCCESS);
 	}
 	dns_qp_destroy(&qp);
 
@@ -366,7 +366,7 @@ load_multi(struct bench_state *bctx) {
 			item[i].present = false;
 			continue;
 		}
-		INSIST(dns_qp_insert(qp, &item[i], i) == ISC_R_SUCCESS);
+		RUNTIME_CHECK(dns_qp_insert(qp, &item[i], i) == ISC_R_SUCCESS);
 		item[i].present = true;
 		count++;
 	}

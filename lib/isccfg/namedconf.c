@@ -1176,8 +1176,8 @@ map_merge(const cfg_obj_t *config ISC_ATTR_UNUSED, cfg_obj_t *effectivemap,
 		if (effectiveres == ISC_R_NOTFOUND &&
 		    defaultres == ISC_R_SUCCESS)
 		{
-			INSIST(cfg_map_add(effectivemap, defaultobj, clause) ==
-			       ISC_R_SUCCESS);
+			RUNTIME_CHECK(cfg_map_add(effectivemap, defaultobj,
+						  clause) == ISC_R_SUCCESS);
 			continue;
 		}
 

@@ -257,8 +257,8 @@ copy_map_add(char *key, unsigned int type, isc_symvalue_t value, void *arg) {
 	cfg_obj_clone(value.as_pointer, &toelt);
 	value.as_pointer = toelt;
 
-	INSIST(isc_symtab_define(to->value.map->symtab, key, type, value,
-				 isc_symexists_reject) == ISC_R_SUCCESS);
+	RUNTIME_CHECK(isc_symtab_define(to->value.map->symtab, key, type, value,
+					isc_symexists_reject) == ISC_R_SUCCESS);
 
 	/*
 	 * Do not delete the existing element from `from` table.

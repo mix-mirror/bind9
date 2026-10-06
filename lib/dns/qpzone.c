@@ -581,7 +581,8 @@ free_db_rcu(struct rcu_head *rcu_head) {
 	qpdb->common.impmagic = 0;
 
 	if (qpdb->common.update_listeners != NULL) {
-		INSIST(!cds_lfht_destroy(qpdb->common.update_listeners, NULL));
+		RUNTIME_CHECK(
+			!cds_lfht_destroy(qpdb->common.update_listeners, NULL));
 	}
 
 	isc_mem_putanddetachx(&qpdb->common.mctx, qpdb, sizeof(*qpdb),

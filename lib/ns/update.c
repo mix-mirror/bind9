@@ -1471,7 +1471,8 @@ get_current_rr(dns_name_t *name, dns_rdata_t *rdata, dns_rdatatype_t *covers,
 	result = dns_rdataset_first(rdataset);
 	INSIST(result == ISC_R_SUCCESS);
 	dns_rdataset_current(rdataset, rdata);
-	INSIST(dns_rdataset_next(rdataset) == ISC_R_NOMORE);
+	result = dns_rdataset_next(rdataset);
+	INSIST(result == ISC_R_NOMORE);
 	*update_class = rdata->rdclass;
 	rdata->rdclass = dns_rdataclass_in;
 }
