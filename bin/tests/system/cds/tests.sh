@@ -252,13 +252,25 @@ name='CDNSKEY default algorithm'
 out=DS.2-2
 testcase 0 $CDS -s -7200 -f sig.cdnskey.2 -d DS.1 $Z
 
+name='CDNSKEY default algorithm (multi-signer)'
+out=DS.2-2
+testcase 0 $CDS -s -7200 -f sig.cdnskey.2 -f sig.cdnskey.2 -d DS.1 $Z
+
 name='CDNSKEY SHA1'
 out=DS.2-1
 testcase 0 $CDS -a SHA1 -s -7200 -f sig.cdnskey.2 -d DS.1 $Z
 
+name='CDNSKEY SHA1 (multi-signer)'
+out=DS.2-1
+testcase 0 $CDS -a SHA1 -s -7200 -f sig.cdnskey.2 -f sig.cdnskey.2 -d DS.1 $Z
+
 name='CDNSKEY two algorithms'
 out=DS.2
 testcase 0 $CDS -a SHA1 -a SHA256 -s -7200 -f sig.cdnskey.2 -d DS.1 $Z
+
+name='CDNSKEY two algorithms (multi-signer)'
+out=DS.2
+testcase 0 $CDS -a SHA1 -a SHA256 -s -7200 -f sig.cdnskey.2 -f sig.cdnskey.2 -d DS.1 $Z
 
 name='CDNSKEY two algorithms, reversed'
 out=DS.2
@@ -267,6 +279,10 @@ testcase 0 $CDS -a SHA256 -a SHA1 -s -7200 -f sig.cdnskey.2 -d DS.1 $Z
 name='CDNSKEY and CDS'
 out=DS.2
 testcase 0 $CDS -a1 -a2 -s -7200 -f sig.cds.cdnskey.2 -d DS.1 $Z
+
+name='CDNSKEY and CDS (multi-signer)'
+out=DS.2
+testcase 0 $CDS -a1 -a2 -s -7200 -f sig.cds.cdnskey.2 -f sig.cds.cdnskey.2 -d DS.1 $Z
 
 name='prefer CDNSKEY'
 out=DS.2-2
