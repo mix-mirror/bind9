@@ -37,6 +37,9 @@
 extern int verbose;
 extern bool quiet;
 
+/*% ! call exit() rather than _exit() in fatal(). */
+extern bool do_atexit;
+
 /*! journal file */
 extern const char *journal;
 
