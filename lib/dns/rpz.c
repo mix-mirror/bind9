@@ -1652,13 +1652,15 @@ dns_rpz_dbupdate_unregister(dns_db_t *db, dns_rpz_zone_t *rpz) {
 	dns_db_updatenotify_unregister(db, dns_rpz_dbupdate_callback, rpz);
 	if (rpz->processed) {
 		rpz->processed = false;
-		INSIST(atomic_fetch_sub_acq_rel(&rpz->rpzs->zones_processed,
-						1) > 0);
+		dns_rpz_num_t prev = atomic_fetch_sub_acq_rel(
+			&rpz->rpzs->zones_processed, 1);
+		INSIST(prev > 0);
 	}
 	if (rpz->dbregistered) {
 		rpz->dbregistered = false;
-		INSIST(atomic_fetch_sub_acq_rel(&rpz->rpzs->zones_registered,
-						1) > 0);
+		dns_rpz_num_t prev = atomic_fetch_sub_acq_rel(
+			&rpz->rpzs->zones_registered, 1);
+		INSIST(prev > 0);
 	}
 	UNLOCK(&rpz->update_lock);
 }

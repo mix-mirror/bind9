@@ -624,7 +624,8 @@ isc_hashmap_iter_destroy(isc_hashmap_iter_t **iterp) {
 	hashmap = iter->hashmap;
 	isc_mem_put(hashmap->mctx, iter, sizeof(*iter));
 
-	INSIST(atomic_fetch_sub_release(&hashmap->iterators, 1) > 0);
+	uint_fast32_t prev = atomic_fetch_sub_release(&hashmap->iterators, 1);
+	INSIST(prev > 0);
 }
 
 static isc_result_t

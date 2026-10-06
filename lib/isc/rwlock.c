@@ -146,10 +146,11 @@ writers_lock_acquire(isc_rwlock_t *rwl) {
 
 static void
 writers_lock_release(isc_rwlock_t *rwl) {
-	REQUIRE(atomic_compare_exchange_strong_explicit(
+	bool released = atomic_compare_exchange_strong_explicit(
 		&rwl->writers_lock, &(bool){ ISC_RWLOCK_LOCKED },
 		ISC_RWLOCK_UNLOCKED, memory_order_seq_cst,
-		memory_order_seq_cst));
+		memory_order_seq_cst);
+	REQUIRE(released);
 }
 
 #define ran_out_of_patience(cnt) (cnt >= RWLOCK_MAX_READER_PATIENCE)
