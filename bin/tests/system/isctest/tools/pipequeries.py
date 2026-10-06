@@ -72,11 +72,9 @@ def main() -> None:
             del pending[response.id]
             if response.rcode() != dns.rcode.NOERROR:
                 sys.exit(f"I:response rcode: {dns.rcode.to_text(response.rcode())}")
-            if len(response.answer) != 1:
-                print(
-                    f"I:response answer count ({len(response.answer)}!=1)",
-                    file=sys.stderr,
-                )
+            count = response.section_count(dns.message.ANSWER)
+            if count != 1:
+                print(f"I:response answer count ({count}!=1)", file=sys.stderr)
             for rrset in response.answer:
                 print(rrset.to_text(), flush=True)
 
