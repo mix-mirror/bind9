@@ -16,6 +16,7 @@ answer sections in the order the responses arrive.
 """
 
 import argparse
+import random
 import socket
 import sys
 import time
@@ -44,8 +45,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # Use sequential IDs from a random start, so that repeated runs do
+    # not reuse the same ID sequence, just like ditch.py does.
+    first_id = random.getrandbits(16)
     pending = {}
-    for msgid, qname in enumerate(sys.stdin.read().split()):
+    for offset, qname in enumerate(sys.stdin.read().split()):
+        msgid = (first_id + offset) & 0xFFFF
         query = dns.message.make_query(qname, "A", id=msgid)
         pending[msgid] = query
 
