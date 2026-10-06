@@ -5610,7 +5610,8 @@ Response Rate Limiting
 NXDOMAIN Redirection
 ^^^^^^^^^^^^^^^^^^^^
 
-:iscman:`named` supports NXDOMAIN redirection via two methods:
+:iscman:`named` allows NXDOMAIN redirection via two methods. Note that
+both methods are deprecated, and will be removed in a future release.
 
 -  :any:`Redirect zone <type redirect>`
 -  Redirect namespace
@@ -5625,7 +5626,7 @@ the normal namespace. All the redirect information is contained in the
 zone; there are no delegations.
 
 .. namedconf:statement:: nxdomain-redirect
-   :tags: query
+   :tags: deprecated
    :short: Appends the specified suffix to the original query name, when replacing an NXDOMAIN with a redirect namespace.
 
    With a redirect namespace (``option { nxdomain-redirect <suffix> };``),
@@ -7093,7 +7094,7 @@ Zone Types
    globally, re-specify the global forwarders.
 
 .. namedconf:statement:: type redirect
-   :tags: zone
+   :tags: deprecated
    :short: Contains information to answer queries when normal resolution would return NXDOMAIN.
 
    Redirect zones are used to provide answers to queries when normal
@@ -7105,29 +7106,32 @@ Zone Types
    is signed, no substitution occurs.
 
    To redirect all NXDOMAIN responses to 100.100.100.2 and
-   2001:ffff:ffff::100.100.100.2, configure a type :any:`redirect <type redirect>` zone
-   named ".", with the zone file containing wildcard records that point to
-   the desired addresses: ``*. IN A 100.100.100.2`` and
-   ``*. IN AAAA 2001:ffff:ffff::100.100.100.2``.
+   2001:ffff:ffff::100.100.100.2, configure a type
+   :any:`redirect <type redirect>` zone named ".", with the zone file
+   containing wildcard records that point to the desired addresses:
+   ``*. IN A 100.100.100.2`` and ``*. IN AAAA 2001:ffff:ffff::100.100.100.2``.
 
-   As another example, to redirect all Spanish names (under .ES), use similar entries
-   but with the names ``*.ES.`` instead of ``*.``. To redirect all commercial
-   Spanish names (under COM.ES), use wildcard entries
-   called ``*.COM.ES.``.
+   As another example, to redirect all Spanish names (under .ES), use
+   similar entries but with the names ``*.ES.`` instead of ``*.``. To
+   redirect all commercial Spanish names (under COM.ES), use wildcard
+   entries called ``*.COM.ES.``.
 
    Note that the redirect zone supports all possible types; it is not
    limited to A and AAAA records.
 
-   If a redirect zone is configured with a :any:`primaries` option, then it is
-   transferred in as if it were a secondary zone. Otherwise, it is loaded from a
-   file as if it were a primary zone.
+   If a redirect zone is configured with a :any:`primaries` option, then it
+   is transferred in as if it were a secondary zone. Otherwise, it is
+   loaded from a file as if it were a primary zone.
 
    Because redirect zones are not referenced directly by name, they are not
-   kept in the zone lookup table with normal primary and secondary zones. To reload
-   a redirect zone, use :option:`rndc reload -redirect <rndc reload>`; to retransfer a
-   redirect zone configured as a secondary, use :option:`rndc retransfer -redirect <rndc retransfer>`.
-   When using :option:`rndc reload` without specifying a zone name, redirect
-   zones are reloaded along with other zones.
+   kept in the zone lookup table with normal primary and secondary zones.
+   To reload a redirect zone, use :option:`rndc reload -redirect <rndc
+   reload>`; to retransfer a redirect zone configured as a secondary, use
+   :option:`rndc retransfer -redirect <rndc retransfer>`.  When using
+   :option:`rndc reload` without specifying a zone name, redirect zones are
+   reloaded along with other zones.
+
+   Redirect zones are deprecated, and will be removed in a future release.
 
 .. namedconf:statement:: in-view
    :tags: view, zone
