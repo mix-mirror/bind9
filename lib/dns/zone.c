@@ -9000,7 +9000,7 @@ static void
 keyfetch_continue(dns_zonefetch_t *fetch) {
 	REQUIRE(fetch->fetchtype == ZONEFETCHTYPE_KEY);
 	/* No continue path for keyfetch exists. */
-	REQUIRE(0);
+	UNREACHABLE();
 }
 
 static void
