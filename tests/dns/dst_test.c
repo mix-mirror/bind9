@@ -33,6 +33,7 @@
 #include <isc/crypto.h>
 #include <isc/file.h>
 #include <isc/hex.h>
+#include <isc/lex.h>
 #include <isc/lib.h>
 #include <isc/result.h>
 #include <isc/stdio.h>
@@ -45,6 +46,7 @@
 #include <dst/dst.h>
 
 #include "dst_internal.h"
+#include "dst_parse.h"
 
 #include <tests/dns.h>
 
@@ -539,11 +541,143 @@ ISC_RUN_TEST_IMPL(ecdsa_determinism_test) {
 	dst_key_free(&key);
 }
 
+/* All private-file metadata must survive an RSA key round trip. */
+ISC_RUN_TEST_IMPL(private_metadata) {
+	const int timetags[] = {
+		DST_TIME_CREATED,   DST_TIME_PUBLISH,	  DST_TIME_ACTIVATE,
+		DST_TIME_REVOKE,    DST_TIME_INACTIVE,	  DST_TIME_DELETE,
+		DST_TIME_DSPUBLISH, DST_TIME_SYNCPUBLISH, DST_TIME_SYNCDELETE,
+	};
+	const int numerictags[] = {
+		DST_NUM_PREDECESSOR,
+		DST_NUM_SUCCESSOR,
+		DST_NUM_MAXTTL,
+		DST_NUM_ROLLPERIOD,
+	};
+	const isc_stdtime_t base = 1700000000;
+	const int type = DST_TYPE_PUBLIC | DST_TYPE_PRIVATE;
+	char directory[] = BUILDDIR "/private_metadata.XXXXXX";
+	char filename[1024];
+	isc_buffer_t buffer;
+	isc_result_t result;
+	dst_key_t *key = NULL, *copy = NULL;
+
+	result = dst_key_fromnamedfile("Ktest.+008+11349",
+				       TESTS_DIR "/testdata/dst", type,
+				       isc_g_mctx, &key);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	for (size_t i = 0; i < ARRAY_SIZE(timetags); i++) {
+		dst_key_settime(key, timetags[i], base + i);
+	}
+	for (size_t i = 0; i < ARRAY_SIZE(numerictags); i++) {
+		dst_key_setnum(key, numerictags[i], 100 + i);
+	}
+
+	assert_non_null(mkdtemp(directory));
+	result = dst_key_tofile(key, type, directory);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	result = dst_key_fromnamedfile("Ktest.+008+11349", directory, type,
+				       isc_g_mctx, &copy);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_true(dst_key_compare(key, copy));
+
+	for (size_t i = 0; i < ARRAY_SIZE(timetags); i++) {
+		isc_stdtime_t when;
+
+		result = dst_key_gettime(copy, timetags[i], &when);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_int_equal(when, base + i);
+	}
+	for (size_t i = 0; i < ARRAY_SIZE(numerictags); i++) {
+		uint32_t value;
+
+		result = dst_key_getnum(copy, numerictags[i], &value);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_int_equal(value, 100 + i);
+	}
+
+	isc_buffer_init(&buffer, filename, sizeof(filename));
+	result = dst_key_buildfilename(key, DST_TYPE_PUBLIC, directory,
+				       &buffer);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_equal(unlink(filename), 0);
+	isc_buffer_clear(&buffer);
+	result = dst_key_buildfilename(key, DST_TYPE_PRIVATE, directory,
+				       &buffer);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_equal(unlink(filename), 0);
+	assert_int_equal(rmdir(directory), 0);
+
+	dst_key_free(&copy);
+	dst_key_free(&key);
+}
+
+/* Metadata and ignored future fields must not leave gaps in key data. */
+ISC_RUN_TEST_IMPL(private_metadata_order) {
+	const char *fields[] = {
+		"Predecessor: 123\nKey: AQID\nBits: AAA=\n",
+		"Key: AQID\nPredecessor: 123\nBits: AAA=\n",
+		"Future: ignored\nKey: AQID\nPredecessor: 123\n"
+		"Future: ignored\nBits: AAA=\n",
+	};
+	unsigned char secret[] = { 1, 2, 3 };
+
+	for (size_t i = 0; i < ARRAY_SIZE(fields); i++) {
+		char text[512];
+		isc_buffer_t buffer;
+		isc_lex_t *lex = NULL;
+		dst_key_t *key = NULL;
+		dst_private_t priv;
+		isc_result_t result;
+		uint32_t predecessor;
+
+		isc_buffer_init(&buffer, secret, sizeof(secret));
+		isc_buffer_add(&buffer, sizeof(secret));
+		result = dst_key_frombuffer(dns_rootname, DST_ALG_HMACSHA256, 0,
+					    DNS_KEYPROTO_DNSSEC,
+					    dns_rdataclass_in, &buffer,
+					    isc_g_mctx, &key);
+		assert_int_equal(result, ISC_R_SUCCESS);
+
+		isc_buffer_init(&buffer, text, sizeof(text));
+		result = isc_buffer_printf(
+			&buffer,
+			"Private-key-format: v%d.%d\nAlgorithm: %u\n%s",
+			DST_MAJOR_VERSION, DST_MINOR_VERSION + (i == 2),
+			DST_ALG_HMACSHA256, fields[i]);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		isc_lex_create(isc_g_mctx, sizeof(text), &lex);
+		result = isc_lex_openbuffer(lex, &buffer);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		result = dst__privstruct_parse(key, DST_ALG_HMACSHA256, lex,
+					       isc_g_mctx, &priv);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_int_equal(priv.nelements, 2);
+		assert_int_equal(priv.elements[0].tag, TAG_HMACSHA256_KEY);
+		assert_int_equal(priv.elements[0].length, sizeof(secret));
+		assert_memory_equal(priv.elements[0].data, secret,
+				    sizeof(secret));
+		assert_int_equal(priv.elements[1].tag, TAG_HMACSHA256_BITS);
+		assert_int_equal(priv.elements[1].length, 2);
+		assert_memory_equal(priv.elements[1].data, "\0\0", 2);
+		result = dst_key_getnum(key, DST_NUM_PREDECESSOR, &predecessor);
+		assert_int_equal(result, ISC_R_SUCCESS);
+		assert_int_equal(predecessor, 123);
+
+		dst__privstruct_free(&priv, isc_g_mctx);
+		isc_lex_destroy(&lex);
+		dst_key_free(&key);
+	}
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(algorithm_fromdata)
 ISC_TEST_ENTRY(sig_test)
 ISC_TEST_ENTRY(cmp_test)
 ISC_TEST_ENTRY(ecdsa_determinism_test)
+ISC_TEST_ENTRY(private_metadata)
+ISC_TEST_ENTRY(private_metadata_order)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

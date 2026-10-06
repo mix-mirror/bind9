@@ -34,18 +34,12 @@
 
 #define MAXFIELDSIZE 512
 
-/*
- * Maximum number of fields in a private file is 18 (12 algorithm-
- * specific fields for RSA, plus 6 generic fields).
- */
-#define MAXFIELDS 12 + 6
-
 #define TAG_SHIFT     4
 #define TAG_ALG(tag)  ((unsigned int)(tag) >> TAG_SHIFT)
 #define TAG(alg, off) (((alg) << TAG_SHIFT) + (off))
 
 /* These are used by RSA-SHA1, RSASHA256 and RSASHA512 */
-#define RSA_NTAGS		11
+#define RSA_NTAGS		10
 #define TAG_RSA_MODULUS		((DST_ALG_RSA << TAG_SHIFT) + 0)
 #define TAG_RSA_PUBLICEXPONENT	((DST_ALG_RSA << TAG_SHIFT) + 1)
 #define TAG_RSA_PRIVATEEXPONENT ((DST_ALG_RSA << TAG_SHIFT) + 2)
@@ -57,12 +51,12 @@
 #define TAG_RSA_ENGINE		((DST_ALG_RSA << TAG_SHIFT) + 8)
 #define TAG_RSA_LABEL		((DST_ALG_RSA << TAG_SHIFT) + 9)
 
-#define ECDSA_NTAGS	     4
+#define ECDSA_NTAGS	     3
 #define TAG_ECDSA_PRIVATEKEY ((DST_ALG_ECDSA256 << TAG_SHIFT) + 0)
 #define TAG_ECDSA_ENGINE     ((DST_ALG_ECDSA256 << TAG_SHIFT) + 1)
 #define TAG_ECDSA_LABEL	     ((DST_ALG_ECDSA256 << TAG_SHIFT) + 2)
 
-#define EDDSA_NTAGS	     4
+#define EDDSA_NTAGS	     3
 #define TAG_EDDSA_PRIVATEKEY ((DST_ALG_ED25519 << TAG_SHIFT) + 0)
 #define TAG_EDDSA_ENGINE     ((DST_ALG_ED25519 << TAG_SHIFT) + 1)
 #define TAG_EDDSA_LABEL	     ((DST_ALG_ED25519 << TAG_SHIFT) + 2)
@@ -91,6 +85,12 @@
 #define HMACSHA512_NTAGS    2
 #define TAG_HMACSHA512_KEY  ((DST_ALG_HMACSHA512 << TAG_SHIFT) + 0)
 #define TAG_HMACSHA512_BITS ((DST_ALG_HMACSHA512 << TAG_SHIFT) + 1)
+
+/*
+ * Maximum number of algorithm-specific fields.  RSA has the most tags;
+ * metadata is stored separately and does not count toward this limit.
+ */
+#define MAXFIELDS RSA_NTAGS
 
 struct dst_private_element {
 	unsigned short tag;

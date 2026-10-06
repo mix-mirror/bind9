@@ -397,7 +397,7 @@ dst__privstruct_free(dst_private_t *priv, isc_mem_t *mctx) {
 isc_result_t
 dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		      isc_mem_t *mctx, dst_private_t *priv) {
-	int n = 0, major, minor;
+	int major, minor;
 	isc_buffer_t b;
 	isc_token_t token;
 	unsigned char *data = NULL;
@@ -482,10 +482,12 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 	READLINE(lex, opt, &token);
 
 	/*
-	 * Read the key data.
+	 * Read all key data and metadata through EOF.  Only key data consumes
+	 * entries in priv->elements.
 	 */
-	for (n = 0; n < MAXFIELDS; n++) {
+	for (;;) {
 		int tag;
+		unsigned int n;
 		isc_region_t r;
 		do {
 			result = isc_lex_gettoken(lex, opt, &token);
@@ -550,6 +552,11 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 			goto cleanup;
 		}
 
+		n = priv->nelements;
+		if (n == MAXFIELDS) {
+			result = DST_R_INVALIDPRIVATEKEY;
+			goto cleanup;
+		}
 		priv->elements[n].tag = tag;
 
 		data = isc_mem_get(mctx, MAXFIELDSIZE);
@@ -561,10 +568,10 @@ dst__privstruct_parse(dst_key_t *key, unsigned int alg, isc_lex_t *lex,
 		priv->elements[n].length = r.length;
 		priv->elements[n].data = r.base;
 		priv->nelements++;
+		data = NULL;
 
 	next:
 		READLINE(lex, opt, &token);
-		data = NULL;
 	}
 
 done:
