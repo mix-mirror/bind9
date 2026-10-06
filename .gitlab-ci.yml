@@ -74,6 +74,34 @@ stages:
         sudo sh -x build/bin/tests/system/ifconfig.sh up;
       fi
 
+# Capture DNS traffic for the whole respdiff run: resolvers to the internet
+# on port 53 and the respdiff client to the resolvers on port 5300. The
+# capture lands in bind9-qa/respdiff/capture, inside the artifact path, and is
+# split per side afterwards so that the two volumes can be judged separately.
+.capture_start: &capture_start
+  - apt-get -y -q install tcpdump >apt-tcpdump.log 2>&1 || cat apt-tcpdump.log
+  - mkdir -p capture
+  - |
+    {
+      id
+      grep -i '^Cap' /proc/self/status
+      ip -brief address
+      ip route
+    } >capture/netinfo.txt 2>&1 || true
+  - tcpdump -i any -n -s 0 -B 16384 -w capture/traffic.pcap 'port 53 or port 5300' 2>capture/tcpdump.err &
+  - sleep 2
+  - cat capture/tcpdump.err
+
+.capture_stop: &capture_stop
+  - pkill -INT -x tcpdump || true
+  - sleep 3
+  - cat capture/tcpdump.err
+  - tcpdump -nr capture/traffic.pcap -w capture/upstream.pcap 'port 53' 2>/dev/null || true
+  - tcpdump -nr capture/traffic.pcap -w capture/client.pcap 'port 5300' 2>/dev/null || true
+  - ls -l capture/
+  - zstd -T0 -q --rm capture/traffic.pcap capture/upstream.pcap capture/client.pcap || true
+  - ls -l capture/
+
 .respdiff: &respdiff_job
   <<: *experiment_rules
   stage: system
@@ -103,8 +131,11 @@ respdiff:
     EXTRA_SETUP_FILES: "--native-file ci/respdiff.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.3"
   script:
-    - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named"
+    - *capture_start
+    - bash respdiff.sh -m /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 -s named -q "${PWD}/100k_mixed.txt" -c 3 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" "/usr/local/respdiff-reference-bind/sbin/named" || respdiff_status=$?
+    - *capture_stop
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
+    - exit "${respdiff_status:-0}"
 
 respdiff-third-party:
   <<: *respdiff_job
@@ -113,5 +144,8 @@ respdiff-third-party:
     EXTRA_SETUP_FILES: "--native-file ci/respdiff-third-party.ini"
     MAX_DISAGREEMENTS_PERCENTAGE: "0.5"
   script:
-    - bash respdiff.sh -s third_party -q "${PWD}/100k_mixed.txt" -c 1 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}"
+    - *capture_start
+    - bash respdiff.sh -s third_party -q "${PWD}/100k_mixed.txt" -c 1 -w "${PWD}/rspworkdir" -r "${PWD}/respdiff" "${CI_PROJECT_DIR}" || respdiff_status=$?
+    - *capture_stop
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
+    - exit "${respdiff_status:-0}"
