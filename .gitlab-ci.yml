@@ -137,6 +137,20 @@ respdiff:
     - cd ../.. && ninja -C build clean >/dev/null 2>&1
     - exit "${respdiff_status:-0}"
 
+# Answers, in a couple of minutes and without building BIND, which source
+# addressing scheme lets a capture attribute upstream packets to a resolver.
+respdiff-netprobe:
+  <<: *base_image
+  <<: *experiment_rules
+  stage: system
+  needs: []
+  script:
+    - bash ci/respdiff-netprobe.sh netprobe
+  artifacts:
+    paths:
+      - netprobe
+    when: always
+
 respdiff-third-party:
   <<: *respdiff_job
   <<: *base_image
