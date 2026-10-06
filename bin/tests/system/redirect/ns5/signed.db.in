@@ -1,9 +1,0 @@
-$TTL 300
-@			IN SOA	ns.signed. hostmaster.signed. 0 0 0 0 0
-@			IN NS	ns.signed.
-
-ns.signed.		IN A	10.0.53.6
-domain.signed.		IN A	10.0.53.1
-
-*			IN A	100.100.100.1
-*			IN AAAA	2001:ffff:ffff::100.100.100.1

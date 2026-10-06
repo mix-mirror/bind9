@@ -6,33 +6,11 @@ options {
 
 {% include "_common/controls.conf.j2" %}
 
-view "vredirect" {
+view "root" {
 	match-clients { 10.53.0.1; };
 	zone "." {
 		type primary;
 		file "root.db";
-	};
-
-	zone "." {
-		type redirect;
-		file "redirect.db";
-		allow-query { any; };
-		allow-query-on { none; };
-	};
-};
-
-view "vredirect2" {
-	match-clients { 10.53.0.5; };
-	zone "." {
-		type primary;
-		file "root.db";
-	};
-
-	zone "." {
-		type redirect;
-		file "redirect.db";
-		allow-query { any; };
-		allow-query-on { 10.53.0.1; };
 	};
 };
 

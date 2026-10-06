@@ -735,14 +735,6 @@ Currently supported commands are:
 
    See also :option:`rndc showzone`.
 
-:program:`rndc` commands that specify zone names, such as :option:`reload`
-:option:`retransfer`, or :option:`zonestatus`, can be ambiguous when applied to zones
-of type ``redirect``. Redirect zones are always called ``.``, and can be
-confused with zones of type ``hint`` or with secondary copies of the root
-zone. To specify a redirect zone, use the special zone name
-``-redirect``, without a trailing period. (With a trailing period, this
-would specify a zone called "-redirect".)
-
 Limitations
 ~~~~~~~~~~~
 

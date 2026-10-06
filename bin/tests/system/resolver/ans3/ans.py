@@ -122,7 +122,7 @@ class LargeReferralHandler(StaticResponseHandler):
         rrset_from_list(
             matcher.of(Qname).qnames[0],
             dns.rdatatype.NS,
-            [f"ns{i}.fake.redirect.com." for i in range(1, 1000)],
+            [f"ns{i}.fake.example.com." for i in range(1, 1000)],
         )
     ]
 

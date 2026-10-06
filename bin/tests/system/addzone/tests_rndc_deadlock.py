@@ -20,10 +20,7 @@ pytestmark = pytest.mark.extra_artifacts(
     [
         "ns*/*.nzf*",
         "ns*/*.nzd*",
-        "ns1/redirect.db",
         "ns2/new-zones",
-        "ns2/redirect.db",
-        "ns3/redirect.db",
     ]
 )
 

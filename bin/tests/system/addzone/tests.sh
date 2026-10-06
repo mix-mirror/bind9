@@ -18,12 +18,6 @@ set -e
 DIGOPTS="+tcp +nosea +nostat +nocmd +norec +noques +noauth +noadd +nostats +dnssec -p ${PORT}"
 RNDCCMD="$RNDC -c ../_common/rndc.conf -p ${CONTROLPORT} -s"
 
-check_zonestatus() (
-  $RNDCCMD "10.53.0.$1" zonestatus -redirect >"zonestatus.out.ns$1.$n" \
-    && grep "type: redirect" "zonestatus.out.ns$1.$n" >/dev/null \
-    && grep "serial: 1" "zonestatus.out.ns$1.$n" >/dev/null
-)
-
 status=0
 n=0
 
@@ -235,34 +229,6 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-echo_i "checking rndc showzone with a normally-loaded redirect zone ($n)"
-ret=0
-$RNDCCMD 10.53.0.1 showzone -redirect >rndc.out.ns1.$n
-expected='zone "." { type redirect; file "redirect.db"; };'
-[ "$(cat rndc.out.ns1.$n)" = "$expected" ] || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "checking rndc zonestatus with a normally-loaded redirect zone ($n)"
-ret=0
-$RNDCCMD 10.53.0.1 zonestatus -redirect >rndc.out.ns1.$n
-grep "type: redirect" rndc.out.ns1.$n >/dev/null || ret=1
-grep "serial: 0" rndc.out.ns1.$n >/dev/null || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "checking rndc reload with a normally-loaded redirect zone ($n)"
-ret=0
-sleep 1
-cp -f ns1/redirect.db.2 ns1/redirect.db
-$RNDCCMD 10.53.0.1 reload -redirect >rndc.out.ns1.$n
-retry_quiet 5 check_zonestatus 1 || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
 echo_i "delete a normally-loaded zone ($n)"
 ret=0
 $RNDCCMD 10.53.0.2 delzone normal.example >rndc.out.ns2.$n 2>&1
@@ -369,92 +335,6 @@ status=$((status + ret))
 echo_i "check that adding a 'static-stub' zone works ($n)"
 ret=0
 $RNDCCMD 10.53.0.2 addzone 'static-stub.example { type static-stub; server-addresses { 1.2.3.4; }; };' >rndc.out.ns2.$n 2>&1 || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "check that adding a 'primary redirect' zone works ($n)"
-ret=0
-$RNDCCMD 10.53.0.2 addzone '"." { type redirect; file "redirect.db"; };' >rndc.out.ns2.$n 2>&1 || ret=1
-_check_add_primary_redirect() (
-  $RNDCCMD 10.53.0.2 showzone -redirect >showzone.out.ns2.$n 2>&1 \
-    && grep "type redirect;" showzone.out.ns2.$n >/dev/null \
-    && $RNDCCMD 10.53.0.2 zonestatus -redirect >zonestatus.out.ns2.$n 2>&1 \
-    && grep "type: redirect" zonestatus.out.ns2.$n >/dev/null \
-    && grep "serial: 0" zonestatus.out.ns2.$n >/dev/null
-)
-retry_quiet 10 _check_add_primary_redirect || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "check that reloading a added 'primary redirect' zone works ($n)"
-ret=0
-sleep 1
-cp -f ns2/redirect.db.2 ns2/redirect.db
-$RNDCCMD 10.53.0.2 reload -redirect >rndc.out.ns2.$n
-retry_quiet 10 check_zonestatus 2 || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "check that retransfer of a added 'primary redirect' zone fails ($n)"
-ret=0
-$RNDCCMD 10.53.0.2 retransfer -redirect >rndc.out.ns2.$n 2>&1 && ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "check that deleting a 'primary redirect' zone works ($n)"
-ret=0
-$RNDCCMD 10.53.0.2 delzone -redirect >rndc.out.ns2.$n 2>&1 || ret=1
-_check_deleting_primary_redirect() (
-  $RNDCCMD 10.53.0.2 showzone -redirect >showzone.out.ns2.$n 2>&1 || true
-  grep 'not found' showzone.out.ns2.$n >/dev/null
-)
-retry_quiet 10 _check_deleting_primary_redirect || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "check that adding a 'secondary redirect' zone works ($n)"
-ret=0
-$RNDCCMD 10.53.0.2 addzone '"." { type redirect; primaries { 10.53.0.3;}; file "redirect.bk"; };' >rndc.out.ns2.$n 2>&1 || ret=1
-_check_adding_secondary_redirect() (
-  $RNDCCMD 10.53.0.2 showzone -redirect >showzone.out.ns2.$n 2>&1 \
-    && grep "type redirect;" showzone.out.ns2.$n >/dev/null \
-    && $RNDCCMD 10.53.0.2 zonestatus -redirect >zonestatus.out.ns2.$n 2>&1 \
-    && grep "type: redirect" zonestatus.out.ns2.$n >/dev/null \
-    && grep "serial: 0" zonestatus.out.ns2.$n >/dev/null
-)
-retry_quiet 10 _check_adding_secondary_redirect || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "check that retransfering a added 'secondary redirect' zone works ($n)"
-ret=0
-cp -f ns3/redirect.db.2 ns3/redirect.db
-$RNDCCMD 10.53.0.3 reload . >showzone.out.ns3.$n 2>&1 || ret=1
-_check_retransfering_secondary_redirect() (
-  $RNDCCMD 10.53.0.2 retransfer -redirect >rndc.out.ns2.$n 2>&1 \
-    && $RNDCCMD 10.53.0.2 zonestatus -redirect >zonestatus.out.ns2.$n 2>&1 \
-    && grep "type: redirect" zonestatus.out.ns2.$n >/dev/null \
-    && grep "serial: 1" zonestatus.out.ns2.$n >/dev/null
-)
-retry_quiet 10 _check_retransfering_secondary_redirect || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "check that deleting a 'secondary redirect' zone works ($n)"
-ret=0
-$RNDCCMD 10.53.0.2 delzone -redirect >rndc.out.ns2.$n 2>&1 || ret=1
-_check_deleting_secondary_redirect() (
-  $RNDCCMD 10.53.0.2 showzone -redirect >showzone.out.ns2.$n 2>&1 || true
-  grep 'not found' showzone.out.ns2.$n >/dev/null
-)
-retry_quiet 10 _check_deleting_secondary_redirect || ret=1
 n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))

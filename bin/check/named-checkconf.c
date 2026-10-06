@@ -146,7 +146,6 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	const char *zname;
 	const char *zfile = NULL;
 	const cfg_obj_t *maps[4];
-	const cfg_obj_t *primariesobj = NULL;
 	const cfg_obj_t *inviewobj = NULL;
 	const cfg_obj_t *zoptions = NULL;
 	const cfg_obj_t *classobj = NULL;
@@ -224,30 +223,14 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 
 	/*
 	 * Check hints files for hint zones.
-	 * Skip loading checks for any type other than
-	 * master and redirect
+	 * Skip loading checks for any type other than master
 	 */
 	if (strcasecmp(cfg_obj_asstring(typeobj), "hint") == 0) {
 		return configure_hint(zfile, zclass);
 	} else if ((strcasecmp(cfg_obj_asstring(typeobj), "primary") != 0) &&
-		   (strcasecmp(cfg_obj_asstring(typeobj), "master") != 0) &&
-		   (strcasecmp(cfg_obj_asstring(typeobj), "redirect") != 0))
+		   (strcasecmp(cfg_obj_asstring(typeobj), "master") != 0))
 	{
 		return ISC_R_SUCCESS;
-	}
-
-	/*
-	 * Is the redirect zone configured as a secondary?
-	 */
-	if (strcasecmp(cfg_obj_asstring(typeobj), "redirect") == 0) {
-		cfg_map_get(zoptions, "primaries", &primariesobj);
-		if (primariesobj == NULL) {
-			cfg_map_get(zoptions, "masters", &primariesobj);
-		}
-
-		if (primariesobj != NULL) {
-			return ISC_R_SUCCESS;
-		}
 	}
 
 	if (zfile == NULL) {

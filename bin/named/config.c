@@ -236,8 +236,6 @@ named_config_getzonetype(const cfg_obj_t *zonetypeobj) {
 		ztype = dns_zone_stub;
 	} else if (strcasecmp(str, "static-stub") == 0) {
 		ztype = dns_zone_staticstub;
-	} else if (strcasecmp(str, "redirect") == 0) {
-		ztype = dns_zone_redirect;
 	} else {
 		UNREACHABLE();
 	}

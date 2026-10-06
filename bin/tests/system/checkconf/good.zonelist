@@ -5,7 +5,6 @@ example1 IN second primary
 example2 IN second static-stub
 example3 IN second static-stub
 clone IN second in-view first
-. IN second redirect
 clone IN third in-view first
 dnssec IN third primary
 p IN third primary

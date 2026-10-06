@@ -340,16 +340,6 @@ for ns in 2 4 5 6; do
 
 done
 
-echo_i "prime redirect response (+nodnssec) (synth-from-dnssec <default>;) ($n)"
-ret=0
-dig_with_opts +nodnssec a.redirect. @10.53.0.3 a >dig.out.ns3.test$n || ret=1
-check_ad_flag no dig.out.ns3.test$n || ret=1
-check_status NOERROR dig.out.ns3.test$n || ret=1
-grep 'a\.redirect\..*300.IN.A.100\.100\.100\.2' dig.out.ns3.test$n >/dev/null || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
 #
 # ensure TTL of synthesised answers differs from direct answers.
 #
@@ -790,31 +780,6 @@ for ns in 2 4 5 6; do
     echo_i "Skipping JSON statistics checks"
   fi
 done
-
-echo_i "check redirect response (+dnssec) (synth-from-dnssec <default>;) ($n)"
-ret=0
-synth=${synth_default}
-dig_with_opts b.redirect. @10.53.0.3 a >dig.out.ns3.test$n || ret=1
-check_ad_flag yes dig.out.ns3.test$n || ret=1
-check_status NXDOMAIN dig.out.ns3.test$n || ret=1
-if [ ${synth} = yes ]; then
-  check_synth_soa . dig.out.ns3.test$n || ret=1
-else
-  check_nosynth_soa . dig.out.ns3.test$n || ret=1
-fi
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-echo_i "check redirect response (+nodnssec) (synth-from-dnssec <default>;) ($n)"
-ret=0
-dig_with_opts +nodnssec b.redirect. @10.53.0.3 a >dig.out.ns3.test$n || ret=1
-check_ad_flag no dig.out.ns3.test$n || ret=1
-check_status NOERROR dig.out.ns3.test$n || ret=1
-grep 'b\.redirect\..*300.IN.A.100\.100\.100\.2' dig.out.ns3.test$n >/dev/null || ret=1
-n=$((n + 1))
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
 
 echo_i "check DNAME handling (synth-from-dnssec yes;) ($n)"
 ret=0

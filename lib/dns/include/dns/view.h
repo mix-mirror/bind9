@@ -213,10 +213,7 @@ struct dns_view {
 	ISC_LINK(struct dns_view) link;
 	dns_viewlist_t *viewlist;
 
-	dns_zone_t     *managed_keys;
-	dns_zone_t     *redirect;
-	dns_name_t     *redirectzone; /* points to redirectfixed when valid */
-	dns_fixedname_t redirectfixed;
+	dns_zone_t *managed_keys;
 
 	/*
 	 * File and configuration data for zones added at runtime.

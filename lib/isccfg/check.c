@@ -3414,20 +3414,15 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		} else if (strcasecmp(typestr, "hint") == 0) {
 			ztype = CFG_ZONE_HINT;
 		} else if (strcasecmp(typestr, "redirect") == 0) {
-			cfg_obj_log(obj, ISC_LOG_WARNING,
-				    "zone '%s': type 'redirect' is deprecated",
+			cfg_obj_log(obj, ISC_LOG_ERROR,
+				    "zone '%s': type 'redirect' is no "
+				    "longer supported",
 				    znamestr);
-			ztype = CFG_ZONE_REDIRECT;
+			return ISC_R_FAILURE;
 		} else {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
 				    "zone '%s': invalid type %s", znamestr,
 				    typestr);
-			return ISC_R_FAILURE;
-		}
-
-		if (ztype == CFG_ZONE_REDIRECT && strcmp(znamestr, ".") != 0) {
-			cfg_obj_log(zconfig, ISC_LOG_ERROR,
-				    "redirect zones must be called \".\"");
 			return ISC_R_FAILURE;
 		}
 	}
@@ -3483,10 +3478,7 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		dns_rdataclass_format(zclass, classbuf, sizeof(classbuf));
 
 		tresult = exists(
-			zconfig, namebuf,
-			ztype == CFG_ZONE_HINT	     ? 1
-			: ztype == CFG_ZONE_REDIRECT ? 2
-						     : 3,
+			zconfig, namebuf, ztype == CFG_ZONE_HINT ? 1 : 2,
 			symtab,
 			"zone '%s': already exists previous definition: %s:%u",
 			mctx);
@@ -3523,7 +3515,6 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 			break;
 
 		case CFG_ZONE_FORWARD:
-		case CFG_ZONE_REDIRECT:
 			break;
 
 		case CFG_ZONE_PRIMARY:

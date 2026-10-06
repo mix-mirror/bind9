@@ -192,8 +192,6 @@ echo_i "checking named-checkconf deprecate warnings ($n)"
 ret=0
 $CHECKCONF deprecated.conf >checkconf.out$n.1 2>&1 || ret=1
 grep "option 'max-zone-ttl' is deprecated" <checkconf.out$n.1 >/dev/null || ret=1
-grep "option 'nxdomain-redirect' is deprecated" <checkconf.out$n.1 >/dev/null || ret=1
-grep "type 'redirect' is deprecated" <checkconf.out$n.1 >/dev/null || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 # set -i to ignore deprecate warnings
@@ -767,6 +765,17 @@ echo_i "check that max-ixfr-ratio 100% generates a warning ($n)"
 ret=0
 $CHECKCONF warn-maxratio1.conf >checkconf.out$n 2>/dev/null || ret=1
 grep "exceeds 100%" <checkconf.out$n >/dev/null || ret=1
+if [ $ret -ne 0 ]; then
+  echo_i "failed"
+  ret=1
+fi
+status=$((status + ret))
+
+n=$((n + 1))
+echo_i "check that nxdomain-redirect generates a warning ($n)"
+ret=0
+$CHECKCONF warn-nxdomain-redirect.conf >checkconf.out$n 2>/dev/null || ret=1
+grep "is obsolete and should be removed" <checkconf.out$n >/dev/null || ret=1
 if [ $ret -ne 0 ]; then
   echo_i "failed"
   ret=1

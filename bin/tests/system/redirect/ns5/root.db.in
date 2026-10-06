@@ -1,7 +1,0 @@
-.			86400	IN	SOA	a.root-servers.nil. hostmaster.example.net. 2019022100 1800 900 604800 86400
-.			518400	IN	NS	a.root-servers.nil.
-a.root-servers.nil.	518400	IN	A	10.53.0.5
-signed.			172800	IN	NS	ns.signed.
-ns.signed.		172800	IN	A	10.53.0.6
-unsigned.		172800	IN	NS	ns.unsigned.
-ns.unsigned.		172800	IN	A	10.53.0.5

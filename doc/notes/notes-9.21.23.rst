@@ -72,9 +72,9 @@ Bug Fixes
   Ed25519 and Ed448 curves did not work in PKCS#11. This has been fixed.
   :gl:`#5762`
 
-- Fix :any:`nxdomain-redirect` combined with :any:`dns64`.
+- Fix ``nxdomain-redirect`` combined with :any:`dns64`.
 
-  When a resolver was configured with both :any:`nxdomain-redirect` and
+  When a resolver was configured with both ``nxdomain-redirect`` and
   :any:`dns64` in the same view, an AAAA query for a nonexistent name
   could abort :iscman:`named`. The combination failed whenever the
   redirect zone held A records but no AAAA records.  The server now
@@ -91,7 +91,7 @@ Bug Fixes
 
 - Clear REDIRECT flag when it isn't needed.
 
-  When :any:`nxdomain-redirect` is in use, and a recursive query is used
+  When ``nxdomain-redirect`` is in use, and a recursive query is used
   to get the redirected answer, a flag is set to distinguish it from a
   normal recursive response. Previously, that flag was left set
   afterward, which could trigger an assertion if a normal recursive

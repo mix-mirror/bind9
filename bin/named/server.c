@@ -5398,20 +5398,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	dns_view_setfailttl(view, fail_ttl);
 
 	/*
-	 * Name space to look up redirect information in.
-	 */
-	obj = NULL;
-	result = named_config_get(maps, "nxdomain-redirect", &obj);
-	if (result == ISC_R_SUCCESS) {
-		dns_name_t *name = dns_fixedname_name(&view->redirectfixed);
-		CHECK(dns_name_fromstring(name, cfg_obj_asstring(obj),
-					  dns_rootname, 0, NULL));
-		view->redirectzone = name;
-	} else {
-		view->redirectzone = NULL;
-	}
-
-	/*
 	 * Exceptions to DNSSEC validation.
 	 */
 	obj = NULL;
@@ -6100,38 +6086,6 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 					   &forwarders);
 		CHECK(configure_forward(config, view, origin, forwarders,
 					forwardtype));
-		goto cleanup;
-	}
-
-	/*
-	 * Redirect zones only require minimal configuration.
-	 */
-	if (strcasecmp(ztypestr, "redirect") == 0) {
-		if (view->redirect != NULL) {
-			cfg_obj_log(zconfig, ISC_LOG_ERROR,
-				    "redirect zone already exists");
-			CLEANUP(ISC_R_EXISTS);
-		}
-		result = dns_viewlist_find(viewlist, view->name, view->rdclass,
-					   &pview);
-		if (result != ISC_R_NOTFOUND && result != ISC_R_SUCCESS) {
-			goto cleanup;
-		}
-		if (pview != NULL && pview->redirect != NULL) {
-			dns_zone_attach(pview->redirect, &zone);
-			dns_zone_setview(zone, view);
-		} else {
-			CHECK(dns_zonemgr_createzone(named_g_server->zonemgr,
-						     &zone));
-			dns_zone_setorigin(zone, origin);
-			dns_zone_setview(zone, view);
-			CHECK(dns_zonemgr_managezone(named_g_server->zonemgr,
-						     zone));
-			dns_zone_setstats(zone, named_g_server->zonestats);
-		}
-		CHECK(named_zone_configure(config, vconfig, zconfig, aclctx,
-					   kasplist, zone, NULL));
-		dns_zone_attach(zone, &view->redirect);
 		goto cleanup;
 	}
 
@@ -9091,15 +9045,6 @@ load_zones(named_server_t *server, bool reconfig) {
 				break;
 			}
 		}
-		if (view->redirect != NULL) {
-			result = dns_zone_load(view->redirect, false);
-			if (result != ISC_R_SUCCESS &&
-			    result != DNS_R_UPTODATE &&
-			    result != ISC_R_LOADING && result != DNS_R_CONTINUE)
-			{
-				break;
-			}
-		}
 
 		/*
 		 * 'dns_view_asyncload' calls view_loaded if there are no
@@ -9835,7 +9780,6 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 	dns_rdataclass_t rdclass;
 	char problem[DNS_NAME_FORMATSIZE + 500] = "";
 	char zonebuf[DNS_NAME_FORMATSIZE];
-	bool redirect = false;
 
 	REQUIRE(zonep != NULL && *zonep == NULL);
 
@@ -9856,16 +9800,9 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 	}
 
 	/* Copy zonetxt because it'll be overwritten by next_token() */
-	/* To locate a zone named "-redirect" use "-redirect." */
-	if (strcmp(zonetxt, "-redirect") == 0) {
-		redirect = true;
-		strlcpy(zonebuf, ".", DNS_NAME_FORMATSIZE);
-	} else {
-		strlcpy(zonebuf, zonetxt, DNS_NAME_FORMATSIZE);
-	}
+	strlcpy(zonebuf, zonetxt, DNS_NAME_FORMATSIZE);
 	if (zonename != NULL) {
-		strlcpy(zonename, redirect ? "." : zonetxt,
-			DNS_NAME_FORMATSIZE);
+		strlcpy(zonename, zonetxt, DNS_NAME_FORMATSIZE);
 	}
 
 	name = dns_fixedname_initname(&fname);
@@ -9886,33 +9823,17 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 	}
 
 	if (viewtxt == NULL) {
-		if (redirect) {
-			result = dns_viewlist_find(&server->viewlist,
-						   "_default",
-						   dns_rdataclass_in, &view);
-			if (result != ISC_R_SUCCESS || view->redirect == NULL) {
-				result = ISC_R_NOTFOUND;
-				snprintf(problem, sizeof(problem),
-					 "redirect zone not found in "
-					 "_default view");
-			} else {
-				dns_zone_attach(view->redirect, zonep);
-				result = ISC_R_SUCCESS;
-			}
-		} else {
-			result = dns_viewlist_findzone(&server->viewlist, name,
-						       classtxt == NULL,
-						       rdclass, zonep);
-			if (result == ISC_R_NOTFOUND) {
-				snprintf(problem, sizeof(problem),
-					 "no matching zone '%s' in any view",
-					 zonebuf);
-			} else if (result == ISC_R_MULTIPLE) {
-				snprintf(problem, sizeof(problem),
-					 "zone '%s' was found in multiple "
-					 "views",
-					 zonebuf);
-			}
+		result = dns_viewlist_findzone(&server->viewlist, name,
+					       classtxt == NULL, rdclass,
+					       zonep);
+		if (result == ISC_R_NOTFOUND) {
+			snprintf(problem, sizeof(problem),
+				 "no matching zone '%s' in any view", zonebuf);
+		} else if (result == ISC_R_MULTIPLE) {
+			snprintf(problem, sizeof(problem),
+				 "zone '%s' was found in multiple "
+				 "views",
+				 zonebuf);
 		}
 	} else {
 		result = dns_viewlist_find(&server->viewlist, viewtxt, rdclass,
@@ -9923,17 +9844,7 @@ zone_from_args(named_server_t *server, isc_lex_t *lex, const char *zonetxt,
 			goto report;
 		}
 
-		if (redirect) {
-			if (view->redirect != NULL) {
-				dns_zone_attach(view->redirect, zonep);
-				result = ISC_R_SUCCESS;
-			} else {
-				result = ISC_R_NOTFOUND;
-			}
-		} else {
-			result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT,
-						   zonep);
-		}
+		result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, zonep);
 		if (result != ISC_R_SUCCESS) {
 			snprintf(problem, sizeof(problem),
 				 "no matching zone '%s' in view '%s'", zonebuf,
@@ -10003,9 +9914,7 @@ named_server_retransfercommand(named_server_t *server, isc_lex_t *lex,
 	}
 	type = dns_zone_gettype(zone);
 	if (type == dns_zone_secondary || type == dns_zone_mirror ||
-	    type == dns_zone_stub ||
-	    (type == dns_zone_redirect &&
-	     dns_zone_getredirecttype(zone) == dns_zone_secondary))
+	    type == dns_zone_stub)
 	{
 		if (force) {
 			dns_zone_stopxfr(zone);
@@ -10014,12 +9923,6 @@ named_server_retransfercommand(named_server_t *server, isc_lex_t *lex,
 	} else {
 		(void)putstr(text, "retransfer: inappropriate zone type: ");
 		(void)putstr(text, dns_zonetype_name(type));
-		if (type == dns_zone_redirect) {
-			type = dns_zone_getredirecttype(zone);
-			(void)putstr(text, "(");
-			(void)putstr(text, dns_zonetype_name(type));
-			(void)putstr(text, ")");
-		}
 		(void)putnull(text);
 		result = ISC_R_FAILURE;
 	}
@@ -12062,10 +11965,9 @@ cleanup:
 static isc_result_t
 newzone_parse(named_server_t *server, char *command, dns_view_t **viewp,
 	      cfg_obj_t **zoneconfp, const cfg_obj_t **zoneobjp,
-	      bool *redirectp, isc_buffer_t *text) {
+	      isc_buffer_t *text) {
 	isc_result_t result;
 	isc_buffer_t argbuf;
-	bool redirect = false;
 	cfg_obj_t *zoneconf = NULL;
 	const cfg_obj_t *zlist = NULL;
 	const cfg_obj_t *zoneobj = NULL;
@@ -12079,7 +11981,6 @@ newzone_parse(named_server_t *server, char *command, dns_view_t **viewp,
 	REQUIRE(viewp != NULL && *viewp == NULL);
 	REQUIRE(zoneobjp != NULL && *zoneobjp == NULL);
 	REQUIRE(zoneconfp != NULL && *zoneconfp == NULL);
-	REQUIRE(redirectp != NULL);
 
 	/* Try to parse the argument string */
 	isc_buffer_init(&argbuf, command, (unsigned int)strlen(command));
@@ -12141,10 +12042,6 @@ newzone_parse(named_server_t *server, char *command, dns_view_t **viewp,
 		CLEANUP(ISC_R_FAILURE);
 	}
 
-	if (strcasecmp(cfg_obj_asstring(obj), "redirect") == 0) {
-		redirect = true;
-	}
-
 	/* Make sense of optional class argument */
 	obj = cfg_tuple_get(zoneobj, "class");
 	CHECK(named_config_getclass(obj, dns_rdataclass_in, &rdclass));
@@ -12170,7 +12067,6 @@ newzone_parse(named_server_t *server, char *command, dns_view_t **viewp,
 	*viewp = view;
 	*zoneobjp = zoneobj;
 	*zoneconfp = zoneconf;
-	*redirectp = redirect;
 
 	return ISC_R_SUCCESS;
 
@@ -12224,7 +12120,7 @@ delete_zoneconf(dns_view_t *view, const cfg_obj_t *config,
 
 static isc_result_t
 do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
-	   const cfg_obj_t *zoneobj, bool redirect, isc_buffer_t *text) {
+	   const cfg_obj_t *zoneobj, isc_buffer_t *text) {
 	isc_result_t result, tresult;
 	dns_zone_t *zone = NULL;
 	const cfg_obj_t *voptions = NULL;
@@ -12239,16 +12135,8 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	}
 
 	/* Zone shouldn't already exist */
-	if (redirect) {
-		result = (view->redirect == NULL) ? ISC_R_NOTFOUND
-						  : ISC_R_EXISTS;
-	} else {
-		result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone);
-		if (result == ISC_R_SUCCESS) {
-			result = ISC_R_EXISTS;
-		}
-	}
-	if (result != ISC_R_NOTFOUND) {
+	result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone);
+	if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
 		goto cleanup;
 	}
 
@@ -12296,20 +12184,12 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	}
 
 	/* Is it there yet? */
-	if (redirect) {
-		if (view->redirect == NULL) {
-			CLEANUP(ISC_R_NOTFOUND);
-		}
-		dns_zone_attach(view->redirect, &zone);
-	} else {
-		result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone);
-		if (result != ISC_R_SUCCESS) {
-			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
-				      NAMED_LOGMODULE_SERVER, ISC_LOG_ERROR,
-				      "added new zone was not found: %s",
-				      isc_result_totext(result));
-			goto cleanup;
-		}
+	result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone);
+	if (result != ISC_R_SUCCESS) {
+		isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
+			      ISC_LOG_ERROR, "added new zone was not found: %s",
+			      isc_result_totext(result));
+		goto cleanup;
 	}
 
 	/*
@@ -12362,8 +12242,7 @@ cleanup:
 
 static isc_result_t
 do_modzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
-	   const char *zname, const cfg_obj_t *zoneobj, bool redirect,
-	   isc_buffer_t *text) {
+	   const char *zname, const cfg_obj_t *zoneobj, isc_buffer_t *text) {
 	isc_result_t result, tresult;
 	dns_zone_t *zone = NULL;
 	const cfg_obj_t *voptions = NULL;
@@ -12382,19 +12261,7 @@ do_modzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	}
 
 	/* Zone must already exist */
-	if (redirect) {
-		if (view->redirect != NULL) {
-			dns_zone_attach(view->redirect, &zone);
-			result = ISC_R_SUCCESS;
-		} else {
-			result = ISC_R_NOTFOUND;
-		}
-	} else {
-		result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone);
-	}
-	if (result != ISC_R_SUCCESS) {
-		return result;
-	}
+	RETERR(dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone));
 
 	added = dns_zone_getadded(zone);
 	modded = dns_zone_getmodded(zone);
@@ -12444,14 +12311,7 @@ do_modzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 	}
 
 	/* Is it there yet? */
-	if (redirect) {
-		if (view->redirect == NULL) {
-			CLEANUP(ISC_R_NOTFOUND);
-		}
-		dns_zone_attach(view->redirect, &zone);
-	} else {
-		CHECK(dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone));
-	}
+	CHECK(dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone));
 
 	if (!added && !modded) {
 		if (view->newzone.vconfig == NULL) {
@@ -12546,7 +12406,6 @@ named_server_changezone(named_server_t *server, char *command,
 			isc_buffer_t *text) {
 	isc_result_t result;
 	bool addzone;
-	bool redirect = false;
 	cfg_obj_t *zoneconf = NULL;
 	const cfg_obj_t *zoneobj = NULL;
 	const char *zonename;
@@ -12564,8 +12423,7 @@ named_server_changezone(named_server_t *server, char *command,
 		addzone = false;
 	}
 
-	CHECK(newzone_parse(server, command, &view, &zoneconf, &zoneobj,
-			    &redirect, text));
+	CHECK(newzone_parse(server, command, &view, &zoneconf, &zoneobj, text));
 
 	/* Are we accepting new zones in this view? */
 	if (view->newzone.db == NULL) {
@@ -12582,20 +12440,11 @@ named_server_changezone(named_server_t *server, char *command,
 	dnsname = dns_fixedname_initname(&fname);
 	CHECK(dns_name_fromtext(dnsname, &buf, dns_rootname, 0));
 
-	if (redirect) {
-		if (!dns_name_isroot(dnsname)) {
-			(void)putstr(text, "redirect zones must be called "
-					   "\".\"");
-			CLEANUP(ISC_R_FAILURE);
-		}
-	}
-
 	if (addzone) {
-		CHECK(do_addzone(server, view, dnsname, zoneobj, redirect,
-				 text));
+		CHECK(do_addzone(server, view, dnsname, zoneobj, text));
 	} else {
 		CHECK(do_modzone(server, view, dnsname, zonename, zoneobj,
-				 redirect, text));
+				 text));
 	}
 
 	isc_log_write(NAMED_LOGCATEGORY_GENERAL, NAMED_LOGMODULE_SERVER,
@@ -12843,11 +12692,7 @@ named_server_delzone(named_server_t *server, isc_lex_t *lex,
 		CHECK(ISC_R_NOPERM);
 	}
 
-	if (dns_zone_gettype(zone) == dns_zone_redirect) {
-		dns_zone_detach(&view->redirect);
-	} else {
-		CHECK(dns_view_delzone(view, zone));
-	}
+	CHECK(dns_view_delzone(view, zone));
 
 	/* Send cleanup event */
 	dz = isc_mem_get(isc_g_mctx, sizeof(*dz));
@@ -13723,7 +13568,7 @@ named_server_zonestatus(named_server_t *server, isc_lex_t *lex,
 
 	/* Refresh/expire times */
 	if (zonetype == dns_zone_secondary || zonetype == dns_zone_mirror ||
-	    zonetype == dns_zone_stub || zonetype == dns_zone_redirect)
+	    zonetype == dns_zone_stub)
 	{
 		dns_zone_getexpiretime(mayberaw, &expiretime);
 		isc_time_formathttptimestamp(&expiretime, xbuf, sizeof(xbuf));

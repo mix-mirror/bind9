@@ -516,15 +516,6 @@ dlz_lookup(const char *zone, const char *name, void *dbdata,
 		RETERR(state->putrr(lookup, "TXT", 0, buf));
 	}
 
-	/* Tests for DLZ redirection zones */
-	if (strcmp(name, "*") == 0 && strcmp(zone, ".") == 0) {
-		result = state->putrr(lookup, "A", 0, "100.100.100.2");
-		found = true;
-		if (result != ISC_R_SUCCESS) {
-			return result;
-		}
-	}
-
 	if (strcmp(name, "long.name.is.not.there") == 0 &&
 	    strcmp(zone, ".") == 0)
 	{

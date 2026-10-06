@@ -15,10 +15,7 @@ pytestmark = pytest.mark.extra_artifacts(
     [
         "ns*/*.nzf*",
         "ns*/*.nzd*",
-        "ns1/redirect.db",
         "ns2/new-zones",
-        "ns2/redirect.db",
-        "ns3/redirect.db",
     ]
 )
 
@@ -31,7 +28,7 @@ def test_rndc_modzone_without_add(ns3):
     # by rndc modzone. This should succeed and shouldn't cause any disruption.
     # Previously, it triggered an assertion failure.
     cmd = ns3.rndc(
-        'modzone . {type primary; file "redirect.db"; allow-query {none;};};',
+        'modzone . {type primary; file "basic.db"; allow-query {none;};};',
         raise_on_exception=False,
     )
     assert cmd.rc == 0
@@ -45,7 +42,7 @@ def test_rndc_modzone_without_add(ns3):
     # This was not the case before as the zone config was incorrectly
     # removed in-memory after the first modzone.
     cmd = ns3.rndc(
-        'modzone . {type primary; file "redirect.db"; allow-query {any;};};',
+        'modzone . {type primary; file "basic.db"; allow-query {any;};};',
         raise_on_exception=False,
     )
     assert cmd.rc == 0

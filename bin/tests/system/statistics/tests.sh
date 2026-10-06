@@ -305,8 +305,6 @@ if $FEATURETEST --have-libxml2 && [ -e stats.xml.out ] && [ -x "${XSLTPROC}" ] &
   [ "$("$XMLLINT" --xpath 'count(/statistics/server/counters[@type="nsstat"]/counter[@name="QryFORMERR" and text()="0"])' stats.xml.out)" -eq 1 ] || ret=1
   [ "$("$XMLLINT" --xpath 'count(/statistics/server/counters[@type="nsstat"]/counter[@name="QryFailure" and text()="0"])' stats.xml.out)" -eq 1 ] || ret=1
   [ "$("$XMLLINT" --xpath 'count(/statistics/server/counters[@type="nsstat"]/counter[@name="QryNXDOMAIN" and text()="0"])' stats.xml.out)" -eq 1 ] || ret=1
-  [ "$("$XMLLINT" --xpath 'count(/statistics/server/counters[@type="nsstat"]/counter[@name="QryNXRedir" and text()="0"])' stats.xml.out)" -eq 1 ] || ret=1
-  [ "$("$XMLLINT" --xpath 'count(/statistics/server/counters[@type="nsstat"]/counter[@name="QryNXRedirRLookup" and text()="0"])' stats.xml.out)" -eq 1 ] || ret=1
   [ "$("$XMLLINT" --xpath 'count(/statistics/server/counters[@type="nsstat"]/counter[@name="QryNoauthAns" and text()="0"])' stats.xml.out)" -eq 1 ] || ret=1
   [ "$("$XMLLINT" --xpath 'count(/statistics/server/counters[@type="nsstat"]/counter[@name="QryNxrrset" and text()="0"])' stats.xml.out)" -eq 1 ] || ret=1
   [ "$("$XMLLINT" --xpath 'count(/statistics/server/counters[@type="nsstat"]/counter[@name="QryProxyDoH" and text()="0"])' stats.xml.out)" -eq 1 ] || ret=1

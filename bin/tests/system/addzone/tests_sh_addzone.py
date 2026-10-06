@@ -19,7 +19,6 @@ pytestmark = pytest.mark.extra_artifacts(
         "zonestatus.out.*",
         "ns*/*.nzd*",
         "ns*/*.nzf*",
-        "ns1/redirect.db",
         "nzd2nzf.out.*",
         "ns2/*.nzf~",
         "ns2/K*.key",
@@ -33,9 +32,6 @@ pytestmark = pytest.mark.extra_artifacts(
         "ns2/inline.db.signed.jnl",
         "ns2/inlinesec.bk.jbk",
         "ns2/new-zones",
-        "ns2/redirect.bk",
-        "ns2/redirect.db",
-        "ns3/redirect.db",
     ]
 )
 

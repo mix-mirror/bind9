@@ -5607,39 +5607,6 @@ Response Rate Limiting
    ``QryDropped`` statistics. Responses that are truncated by rate limits are
    included in ``RateSlipped`` and ``RespTruncated``.
 
-NXDOMAIN Redirection
-^^^^^^^^^^^^^^^^^^^^
-
-:iscman:`named` allows NXDOMAIN redirection via two methods. Note that
-both methods are deprecated, and will be removed in a future release.
-
--  :any:`Redirect zone <type redirect>`
--  Redirect namespace
-
-With either method, when :iscman:`named` gets an NXDOMAIN response it examines a
-separate namespace to see if the NXDOMAIN response should be replaced
-with an alternative response.
-
-With a redirect zone (``zone "." { type redirect; };``), the data used
-to replace the NXDOMAIN is held in a single zone which is not part of
-the normal namespace. All the redirect information is contained in the
-zone; there are no delegations.
-
-.. namedconf:statement:: nxdomain-redirect
-   :tags: deprecated
-   :short: Appends the specified suffix to the original query name, when replacing an NXDOMAIN with a redirect namespace.
-
-   With a redirect namespace (``option { nxdomain-redirect <suffix> };``),
-   the data used to replace the NXDOMAIN is part of the normal namespace
-   and is looked up by appending the specified suffix to the original
-   query name. This roughly doubles the cache required to process
-   NXDOMAIN responses, as both the original NXDOMAIN response and the
-   replacement data (or an NXDOMAIN indicating that there is no
-   replacement) must be stored.
-
-If both a redirect zone and a redirect namespace are configured, the
-redirect zone is tried first.
-
 ``server`` Block Grammar
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. namedconf:statement:: server
@@ -6859,7 +6826,7 @@ Zone Types
    :any:`primary <type primary>` (or ``master``), :any:`secondary <type
    secondary>` (or ``slave``), :any:`mirror <type mirror>`, :any:`hint <type
    hint>`, :any:`stub <type stub>`, :any:`static-stub <type static-stub>`,
-   :any:`forward <type forward>`, or :any:`redirect <type redirect>`.
+   or :any:`forward <type forward>`.
 
 .. namedconf:statement:: type primary
    :tags: zone
@@ -7093,46 +7060,6 @@ Zone Types
    then "forward only", or vice versa), but use the same servers as set
    globally, re-specify the global forwarders.
 
-.. namedconf:statement:: type redirect
-   :tags: deprecated
-   :short: Contains information to answer queries when normal resolution would return NXDOMAIN.
-
-   Redirect zones are used to provide answers to queries when normal
-   resolution would result in NXDOMAIN being returned. Only one redirect zone
-   is supported per view. :any:`allow-query` can be used to restrict which
-   clients see these answers.
-
-   If the client has requested DNSSEC records (DO=1) and the NXDOMAIN response
-   is signed, no substitution occurs.
-
-   To redirect all NXDOMAIN responses to 100.100.100.2 and
-   2001:ffff:ffff::100.100.100.2, configure a type
-   :any:`redirect <type redirect>` zone named ".", with the zone file
-   containing wildcard records that point to the desired addresses:
-   ``*. IN A 100.100.100.2`` and ``*. IN AAAA 2001:ffff:ffff::100.100.100.2``.
-
-   As another example, to redirect all Spanish names (under .ES), use
-   similar entries but with the names ``*.ES.`` instead of ``*.``. To
-   redirect all commercial Spanish names (under COM.ES), use wildcard
-   entries called ``*.COM.ES.``.
-
-   Note that the redirect zone supports all possible types; it is not
-   limited to A and AAAA records.
-
-   If a redirect zone is configured with a :any:`primaries` option, then it
-   is transferred in as if it were a secondary zone. Otherwise, it is
-   loaded from a file as if it were a primary zone.
-
-   Because redirect zones are not referenced directly by name, they are not
-   kept in the zone lookup table with normal primary and secondary zones.
-   To reload a redirect zone, use :option:`rndc reload -redirect <rndc
-   reload>`; to retransfer a redirect zone configured as a secondary, use
-   :option:`rndc retransfer -redirect <rndc retransfer>`.  When using
-   :option:`rndc reload` without specifying a zone name, redirect zones are
-   reloaded along with other zones.
-
-   Redirect zones are deprecated, and will be removed in a future release.
-
 .. namedconf:statement:: in-view
    :tags: view, zone
    :short: Specifies the view in which a given zone is defined.
@@ -7268,13 +7195,12 @@ Zone Options
    :tags: zone
    :short: Specifies the zone's filename.
 
-   This sets the zone's filename. In :any:`primary <type primary>`,
-   :any:`hint <type hint>`, and :any:`redirect <type redirect>`
-   zones which do not have :any:`primaries` defined, zone data is loaded from
-   this file. In :any:`secondary <type secondary>`, :any:`mirror <type mirror>`, :any:`stub <type stub>`, and :any:`redirect <type redirect>` zones
-   which do have :any:`primaries` defined, zone data is retrieved from
-   another server and saved in this file. This option is not applicable
-   to other zone types.
+   This sets the zone's filename. In :any:`primary <type primary>`
+   and :any:`hint <type hint>` zones, zone data is loaded from
+   this file. In :any:`secondary <type secondary>`,
+   :any:`mirror <type mirror>`, and :any:`stub <type stub>` zones,
+   zone data is retrieved from another server and saved in this file.
+   This option is not applicable to other zone types.
 
    The filename can be generated parametrically by including special
    tokens in the string. The first instance of each token is replaced
@@ -8026,7 +7952,7 @@ Incoming Zone Transfers
    ``Zone Type`` (``type``)
       Text string. This is the type of zone being transferred, as
       specified in the ``zone`` declaration on this server. Possible
-      values are: ``secondary``, ``stub``, ``redirect``, and ``mirror``.
+      values are: ``secondary``, ``stub``, and ``mirror``.
 
    ``Local Serial`` (``serial``)
       32-bit unsigned Integer. This is the current (old) serial
@@ -8360,12 +8286,6 @@ Name Server Statistics Counters
 
 ``QryFailure``
     This indicates the number of query failures. This corresponds to the ``failure`` counter of previous versions of BIND 9. Note: this counter is provided mainly for backward compatibility with previous versions; normally, more fine-grained counters such as ``AuthQryRej`` and ``RecQryRej`` that would also fall into this counter are provided, so this counter is not of much interest in practice.
-
-``QryNXRedir``
-    This indicates the number of queries that resulted in NXDOMAIN that were redirected.
-
-``QryNXRedirRLookup``
-    This indicates the number of queries that resulted in NXDOMAIN that were redirected and resulted in a successful remote lookup.
 
 ``QryUDP``
     This indicates the number of UDP DNS queries received.

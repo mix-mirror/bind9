@@ -49,7 +49,6 @@ Any of these zone statements can also be set inside the view statement.
 .. literalinclude:: ../../doc/misc/mirror.zoneopt
 .. literalinclude:: ../../doc/misc/forward.zoneopt
 .. literalinclude:: ../../doc/misc/hint.zoneopt
-.. literalinclude:: ../../doc/misc/redirect.zoneopt
 .. literalinclude:: ../../doc/misc/static-stub.zoneopt
 .. literalinclude:: ../../doc/misc/stub.zoneopt
 .. literalinclude:: ../../doc/misc/in-view.zoneopt

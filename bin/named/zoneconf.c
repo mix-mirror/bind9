@@ -1262,9 +1262,7 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 	 * to primary servers (type "primary") and secondaries
 	 * acting as primaries (type "secondary"), but not to stubs.
 	 */
-	if (ztype != dns_zone_stub && ztype != dns_zone_staticstub &&
-	    ztype != dns_zone_redirect)
-	{
+	if (ztype != dns_zone_stub && ztype != dns_zone_staticstub) {
 		bool logreports = false;
 
 		/* Make a reference to the default policy. */
@@ -1573,29 +1571,6 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		process_notify_options(dns_rdatatype_soa, maps, zone, raw,
 				       false);
 		CHECK(process_notify_cfg(maps, zone, raw));
-
-	} else if (ztype == dns_zone_redirect) {
-		dns_zone_setnotifytype(zone, dns_rdatatype_soa,
-				       dns_notifytype_no);
-		dns_zone_setnotifytype(zone, dns_rdatatype_cds,
-				       dns_notifytype_no);
-
-		obj = NULL;
-		result = named_config_get(maps, "max-journal-size", &obj);
-		INSIST(result == ISC_R_SUCCESS && obj != NULL);
-		dns_zone_setjournalsize(zone, -1);
-		if (cfg_obj_isstring(obj)) {
-			const char *str = cfg_obj_asstring(obj);
-			if (strcasecmp(str, "unlimited") == 0) {
-				journal_size = DNS_JOURNAL_SIZE_MAX;
-			} else {
-				INSIST(strcasecmp(str, "default") == 0);
-				journal_size = -1;
-			}
-		} else {
-			journal_size = (uint32_t)cfg_obj_asuint64(obj);
-		}
-		dns_zone_setjournalsize(zone, journal_size);
 	}
 
 	if (use_kasp) {
@@ -1876,7 +1851,6 @@ named_zone_configure(const cfg_obj_t *config, const cfg_obj_t *vconfig,
 		FALLTHROUGH;
 	case dns_zone_secondary:
 	case dns_zone_stub:
-	case dns_zone_redirect:
 		count = 0;
 		obj = NULL;
 		(void)named_config_get(nooptions, "primaries", &obj);

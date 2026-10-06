@@ -40,19 +40,9 @@ dlz "unsearched2" {
 	search no;
 };
 
-dlz redzone {
-	database "dlopen @TOP_BUILDDIR@/testlib-driver-dlzexternal.@DYLIB@ .";
-	search no;
-};
-
 zone zone.nil {
 	type primary;
 	dlz unsearched2;
-};
-
-zone "." {
-	type redirect;
-	dlz redzone;
 };
 
 zone "." {

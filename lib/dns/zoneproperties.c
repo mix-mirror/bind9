@@ -1303,7 +1303,7 @@ zone_namerd_tostr(dns_zone_t *zone, char *buf, size_t length) {
 	 * Leave space for terminating '\0'.
 	 */
 	isc_buffer_init(&buffer, buf, (unsigned int)length - 1);
-	if (zone->type != dns_zone_redirect && zone->type != dns_zone_key) {
+	if (zone->type != dns_zone_key) {
 		if (dns_name_dynamic(&zone->origin)) {
 			result = dns_name_totext(
 				&zone->origin, DNS_NAME_OMITFINALDOT, &buffer);

@@ -9,7 +9,7 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-from dns.rcode import NOERROR, NXDOMAIN, REFUSED
+from dns.rcode import NOERROR, REFUSED
 from dns.rdatatype import CNAME
 from pytest import mark, xfail
 
@@ -20,8 +20,6 @@ import isctest
     "qname, qtype, srcip, rcode",
     [
         ("a.root-servers.nil", "A", "10.53.0.1", NOERROR),
-        ("foo.", "A", "10.53.0.1", NXDOMAIN),
-        ("foo.", "A", "10.53.0.5", NOERROR),
         ("example.nil", "SOA", "10.53.0.2", REFUSED),
         ("example.nil", "SOA", "10.53.0.3", REFUSED),
         ("example.nil", "SOA", "10.53.0.4", NOERROR),

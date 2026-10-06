@@ -115,7 +115,6 @@ user_zonetype(dns_zone_t *zone) {
 			{ dns_zone_staticstub, "static-stub" },
 			{ dns_zone_key, "key" },
 			{ dns_zone_dlz, "dlz" },
-			{ dns_zone_redirect, "redirect" },
 			{ 0, NULL } };
 	const struct zt *tp;
 
@@ -411,13 +410,6 @@ init_desc(void) {
 	SET_NSSTATDESC(cookienomatch, "COOKIE - no match", "CookieNoMatch");
 	SET_NSSTATDESC(cookiematch, "COOKIE - match", "CookieMatch");
 	SET_NSSTATDESC(ecsopt, "EDNS client subnet option received", "ECSOpt");
-	SET_NSSTATDESC(nxdomainredirect,
-		       "queries resulted in NXDOMAIN that were redirected",
-		       "QryNXRedir");
-	SET_NSSTATDESC(nxdomainredirect_rlookup,
-		       "queries resulted in NXDOMAIN that were redirected and "
-		       "resulted in a successful remote lookup",
-		       "QryNXRedirRLookup");
 	SET_NSSTATDESC(badcookie, "sent badcookie response", "QryBADCOOKIE");
 	SET_NSSTATDESC(nxdomainsynth, "synthesized a NXDOMAIN response",
 		       "SynthNXDOMAIN");

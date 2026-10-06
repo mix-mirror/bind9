@@ -2421,7 +2421,7 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "nosit-udp-size", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
 	{ "nta-lifetime", &cfg_type_duration, 0, NULL },
 	{ "nta-recheck", &cfg_type_duration, 0, NULL },
-	{ "nxdomain-redirect", &cfg_type_astring, CFG_CLAUSEFLAG_DEPRECATED,
+	{ "nxdomain-redirect", &cfg_type_astring, CFG_CLAUSEFLAG_OBSOLETE,
 	  NULL },
 	{ "preferred-glue", &cfg_type_astring, 0, NULL },
 	{ "prefetch", &cfg_type_prefetch, 0, prefetch_merge },
@@ -2577,11 +2577,11 @@ static cfg_clausedef_t zone_clauses[] = {
 	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
 	{ "allow-query", &cfg_type_bracketed_aml,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
-		  CFG_ZONE_STUB | CFG_ZONE_REDIRECT | CFG_ZONE_STATICSTUB,
+		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB,
 	  NULL },
 	{ "allow-query-on", &cfg_type_bracketed_aml,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
-		  CFG_ZONE_STUB | CFG_ZONE_REDIRECT | CFG_ZONE_STATICSTUB,
+		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB,
 	  NULL },
 	{ "allow-transfer", &cfg_type_transport_acl,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
@@ -2639,11 +2639,11 @@ static cfg_clausedef_t zone_clauses[] = {
 	{ "maintain-ixfr-base", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
 	{ "masterfile-format", &cfg_type_masterformat,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
-		  CFG_ZONE_STUB | CFG_ZONE_REDIRECT,
+		  CFG_ZONE_STUB,
 	  NULL },
 	{ "masterfile-style", &cfg_type_masterstyle,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
-		  CFG_ZONE_STUB | CFG_ZONE_REDIRECT,
+		  CFG_ZONE_STUB,
 	  NULL },
 	{ "max-ixfr-log-size", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
 	{ "max-ixfr-ratio", &cfg_type_ixfrratio,
@@ -2652,15 +2652,15 @@ static cfg_clausedef_t zone_clauses[] = {
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
 	{ "max-records", &cfg_type_uint32,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
-		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB | CFG_ZONE_REDIRECT,
+		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB,
 	  NULL },
 	{ "max-records-per-type", &cfg_type_uint32,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
-		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB | CFG_ZONE_REDIRECT,
+		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB,
 	  NULL },
 	{ "max-types-per-name", &cfg_type_uint32,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
-		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB | CFG_ZONE_REDIRECT,
+		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB,
 	  NULL },
 	{ "max-refresh-time", &cfg_type_uint32,
 	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB, NULL },
@@ -2677,8 +2677,7 @@ static cfg_clausedef_t zone_clauses[] = {
 	{ "max-transfer-time-out", &cfg_type_uint32,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_MIRROR | CFG_ZONE_SECONDARY, NULL },
 	{ "max-zone-ttl", &cfg_type_maxduration,
-	  CFG_ZONE_PRIMARY | CFG_ZONE_REDIRECT | CFG_CLAUSEFLAG_DEPRECATED,
-	  NULL },
+	  CFG_ZONE_PRIMARY | CFG_CLAUSEFLAG_DEPRECATED, NULL },
 	{ "min-refresh-time", &cfg_type_uint32,
 	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB, NULL },
 	{ "min-retry-time", &cfg_type_uint32,
@@ -2749,7 +2748,7 @@ static cfg_clausedef_t zone_clauses[] = {
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR, NULL },
 	{ "zone-statistics", &cfg_type_zonestat,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
-		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB | CFG_ZONE_REDIRECT,
+		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB,
 	  NULL },
 	{ NULL, NULL, 0, NULL }
 };
@@ -2768,7 +2767,7 @@ static cfg_clausedef_t zone_only_clauses[] = {
 	{ "type", &cfg_type_zonetype,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
 		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB | CFG_ZONE_HINT |
-		  CFG_ZONE_REDIRECT | CFG_ZONE_FORWARD,
+		  CFG_ZONE_FORWARD,
 	  NULL },
 	{ "check-names", &cfg_type_checkmode,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
@@ -2784,11 +2783,11 @@ static cfg_clausedef_t zone_only_clauses[] = {
 	  CFG_ZONE_HINT | CFG_ZONE_STUB | CFG_ZONE_FORWARD |
 		  CFG_CLAUSEFLAG_ANCIENT,
 	  NULL },
-	{ "dlz", &cfg_type_astring,
-	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_REDIRECT, NULL },
+	{ "dlz", &cfg_type_astring, CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY,
+	  NULL },
 	{ "file", &cfg_type_qstring,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
-		  CFG_ZONE_STUB | CFG_ZONE_HINT | CFG_ZONE_REDIRECT,
+		  CFG_ZONE_STUB | CFG_ZONE_HINT,
 	  NULL },
 	{ "initial-file", &cfg_type_qstring, CFG_ZONE_PRIMARY, NULL },
 	{ "inline-signing", &cfg_type_boolean,
@@ -2803,18 +2802,16 @@ static cfg_clausedef_t zone_only_clauses[] = {
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY, NULL },
 	{ "masters", &cfg_type_namesockaddrkeylist,
 	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB |
-		  CFG_ZONE_REDIRECT | CFG_CLAUSEFLAG_NODOC,
+		  CFG_CLAUSEFLAG_NODOC,
 	  NULL },
 	{ "parental-agents", &cfg_type_namesockaddrkeylist,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY, NULL },
 	{ "plugin", &cfg_type_plugin,
 	  CFG_CLAUSEFLAG_MULTI | CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY |
-		  CFG_ZONE_REDIRECT | CFG_ZONE_MIRROR,
+		  CFG_ZONE_MIRROR,
 	  NULL },
 	{ "primaries", &cfg_type_namesockaddrkeylist,
-	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB |
-		  CFG_ZONE_REDIRECT,
-	  NULL },
+	  CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR | CFG_ZONE_STUB, NULL },
 	{ "pubkey", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
 	{ "server-addresses", &cfg_type_bracketed_netaddrlist,
 	  CFG_ZONE_STATICSTUB, NULL },
@@ -2828,7 +2825,7 @@ static cfg_clausedef_t non_template_clauses[] = {
 	{ "template", &cfg_type_astring,
 	  CFG_ZONE_PRIMARY | CFG_ZONE_SECONDARY | CFG_ZONE_MIRROR |
 		  CFG_ZONE_STUB | CFG_ZONE_STATICSTUB | CFG_ZONE_HINT |
-		  CFG_ZONE_REDIRECT | CFG_ZONE_FORWARD,
+		  CFG_ZONE_FORWARD,
 	  NULL },
 	{ NULL, NULL, 0, NULL }
 };
@@ -4327,10 +4324,6 @@ cfg_print_zonegrammar(const unsigned int zonetype, unsigned int flags,
 	case CFG_ZONE_STATICSTUB:
 		cfg_print_indent(&pctx);
 		cfg_print_cstr(&pctx, "type static-stub;\n");
-		break;
-	case CFG_ZONE_REDIRECT:
-		cfg_print_indent(&pctx);
-		cfg_print_cstr(&pctx, "type redirect;\n");
 		break;
 	case CFG_ZONE_INVIEW:
 		/* no zone type is specified for these */

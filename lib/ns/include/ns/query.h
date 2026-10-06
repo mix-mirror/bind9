@@ -114,7 +114,6 @@ struct ns_query {
 			bool dns64	     : 1;
 			bool dns64exclude    : 1;
 			bool rrl_checked     : 1;
-			bool is_redirect     : 1;
 			bool answered	     : 1;
 		};
 	};
@@ -143,20 +142,6 @@ struct ns_query {
 	unsigned int	dns64_aaaaoklen;
 	unsigned int	dns64_options;
 	unsigned int	dns64_ttl;
-
-	struct {
-		dns_db_t       *db;
-		dns_zone_t     *zone;
-		dns_rdatatype_t qtype;
-		dns_name_t     *fname;
-		dns_fixedname_t fixed;
-		dns_fixedname_t foundname;
-		isc_result_t	result;
-		dns_rdataset_t *rdataset;
-		dns_rdataset_t *sigrdataset;
-		bool		authoritative;
-		bool		is_zone;
-	} redirect;
 
 	struct {
 		isc_nmhandle_t *handle;
@@ -191,8 +176,7 @@ struct query_ctx {
 
 	dns_getdb_options_t options; /* DB lookup options */
 
-	bool redirected; /* nxdomain redirected? */
-	bool is_zone;	 /* is DB a zone DB? */
+	bool is_zone; /* is DB a zone DB? */
 	bool is_staticstub_zone;
 	bool resuming; /* resumed from recursion? */
 	bool dns64, dns64_exclude, rpz;

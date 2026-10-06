@@ -194,31 +194,6 @@ grep "status: SERVFAIL" dig.out.ns1.test$n >/dev/null || ret=1
 [ "$ret" -eq 0 ] || echo_i "failed"
 status=$((status + ret))
 
-newtest "checking redirected lookup for nonexistent name"
-$DIG $DIGOPTS @10.53.0.1 unexists a >dig.out.ns1.test$n || ret=1
-grep "status: NOERROR" dig.out.ns1.test$n >/dev/null || ret=1
-grep "^unexists.*A.*100.100.100.2" dig.out.ns1.test$n >/dev/null || ret=1
-grep "flags:[^;]* aa[ ;]" dig.out.ns1.test$n >/dev/null || ret=1
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-newtest "checking no redirected lookup for nonexistent type"
-$DIG $DIGOPTS @10.53.0.1 exists aaaa >dig.out.ns1.test$n || ret=1
-grep "status: NOERROR" dig.out.ns1.test$n >/dev/null || ret=1
-grep "ANSWER: 0" dig.out.ns1.test$n >/dev/null || ret=1
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
-newtest "checking redirected lookup for a long nonexistent name"
-$DIG $DIGOPTS @10.53.0.1 long.name.is.not.there a >dig.out.ns1.test$n || ret=1
-grep "status: NOERROR" dig.out.ns1.test$n >/dev/null || ret=1
-grep "^long.name.*A.*100.100.100.3" dig.out.ns1.test$n >/dev/null || ret=1
-grep "flags:[^;]* aa[ ;]" dig.out.ns1.test$n >/dev/null || ret=1
-lookups=$(grep "lookup #.*\.not\.there" ns1/named.run | wc -l)
-[ "$lookups" -eq 1 ] || ret=1
-if [ $ret != 0 ]; then echo_i "failed"; fi
-status=$((status + ret))
-
 newtest "checking ECS data is passed to driver in clientinfo"
 $DIG $DIGOPTS +short +subnet=192.0/16 source-addr.example.nil txt >dig.out.ns1.test$n.1 || ret=1
 grep "192.0.0.0/16/0" dig.out.ns1.test$n.1 >/dev/null || ret=1

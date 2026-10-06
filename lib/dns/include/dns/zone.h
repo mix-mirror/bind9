@@ -48,8 +48,7 @@ typedef enum {
 	dns_zone_stub,
 	dns_zone_staticstub,
 	dns_zone_key,
-	dns_zone_dlz,
-	dns_zone_redirect
+	dns_zone_dlz
 } dns_zonetype_t;
 
 #ifndef dns_zone_master
@@ -449,21 +448,6 @@ dns_zone_notifyreceive(dns_zone_t *zone, isc_sockaddr_t *from,
  *\li	DNS_R_NOTIMP
  *\li	DNS_R_FORMERR
  *\li	DNS_R_SUCCESS
- */
-
-dns_zonetype_t
-dns_zone_getredirecttype(dns_zone_t *zone);
-/*%<
- * Returns whether the redirect zone is configured as a primary or a
- * secondary zone.
- *
- * Requires:
- *\li	'zone' to be valid initialised zone.
- *\li	'zone' to be a redirect zone.
- *
- * Returns:
- *\li	'dns_zone_primary'
- *\li	'dns_zone_secondary'
  */
 
 void

@@ -100,8 +100,6 @@ main(int argc, char **argv) {
 				zonetype = CFG_ZONE_HINT;
 			} else if (strcmp(argv[1], "forward") == 0) {
 				zonetype = CFG_ZONE_FORWARD;
-			} else if (strcmp(argv[1], "redirect") == 0) {
-				zonetype = CFG_ZONE_REDIRECT;
 			} else if (strcmp(argv[1], "in-view") == 0) {
 				zonetype = CFG_ZONE_INVIEW;
 			} else {

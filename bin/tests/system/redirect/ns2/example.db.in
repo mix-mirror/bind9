@@ -1,5 +1,0 @@
-$TTL 300	; 5 minutes
-@ IN SOA ns.example.net hostmaster.example.net 0 0 0 0 0
-@       NS	ns2
-ns2	A	10.53.0.2
-a	A	10.53.0.2

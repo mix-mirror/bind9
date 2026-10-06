@@ -333,9 +333,9 @@ ns__query_callhook_noreturn(uint8_t id, query_ctx_t *qctx,
  *    allowed to recurse, go to 5, otherwise go to 15 to clean up and
  *    return the delegation to the client.
  *
- * 10. No such domain (query_nxdomain()). Attempt redirection; if
- *     unsuccessful, add authority section records (query_addsoa(),
- *     query_addwildcardproof()), then go to 15 to return NXDOMAIN to client.
+ * 10. No such domain (query_nxdomain()). Add authority section records
+ *    (query_addsoa(), query_addwildcardproof()), then go to 15 to return
+ *    NXDOMAIN to client.
  *
  * 11. Empty answer (query_nodata()). Add authority section records
  *     (query_addsoa(), query_addwildcardproof()) and signatures if
@@ -441,9 +441,6 @@ query_addnxrrsetnsec(query_ctx_t *qctx);
 
 static isc_result_t
 query_nxdomain(query_ctx_t *qctx, isc_result_t result);
-
-static isc_result_t
-query_redirect(query_ctx_t *qctx, isc_result_t result);
 
 static isc_result_t
 query_ncache(query_ctx_t *qctx, isc_result_t result);
@@ -780,16 +777,6 @@ query_reset(ns_client_t *client, bool everything) {
 		client->query.dns64_aaaaoklen = 0;
 	}
 
-	ns_client_putrdataset(client, &client->query.redirect.rdataset);
-	ns_client_putrdataset(client, &client->query.redirect.sigrdataset);
-	if (client->query.redirect.db != NULL) {
-		dns_db_detach(&client->query.redirect.db);
-	}
-	if (client->query.redirect.zone != NULL) {
-		dns_zone_detach(&client->query.redirect.zone);
-	}
-	dns_fixedname_init(&client->query.redirect.foundname);
-
 	query_freefreeversions(client, everything);
 
 	ISC_LIST_FOREACH(client->query.namebufs, dbuf, link) {
@@ -889,9 +876,6 @@ ns_query_init(ns_client_t *client) {
 	 * ns__client_put_cb().
 	 */
 	isc_mutex_init(&client->query.fetchlock);
-	client->query.redirect.fname =
-		dns_fixedname_initname(&client->query.redirect.fixed);
-	dns_fixedname_init(&client->query.redirect.foundname);
 	query_reset(client, false);
 	ns_client_newdbversion(client, 3);
 	ns_client_newnamebuf(client);
@@ -4404,303 +4388,6 @@ dns64_aaaaok(ns_client_t *client, dns_rdataset_t *rdataset,
 	return false;
 }
 
-/*
- * Look for the name and type in the redirection zone.  If found update
- * the arguments as appropriate.  Return true if a update was
- * performed.
- *
- * Only perform the update if the client is in the allow query acl and
- * returning the update would not cause a DNSSEC validation failure.
- */
-static isc_result_t
-redirect(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
-	 dns_fixedname_t *foundname, dns_db_t **dbp, dns_dbversion_t **versionp,
-	 dns_rdatatype_t qtype) {
-	dns_db_t *db = NULL;
-	dns_fixedname_t fixed;
-	dns_name_t *found = NULL;
-	dns_rdataset_t trdataset = DNS_RDATASET_INIT;
-	isc_result_t result;
-	dns_rdatatype_t type;
-	dns_clientinfomethods_t cm;
-	dns_clientinfo_t ci;
-	ns_dbversion_t *dbversion = NULL;
-
-	CTRACE(ISC_LOG_DEBUG(3), "redirect");
-
-	if (client->inner.view->redirect == NULL) {
-		return ISC_R_NOTFOUND;
-	}
-
-	found = dns_fixedname_initname(&fixed);
-
-	dns_clientinfomethods_init(&cm, ns_client_sourceip);
-	dns_clientinfo_init(&ci, client, NULL);
-	dns_clientinfo_setecs(&ci, &client->inner.ecs);
-
-	if (client->inner.wantdnssec && dns_db_iszone(*dbp) &&
-	    dns_db_issecure(*dbp))
-	{
-		return ISC_R_NOTFOUND;
-	}
-
-	if (client->inner.wantdnssec && dns_rdataset_isassociated(rdataset)) {
-		if (rdataset->trust == dns_trust_secure) {
-			return ISC_R_NOTFOUND;
-		}
-		if (rdataset->trust == dns_trust_ultimate &&
-		    dns_rdatatype_isnsec(rdataset->type))
-		{
-			return ISC_R_NOTFOUND;
-		}
-		if (rdataset->attributes.negative) {
-			DNS_RDATASET_FOREACH(rdataset) {
-				dns_ncache_current(rdataset, found, &trdataset);
-				type = trdataset.type;
-				dns_rdataset_disassociate(&trdataset);
-				if (dns_rdatatype_isnsec(type) ||
-				    type == dns_rdatatype_rrsig)
-				{
-					return ISC_R_NOTFOUND;
-				}
-			}
-		}
-	}
-
-	result = ns_client_checkaclsilent(
-		client, NULL,
-		dns_zone_getqueryacl(client->inner.view->redirect), true);
-	if (result != ISC_R_SUCCESS) {
-		return ISC_R_NOTFOUND;
-	}
-
-	result = ns_client_checkaclsilent(
-		client, &client->inner.destaddr,
-		dns_zone_getqueryonacl(client->inner.view->redirect), true);
-	if (result != ISC_R_SUCCESS) {
-		return ISC_R_NOTFOUND;
-	}
-
-	result = dns_zone_getdb(client->inner.view->redirect, &db);
-	if (result != ISC_R_SUCCESS) {
-		return ISC_R_NOTFOUND;
-	}
-
-	dbversion = ns_client_findversion(client, db);
-	if (dbversion == NULL) {
-		dns_db_detach(&db);
-		return ISC_R_NOTFOUND;
-	}
-
-	/*
-	 * Lookup the requested data in the redirect zone.
-	 */
-	result = dns_db_findext(db, client->query.qname, dbversion->version,
-				qtype, DNS_DBFIND_NOZONECUT, client->inner.now,
-				found, &cm, &ci, &trdataset, NULL);
-	if (result == ISC_R_SUCCESS || result == DNS_R_NXRRSET ||
-	    result == DNS_R_NCACHENXRRSET)
-	{
-		dns_name_copy(found, dns_fixedname_name(foundname));
-	}
-	query_fix_wildcardname(client->query.qname, found);
-	if (result == DNS_R_NXRRSET || result == DNS_R_NCACHENXRRSET) {
-		dns_rdataset_cleanup(rdataset);
-		dns_rdataset_cleanup(&trdataset);
-		goto nxrrset;
-	} else if (result != ISC_R_SUCCESS) {
-		dns_rdataset_cleanup(&trdataset);
-		dns_db_detach(&db);
-		return ISC_R_NOTFOUND;
-	}
-
-	CTRACE(ISC_LOG_DEBUG(3), "redirect: found data: done");
-	dns_name_copy(found, name);
-	dns_rdataset_cleanup(rdataset);
-	if (dns_rdataset_isassociated(&trdataset)) {
-		dns_rdataset_clone(&trdataset, rdataset);
-		dns_rdataset_disassociate(&trdataset);
-	}
-nxrrset:
-	dns_db_detach(dbp);
-	dns_db_attach(db, dbp);
-	dns_db_detach(&db);
-	*versionp = dbversion->version;
-
-	client->query.noauthority = true;
-	client->query.noadditional = true;
-
-	return result;
-}
-
-static isc_result_t
-redirect2(ns_client_t *client, dns_name_t *name, dns_rdataset_t *rdataset,
-	  dns_fixedname_t *foundname, dns_db_t **dbp,
-	  dns_dbversion_t **versionp, dns_rdatatype_t qtype, bool *is_zonep) {
-	dns_db_t *db = NULL;
-	dns_fixedname_t fixed;
-	dns_fixedname_t fixedredirect;
-	dns_name_t *found = NULL, *redirectname = NULL;
-	dns_rdataset_t trdataset = DNS_RDATASET_INIT;
-	isc_result_t result;
-	dns_rdatatype_t type;
-	dns_clientinfomethods_t cm;
-	dns_clientinfo_t ci;
-	dns_dbversion_t *version = NULL;
-	dns_zone_t *zone = NULL;
-	bool is_zone;
-	unsigned int labels;
-	bool redirected = client->query.is_redirect;
-
-	CTRACE(ISC_LOG_DEBUG(3), "redirect2");
-
-	client->query.is_redirect = false;
-
-	if (client->inner.view->redirectzone == NULL) {
-		return ISC_R_NOTFOUND;
-	}
-
-	if (dns_name_issubdomain(name, client->inner.view->redirectzone)) {
-		return ISC_R_NOTFOUND;
-	}
-
-	found = dns_fixedname_initname(&fixed);
-
-	dns_clientinfomethods_init(&cm, ns_client_sourceip);
-	dns_clientinfo_init(&ci, client, NULL);
-	dns_clientinfo_setecs(&ci, &client->inner.ecs);
-
-	if (client->inner.wantdnssec && dns_db_iszone(*dbp) &&
-	    dns_db_issecure(*dbp))
-	{
-		return ISC_R_NOTFOUND;
-	}
-
-	if (client->inner.wantdnssec && dns_rdataset_isassociated(rdataset)) {
-		if (rdataset->trust == dns_trust_secure) {
-			return ISC_R_NOTFOUND;
-		}
-		if (rdataset->trust == dns_trust_ultimate &&
-		    dns_rdatatype_isnsec(rdataset->type))
-		{
-			return ISC_R_NOTFOUND;
-		}
-		if (rdataset->attributes.negative) {
-			DNS_RDATASET_FOREACH(rdataset) {
-				dns_ncache_current(rdataset, found, &trdataset);
-				type = trdataset.type;
-				dns_rdataset_disassociate(&trdataset);
-				if (dns_rdatatype_isnsec(type) ||
-				    type == dns_rdatatype_rrsig)
-				{
-					return ISC_R_NOTFOUND;
-				}
-			}
-		}
-	}
-
-	redirectname = dns_fixedname_initname(&fixedredirect);
-	labels = dns_name_countlabels(client->query.qname);
-	if (labels > 1U) {
-		dns_name_t prefix;
-
-		dns_name_init(&prefix);
-		dns_name_getlabelsequence(client->query.qname, 0, labels - 1,
-					  &prefix);
-		result = dns_name_concatenate(&prefix,
-					      client->inner.view->redirectzone,
-					      redirectname);
-		if (result != ISC_R_SUCCESS) {
-			return ISC_R_NOTFOUND;
-		}
-	} else {
-		dns_name_copy(client->inner.view->redirectzone, redirectname);
-	}
-
-	result = query_getdb(client, redirectname, qtype,
-			     (dns_getdb_options_t){ 0 }, &zone, &db, &version,
-			     &is_zone);
-	if (result != ISC_R_SUCCESS) {
-		return ISC_R_NOTFOUND;
-	}
-	if (zone != NULL) {
-		dns_zone_detach(&zone);
-	}
-
-	/*
-	 * Lookup the requested data in the redirect zone.
-	 */
-	result = dns_db_findext(db, redirectname, version, qtype, 0,
-				client->inner.now, found, &cm, &ci, &trdataset,
-				NULL);
-	if (result == ISC_R_SUCCESS || result == DNS_R_NXRRSET ||
-	    result == DNS_R_NCACHENXRRSET)
-	{
-		dns_name_copy(found, dns_fixedname_name(foundname));
-	}
-	query_fix_wildcardname(redirectname, found);
-	if (result == DNS_R_NXRRSET || result == DNS_R_NCACHENXRRSET) {
-		dns_rdataset_cleanup(rdataset);
-		dns_rdataset_cleanup(&trdataset);
-		goto nxrrset;
-	} else if (result == ISC_R_NOTFOUND || result == DNS_R_DELEGATION) {
-		/*
-		 * Cleanup.
-		 */
-		dns_rdataset_cleanup(&trdataset);
-		dns_db_detach(&db);
-
-		/*
-		 * Don't loop forever if the lookup failed last time.
-		 */
-		if (!redirected) {
-			result = ns_query_recurse(client, qtype, redirectname,
-						  true);
-			if (result == ISC_R_SUCCESS) {
-				client->query.recursing = true;
-				client->query.is_redirect = true;
-				return DNS_R_CONTINUE;
-			}
-		}
-		return ISC_R_NOTFOUND;
-	} else if (result != ISC_R_SUCCESS) {
-		dns_rdataset_cleanup(&trdataset);
-		dns_db_detach(&db);
-		return ISC_R_NOTFOUND;
-	}
-
-	CTRACE(ISC_LOG_DEBUG(3), "redirect2: found data: done");
-	/*
-	 * Adjust the found name to not include the redirectzone suffix.
-	 */
-	dns_name_split(found,
-		       dns_name_countlabels(client->inner.view->redirectzone),
-		       found, NULL);
-	/*
-	 * Make the name absolute.
-	 */
-	result = dns_name_concatenate(found, dns_rootname, found);
-	RUNTIME_CHECK(result == ISC_R_SUCCESS);
-
-	dns_name_copy(found, name);
-	dns_rdataset_cleanup(rdataset);
-	if (dns_rdataset_isassociated(&trdataset)) {
-		dns_rdataset_clone(&trdataset, rdataset);
-		dns_rdataset_disassociate(&trdataset);
-	}
-nxrrset:
-	dns_db_detach(dbp);
-	dns_db_attach(db, dbp);
-	dns_db_detach(&db);
-	*is_zonep = is_zone;
-	*versionp = version;
-
-	client->query.noauthority = true;
-	client->query.noadditional = true;
-
-	return result;
-}
-
 /*%
  * Initialize query context 'qctx'. Run by query_setup() when
  * first handling a client query, and by query_resume() when
@@ -6043,9 +5730,7 @@ query_resume(query_ctx_t *qctx) {
 #ifdef WANT_QUERYTRACE
 	char mbuf[4 * DNS_NAME_FORMATSIZE];
 	char qbuf[DNS_NAME_FORMATSIZE];
-	char tbuf[DNS_RDATATYPE_FORMATSIZE];
 #endif /* ifdef WANT_QUERYTRACE */
-	bool redirect = qctx->client->query.is_redirect;
 
 	CCTRACE(ISC_LOG_DEBUG(3), "query_resume");
 
@@ -6102,45 +5787,6 @@ query_resume(query_ctx_t *qctx) {
 		qctx->rpz_st->r.r_rdataset =
 			MOVE_OWNERSHIP(qctx->fresp->rdataset);
 		ns_client_putrdataset(qctx->client, &qctx->fresp->sigrdataset);
-	} else if (redirect) {
-		/*
-		 * Restore saved state.
-		 */
-		CCTRACE(ISC_LOG_DEBUG(3), "resume from redirect recursion");
-#ifdef WANT_QUERYTRACE
-		dns_name_format(qctx->client->query.redirect.fname, qbuf,
-				sizeof(qbuf));
-		dns_rdatatype_format(qctx->client->query.redirect.qtype, tbuf,
-				     sizeof(tbuf));
-		snprintf(mbuf, sizeof(mbuf) - 1,
-			 "redirect qctx->fname:%s, qtype:%s, auth:%d", qbuf,
-			 tbuf, qctx->client->query.redirect.authoritative);
-		CCTRACE(ISC_LOG_DEBUG(3), mbuf);
-#endif /* ifdef WANT_QUERYTRACE */
-		qctx->qtype = qctx->client->query.redirect.qtype;
-		INSIST(qctx->client->query.redirect.rdataset != NULL);
-		qctx->rdataset =
-			MOVE_OWNERSHIP(qctx->client->query.redirect.rdataset);
-		qctx->sigrdataset = MOVE_OWNERSHIP(
-			qctx->client->query.redirect.sigrdataset);
-		qctx->db = MOVE_OWNERSHIP(qctx->client->query.redirect.db);
-		qctx->zone = MOVE_OWNERSHIP(qctx->client->query.redirect.zone);
-		qctx->authoritative =
-			qctx->client->query.redirect.authoritative;
-		fixedname_move(&qctx->client->query.redirect.foundname,
-			       &qctx->foundname);
-
-		/*
-		 * Free resources used while recursing.
-		 */
-		ns_client_putrdataset(qctx->client, &qctx->fresp->rdataset);
-		ns_client_putrdataset(qctx->client, &qctx->fresp->sigrdataset);
-		if (qctx->fresp->node != NULL) {
-			dns_db_detachnode(&qctx->fresp->node);
-		}
-		if (qctx->fresp->cache != NULL) {
-			dns_db_detach(&qctx->fresp->cache);
-		}
 	} else {
 		CCTRACE(ISC_LOG_DEBUG(3), "resume from normal recursion");
 		qctx->authoritative = false;
@@ -6198,8 +5844,6 @@ query_resume(query_ctx_t *qctx) {
 
 	if (rpz) {
 		tname = qctx->rpz_st->fname;
-	} else if (redirect) {
-		tname = qctx->client->query.redirect.fname;
 	} else {
 		tname = qctx->fresp->foundname;
 	}
@@ -6210,20 +5854,6 @@ query_resume(query_ctx_t *qctx) {
 		qctx->rpz_st->r.r_result = qctx->fresp->result;
 		result = qctx->rpz_st->q.result;
 		free_fresp(qctx->client, &qctx->fresp);
-	} else if (redirect) {
-		result = qctx->client->query.redirect.result;
-
-		/*
-		 * If we got an answer from a redirect query that could
-		 * trigger another redirect, keep the REDIRECT flag set
-		 * so we can avoid looping; we'll clear it later.
-		 * Otherwise, we're done with it now.
-		 */
-		if (result != DNS_R_COVERINGNSEC && result != DNS_R_NXDOMAIN &&
-		    result != DNS_R_NCACHENXDOMAIN)
-		{
-			qctx->client->query.is_redirect = false;
-		}
 	} else {
 		result = qctx->fresp->result;
 	}
@@ -7205,14 +6835,8 @@ root_key_sentinel:
 		return query_coveringnsec(qctx);
 
 	case DNS_R_NCACHENXDOMAIN:
-		result = query_redirect(qctx, result);
-		if (result != ISC_R_COMPLETE) {
-			return result;
-		}
-		return query_ncache(qctx, DNS_R_NCACHENXDOMAIN);
-
 	case DNS_R_NCACHENXRRSET:
-		return query_ncache(qctx, DNS_R_NCACHENXRRSET);
+		return query_ncache(qctx, result);
 
 	case DNS_R_CNAME:
 		return query_cname(qctx);
@@ -8378,8 +8002,6 @@ query_delegation_recurse(query_ctx_t *qctx) {
 	 * query_resume() when the recursion is complete.
 	 */
 
-	INSIST(!qctx->client->query.is_redirect);
-
 	/*
 	 * If DNS64 is used, look up for an A record so we can synthesize
 	 * DNS64.
@@ -8609,7 +8231,6 @@ query_nodata(query_ctx_t *qctx, isc_result_t res) {
 #endif /* ifdef dns64_bis_return_excluded_addresses */
 	} else if ((result == DNS_R_NXRRSET || result == DNS_R_NCACHENXRRSET) &&
 		   !ISC_LIST_EMPTY(qctx->view->dns64) && !qctx->nxrewrite &&
-		   !qctx->redirected &&
 		   qctx->client->message->rdclass == dns_rdataclass_in &&
 		   qctx->qtype == dns_rdatatype_aaaa)
 	{
@@ -8688,9 +8309,6 @@ query_sign_nodata(query_ctx_t *qctx) {
 	/*
 	 * Look for a NSEC3 record if we don't have a NSEC record.
 	 */
-	if (qctx->redirected) {
-		return ns_query_done(qctx);
-	}
 	if (!dns_rdataset_isassociated(qctx->rdataset) &&
 	    qctx->client->inner.wantdnssec)
 	{
@@ -8866,13 +8484,6 @@ query_nxdomain(query_ctx_t *qctx, isc_result_t result) {
 
 	CALL_HOOK(NS_QUERY_NXDOMAIN_BEGIN, qctx);
 
-	if (!empty_wild) {
-		result = query_redirect(qctx, result);
-		if (result != ISC_R_COMPLETE) {
-			return result;
-		}
-	}
-
 	if (dns_rdataset_isassociated(qctx->rdataset)) {
 		/*
 		 * If we've got a NSEC record, we need to save the
@@ -8942,90 +8553,6 @@ query_nxdomain(query_ctx_t *qctx, isc_result_t result) {
 
 cleanup:
 	return result;
-}
-
-/*
- * Handle both types of NXDOMAIN redirection, calling redirect()
- * (which implements type redirect zones) and redirect2() (which
- * implements recursive nxdomain-redirect lookups).
- *
- * Any result code other than ISC_R_COMPLETE means redirection was
- * successful and the result code should be returned up the call stack.
- * DNS_R_CONTINUE means we've initiated a recursive query to the
- * redirect zone, and we'll resume processing with the answer to that
- * in query_resume(); other results mean we have the redirected answer
- * now.
- *
- * ISC_R_COMPLETE means we reached the end of this function without
- * redirecting, so query processing should continue past it.
- */
-static isc_result_t
-query_redirect(query_ctx_t *qctx, isc_result_t saved_result) {
-	isc_result_t result;
-
-	CCTRACE(ISC_LOG_DEBUG(3), "query_redirect");
-
-	/* reset foundname */
-	(void)dns_fixedname_init(&qctx->foundname);
-
-	result = redirect(qctx->client, qctx->fname, qctx->rdataset,
-			  &qctx->foundname, &qctx->db, &qctx->version,
-			  qctx->type);
-	switch (result) {
-	case ISC_R_SUCCESS:
-		inc_stats(qctx->client, ns_statscounter_nxdomainredirect);
-		return query_prepresponse(qctx);
-	case DNS_R_NXRRSET:
-		qctx->redirected = true;
-		qctx->is_zone = true;
-		return query_nodata(qctx, DNS_R_NXRRSET);
-	case DNS_R_NCACHENXRRSET:
-		qctx->redirected = true;
-		qctx->is_zone = false;
-		return query_ncache(qctx, DNS_R_NCACHENXRRSET);
-	default:
-		break;
-	}
-
-	result = redirect2(qctx->client, qctx->fname, qctx->rdataset,
-			   &qctx->foundname, &qctx->db, &qctx->version,
-			   qctx->type, &qctx->is_zone);
-	switch (result) {
-	case ISC_R_SUCCESS:
-		inc_stats(qctx->client, ns_statscounter_nxdomainredirect);
-		return query_prepresponse(qctx);
-	case DNS_R_CONTINUE:
-		inc_stats(qctx->client,
-			  ns_statscounter_nxdomainredirect_rlookup);
-		qctx->client->query.redirect.db = MOVE_OWNERSHIP(qctx->db);
-		qctx->client->query.redirect.zone = MOVE_OWNERSHIP(qctx->zone);
-		qctx->client->query.redirect.qtype = qctx->qtype;
-		INSIST(qctx->rdataset != NULL);
-		qctx->client->query.redirect.rdataset =
-			MOVE_OWNERSHIP(qctx->rdataset);
-		qctx->client->query.redirect.sigrdataset =
-			MOVE_OWNERSHIP(qctx->sigrdataset);
-		qctx->client->query.redirect.result = saved_result;
-		dns_name_copy(qctx->fname, qctx->client->query.redirect.fname);
-		fixedname_move(&qctx->foundname,
-			       &qctx->client->query.redirect.foundname);
-		qctx->client->query.redirect.authoritative =
-			qctx->authoritative;
-		qctx->client->query.redirect.is_zone = qctx->is_zone;
-		return ns_query_done(qctx);
-	case DNS_R_NXRRSET:
-		qctx->redirected = true;
-		qctx->is_zone = true;
-		return query_nodata(qctx, DNS_R_NXRRSET);
-	case DNS_R_NCACHENXRRSET:
-		qctx->redirected = true;
-		qctx->is_zone = false;
-		return query_ncache(qctx, DNS_R_NCACHENXRRSET);
-	default:
-		break;
-	}
-
-	return ISC_R_COMPLETE;
 }
 
 /*%
@@ -9410,7 +8937,6 @@ query_coveringnsec(query_ctx_t *qctx) {
 	dns_rdataset_t sigrdataset = DNS_RDATASET_INIT;
 	bool done = false;
 	bool exists = true, data = true;
-	bool redirected = false;
 	isc_result_t result = ISC_R_SUCCESS;
 	unsigned int dboptions = qctx->client->query.dboptions;
 	unsigned int labels;
@@ -9450,11 +8976,7 @@ query_coveringnsec(query_ctx_t *qctx) {
 	/*
 	 * All signer names must be the same to accept.
 	 */
-	result = checksignames(signer, qctx->sigrdataset);
-	if (result != ISC_R_SUCCESS) {
-		result = ISC_R_SUCCESS;
-		goto cleanup;
-	}
+	CHECK(checksignames(signer, qctx->sigrdataset));
 
 	/*
 	 * The query name can't be above the signer of the NSEC.
@@ -9605,16 +9127,6 @@ query_coveringnsec(query_ctx_t *qctx) {
 	}
 
 	/*
-	 * We now have the proof that we have an NXDOMAIN.  Apply
-	 * NXDOMAIN redirection if configured.
-	 */
-	result = query_redirect(qctx, DNS_R_COVERINGNSEC);
-	if (result != ISC_R_COMPLETE) {
-		redirected = true;
-		goto cleanup;
-	}
-
-	/*
 	 * Must be signed to accept.
 	 */
 	if (!dns_rdataset_isassociated(&sigrdataset)) {
@@ -9624,11 +9136,7 @@ query_coveringnsec(query_ctx_t *qctx) {
 	/*
 	 * Check signer signer names again.
 	 */
-	result = checksignames(signer, &sigrdataset);
-	if (result != ISC_R_SUCCESS) {
-		result = ISC_R_SUCCESS;
-		goto cleanup;
-	}
+	CHECK(checksignames(signer, &sigrdataset));
 
 	soardataset = ns_client_newrdataset(qctx->client);
 	sigsoardataset = ns_client_newrdataset(qctx->client);
@@ -9662,10 +9170,6 @@ cleanup:
 	}
 	if (db != NULL) {
 		dns_db_detach(&db);
-	}
-
-	if (redirected) {
-		return result;
 	}
 
 	if (!done) {
@@ -9740,8 +9244,6 @@ query_zerottl_refetch(query_ctx_t *qctx) {
 	}
 
 	qctx_clean(qctx);
-
-	INSIST(!qctx->client->query.is_redirect);
 
 	result = ns_query_recurse(qctx->client, qctx->qtype,
 				  qctx->client->query.qname, qctx->resuming);

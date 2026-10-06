@@ -130,12 +130,6 @@ view "second" {
 	zone "clone" {
 		in-view "first";
 	};
-	zone "." {
-		type redirect;
-		primaries {
-			1.2.3.4;
-		};
-	};
 	dnssec-validation auto;
 	zone-statistics full;
 };

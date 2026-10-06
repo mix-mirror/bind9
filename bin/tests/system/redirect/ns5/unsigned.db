@@ -1,9 +1,0 @@
-$TTL 300
-@			IN SOA	ns.unsigned. hostmaster.unsigned. 0 0 0 0 0
-@			IN NS	ns.unsigned.
-
-ns.unsigned.		IN A	10.53.0.6
-domain.unsigned.	IN A	10.0.53.1
-
-*			IN A	100.100.100.1
-*			IN AAAA	2001:ffff:ffff::100.100.100.1

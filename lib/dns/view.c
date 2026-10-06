@@ -137,8 +137,6 @@ dns_view_create(isc_mem_t *mctx, dns_dispatchmgr_t *dispatchmgr,
 	isc_refcount_init(&view->references, 1);
 	isc_refcount_init(&view->weakrefs, 1);
 
-	dns_fixedname_init(&view->redirectfixed);
-
 	ISC_LIST_INIT(view->dlz_searched);
 	ISC_LIST_INIT(view->dlz_unsearched);
 	ISC_LIST_INIT(view->dns64);
@@ -342,9 +340,6 @@ destroy(dns_view_t *view) {
 	if (view->managed_keys != NULL) {
 		dns_zone_detach(&view->managed_keys);
 	}
-	if (view->redirect != NULL) {
-		dns_zone_detach(&view->redirect);
-	}
 #ifdef HAVE_DNSTAP
 	if (view->dtenv != NULL) {
 		dns_dtenv_detach(&view->dtenv);
@@ -448,13 +443,6 @@ shutdown_view(dns_view_t *view) {
 		view->managed_keys = NULL;
 		if (view->flush) {
 			dns_zone_flush(mkzone);
-		}
-	}
-	if (view->redirect != NULL) {
-		rdzone = view->redirect;
-		view->redirect = NULL;
-		if (view->flush) {
-			dns_zone_flush(rdzone);
 		}
 	}
 	if (view->catzs != NULL) {
@@ -1792,16 +1780,13 @@ cleanup:
 
 void
 dns_view_setviewcommit(dns_view_t *view) {
-	dns_zone_t *redirect = NULL, *managed_keys = NULL;
+	dns_zone_t *managed_keys = NULL;
 	dns_zt_t *zonetable = NULL;
 
 	REQUIRE(DNS_VIEW_VALID(view));
 
 	LOCK(&view->lock);
 
-	if (view->redirect != NULL) {
-		dns_zone_attach(view->redirect, &redirect);
-	}
 	if (view->managed_keys != NULL) {
 		dns_zone_attach(view->managed_keys, &managed_keys);
 	}
@@ -1815,10 +1800,6 @@ dns_view_setviewcommit(dns_view_t *view) {
 	}
 	rcu_read_unlock();
 
-	if (redirect != NULL) {
-		dns_zone_setviewcommit(redirect);
-		dns_zone_detach(&redirect);
-	}
 	if (managed_keys != NULL) {
 		dns_zone_setviewcommit(managed_keys);
 		dns_zone_detach(&managed_keys);
@@ -1827,7 +1808,7 @@ dns_view_setviewcommit(dns_view_t *view) {
 
 void
 dns_view_setviewrevert(dns_view_t *view) {
-	dns_zone_t *redirect = NULL, *managed_keys = NULL;
+	dns_zone_t *managed_keys = NULL;
 	dns_zt_t *zonetable = NULL;
 
 	REQUIRE(DNS_VIEW_VALID(view));
@@ -1837,18 +1818,11 @@ dns_view_setviewrevert(dns_view_t *view) {
 	 * release the lock.
 	 */
 	LOCK(&view->lock);
-	if (view->redirect != NULL) {
-		dns_zone_attach(view->redirect, &redirect);
-	}
 	if (view->managed_keys != NULL) {
 		dns_zone_attach(view->managed_keys, &managed_keys);
 	}
 	UNLOCK(&view->lock);
 
-	if (redirect != NULL) {
-		dns_zone_setviewrevert(redirect);
-		dns_zone_detach(&redirect);
-	}
 	if (managed_keys != NULL) {
 		dns_zone_setviewrevert(managed_keys);
 		dns_zone_detach(&managed_keys);

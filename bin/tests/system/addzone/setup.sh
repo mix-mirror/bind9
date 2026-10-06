@@ -13,9 +13,5 @@
 
 . ../conf.sh
 
-cp -f ns1/redirect.db.1 ns1/redirect.db
-cp -f ns2/redirect.db.1 ns2/redirect.db
-cp -f ns3/redirect.db.1 ns3/redirect.db
-
 cp -f ns2/default.nzf.in ns2/3bf305731dd26307.nzf
 mkdir ns2/new-zones

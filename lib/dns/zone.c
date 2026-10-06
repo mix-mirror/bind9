@@ -937,9 +937,7 @@ dns_zone_isdynamic(dns_zone_t *zone, bool ignore_freeze) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
 	if (zone->type == dns_zone_secondary || zone->type == dns_zone_mirror ||
-	    zone->type == dns_zone_stub || zone->type == dns_zone_key ||
-	    (zone->type == dns_zone_redirect &&
-	     dns_remote_addresses(&zone->primaries) != NULL))
+	    zone->type == dns_zone_stub || zone->type == dns_zone_key)
 	{
 		return true;
 	}
@@ -1384,9 +1382,7 @@ zone_load(dns_zone_t *zone, unsigned int flags, bool locked) {
 	}
 
 	if ((zone->type == dns_zone_secondary ||
-	     zone->type == dns_zone_mirror || zone->type == dns_zone_stub ||
-	     (zone->type == dns_zone_redirect &&
-	      dns_remote_addresses(&zone->primaries) != NULL)) &&
+	     zone->type == dns_zone_mirror || zone->type == dns_zone_stub) &&
 	    rbt)
 	{
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_FIRSTREFRESH);
@@ -1441,10 +1437,7 @@ zone_load(dns_zone_t *zone, unsigned int flags, bool locked) {
 			result = zone_startload(db, zone, loadtime);
 		} else {
 			result = DNS_R_NOMASTERFILE;
-			if (zone->type == dns_zone_primary ||
-			    (zone->type == dns_zone_redirect &&
-			     dns_remote_addresses(&zone->primaries) == NULL))
-			{
+			if (zone->type == dns_zone_primary) {
 				dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD,
 					      ISC_LOG_ERROR,
 					      "loading zone: "
@@ -1598,10 +1591,7 @@ get_primary_options(dns_zone_t *zone) {
 	unsigned int options;
 
 	options = DNS_MASTER_ZONE | DNS_MASTER_RESIGN;
-	if (zone->type == dns_zone_secondary || zone->type == dns_zone_mirror ||
-	    (zone->type == dns_zone_redirect &&
-	     dns_remote_addresses(&zone->primaries) == NULL))
-	{
+	if (zone->type == dns_zone_secondary || zone->type == dns_zone_mirror) {
 		options |= DNS_MASTER_SECONDARY;
 	}
 	if (zone->type == dns_zone_key) {
@@ -4066,9 +4056,7 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 	if (result != ISC_R_SUCCESS && result != DNS_R_SEENINCLUDE) {
 		if (zone->type == dns_zone_secondary ||
 		    zone->type == dns_zone_mirror ||
-		    zone->type == dns_zone_stub ||
-		    (zone->type == dns_zone_redirect &&
-		     dns_remote_addresses(&zone->primaries) == NULL))
+		    zone->type == dns_zone_stub)
 		{
 			if (result == ISC_R_FILENOTFOUND) {
 				dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD,
@@ -4210,7 +4198,6 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 	case dns_zone_secondary:
 	case dns_zone_mirror:
 	case dns_zone_stub:
-	case dns_zone_redirect:
 		if (soacount != 1) {
 			dns_zone_logc(zone, DNS_LOGCATEGORY_ZONELOAD,
 				      ISC_LOG_ERROR, "has %d SOA records",
@@ -4228,9 +4215,7 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 		if (zone->type == dns_zone_primary && errors != 0) {
 			CLEANUP(DNS_R_BADZONE);
 		}
-		if (zone->type != dns_zone_stub &&
-		    zone->type != dns_zone_redirect)
-		{
+		if (zone->type != dns_zone_stub) {
 			CHECK(check_nsec3param(zone, db));
 		}
 		if (zone->type == dns_zone_primary &&
@@ -4348,9 +4333,7 @@ zone_postload(dns_zone_t *zone, dns_db_t *db, isc_time_t loadtime,
 
 		if (zone->type == dns_zone_secondary ||
 		    zone->type == dns_zone_mirror ||
-		    zone->type == dns_zone_stub ||
-		    (zone->type == dns_zone_redirect &&
-		     dns_remote_addresses(&zone->primaries) != NULL))
+		    zone->type == dns_zone_stub)
 		{
 			isc_time_t t;
 			uint32_t delay;
@@ -4534,9 +4517,7 @@ cleanup:
 		isc_mem_put(zone->mctx, inc, sizeof(*inc));
 	}
 	if (zone->type == dns_zone_secondary || zone->type == dns_zone_mirror ||
-	    zone->type == dns_zone_stub || zone->type == dns_zone_key ||
-	    (zone->type == dns_zone_redirect &&
-	     dns_remote_addresses(&zone->primaries) != NULL))
+	    zone->type == dns_zone_stub || zone->type == dns_zone_key)
 	{
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_FIRSTREFRESH);
 
@@ -4553,9 +4534,7 @@ cleanup:
 			dns__zone_settimer(zone, now);
 		}
 		result = ISC_R_SUCCESS;
-	} else if (zone->type == dns_zone_primary ||
-		   zone->type == dns_zone_redirect)
-	{
+	} else if (zone->type == dns_zone_primary) {
 		if (!(dns__zone_inline_secure(zone) &&
 		      result == ISC_R_FILENOTFOUND))
 		{
@@ -9939,11 +9918,6 @@ zone_maintenance(dns_zone_t *zone) {
 	 * Expire check.
 	 */
 	switch (zone->type) {
-	case dns_zone_redirect:
-		if (dns_remote_addresses(&zone->primaries) == NULL) {
-			break;
-		}
-		FALLTHROUGH;
 	case dns_zone_secondary:
 	case dns_zone_mirror:
 	case dns_zone_stub:
@@ -9964,11 +9938,6 @@ zone_maintenance(dns_zone_t *zone) {
 	 * Up to date check.
 	 */
 	switch (zone->type) {
-	case dns_zone_redirect:
-		if (dns_remote_addresses(&zone->primaries) == NULL) {
-			break;
-		}
-		FALLTHROUGH;
 	case dns_zone_secondary:
 	case dns_zone_mirror:
 	case dns_zone_stub:
@@ -10018,7 +9987,6 @@ zone_maintenance(dns_zone_t *zone) {
 	case dns_zone_secondary:
 	case dns_zone_mirror:
 	case dns_zone_key:
-	case dns_zone_redirect:
 	case dns_zone_stub:
 		LOCK_ZONE(zone);
 		if (zone->masterfile != NULL &&
@@ -10045,11 +10013,10 @@ zone_maintenance(dns_zone_t *zone) {
 	}
 
 	/*
-	 * Primary/redirect zones send notifies now, if needed
+	 * Primary zones send notifies now, if needed
 	 */
 	switch (zone->type) {
 	case dns_zone_primary:
-	case dns_zone_redirect:
 		LOCK_ZONE(zone);
 		notify = (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_NEEDNOTIFY) ||
 			  DNS_ZONE_FLAG(zone, DNS_ZONEFLG_NEEDSTARTUPNOTIFY)) &&
@@ -10097,7 +10064,6 @@ zone_maintenance(dns_zone_t *zone) {
 
 	switch (zone->type) {
 	case dns_zone_primary:
-	case dns_zone_redirect:
 	case dns_zone_secondary:
 		LOCK_ZONE(zone);
 		sign = time_greater_equal(now, zone->signingtime);
@@ -10139,7 +10105,6 @@ zone_maintenance(dns_zone_t *zone) {
 
 	switch (zone->type) {
 	case dns_zone_primary:
-	case dns_zone_redirect:
 	case dns_zone_secondary:
 		/*
 		 * Do the DNSSEC work that was due before key maintenance.
@@ -10545,8 +10510,7 @@ dump_done(void *arg, isc_result_t result) {
 	 * Adjust modification time of zone file to preserve expire timing.
 	 */
 	if ((zone->type == dns_zone_secondary ||
-	     zone->type == dns_zone_mirror ||
-	     zone->type == dns_zone_redirect) &&
+	     zone->type == dns_zone_mirror) &&
 	    result == ISC_R_SUCCESS)
 	{
 		LOCK_ZONE(zone);
@@ -10748,8 +10712,7 @@ redo:
 		result = dns_master_dump(zone->mctx, db, version, masterstyle,
 					 masterfile, masterformat, &rawdata);
 		if ((zone->type == dns_zone_secondary ||
-		     zone->type == dns_zone_mirror ||
-		     zone->type == dns_zone_redirect) &&
+		     zone->type == dns_zone_mirror) &&
 		    result == ISC_R_SUCCESS)
 		{
 			isc_time_t when;
@@ -12138,8 +12101,7 @@ refresh_callback(void *arg) {
 				      primary, source);
 			/* Try with secondary with TCP. */
 			if ((zone->type == dns_zone_secondary ||
-			     zone->type == dns_zone_mirror ||
-			     zone->type == dns_zone_redirect) &&
+			     zone->type == dns_zone_mirror) &&
 			    DNS_ZONE_OPTION(zone, DNS_ZONEOPT_TRYTCPREFRESH))
 			{
 				if (dns_unreachcache_find(
@@ -12242,8 +12204,7 @@ refresh_callback(void *arg) {
 		 */
 		if (msg->rcode == dns_rcode_refused &&
 		    (zone->type == dns_zone_secondary ||
-		     zone->type == dns_zone_mirror ||
-		     zone->type == dns_zone_redirect))
+		     zone->type == dns_zone_mirror))
 		{
 			goto tcp_transfer;
 		}
@@ -12255,8 +12216,7 @@ refresh_callback(void *arg) {
 	 */
 	if ((msg->flags & DNS_MESSAGEFLAG_TC) != 0) {
 		if (zone->type == dns_zone_secondary ||
-		    zone->type == dns_zone_mirror ||
-		    zone->type == dns_zone_redirect)
+		    zone->type == dns_zone_mirror)
 		{
 			dns_zone_logc(zone, DNS_LOGCATEGORY_XFER_IN,
 				      ISC_LOG_INFO,
@@ -12394,8 +12354,7 @@ refresh_callback(void *arg) {
 				      "refresh: skipping %s as primary %s "
 				      "(source %s) is unreachable (cached)",
 				      (zone->type == dns_zone_secondary ||
-				       zone->type == dns_zone_mirror ||
-				       zone->type == dns_zone_redirect)
+				       zone->type == dns_zone_mirror)
 					      ? "zone transfer"
 					      : "NS query",
 				      primary, source);
@@ -12404,8 +12363,7 @@ refresh_callback(void *arg) {
 	tcp_transfer:
 		dns_request_destroy(&zone->request);
 		if (zone->type == dns_zone_secondary ||
-		    zone->type == dns_zone_mirror ||
-		    zone->type == dns_zone_redirect)
+		    zone->type == dns_zone_mirror)
 		{
 			do_queue_xfrin = true;
 		} else {
@@ -13249,11 +13207,6 @@ zone__settimer(void *arg) {
 	isc_time_settoepoch(&next);
 
 	switch (zone->type) {
-	case dns_zone_redirect:
-		if (dns_remote_addresses(&zone->primaries) != NULL) {
-			goto treat_as_secondary;
-		}
-		FALLTHROUGH;
 	case dns_zone_primary:
 		if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_NEEDNOTIFY) ||
 		    DNS_ZONE_FLAG(zone, DNS_ZONEFLG_NEEDSTARTUPNOTIFY))
@@ -13265,9 +13218,6 @@ zone__settimer(void *arg) {
 		{
 			INSIST(!isc_time_isepoch(&zone->dumptime));
 			next = time_min(next, zone->dumptime);
-		}
-		if (zone->type == dns_zone_redirect) {
-			break;
 		}
 		if (!DNS_ZONE_FLAG(zone, DNS_ZONEFLG_REFRESHING)) {
 			next = time_min(next, zone->refreshkeytime);
@@ -13286,7 +13236,6 @@ zone__settimer(void *arg) {
 
 	case dns_zone_secondary:
 	case dns_zone_mirror:
-	treat_as_secondary:
 		if (DNS_ZONE_FLAG(zone, DNS_ZONEFLG_NEEDNOTIFY) ||
 		    DNS_ZONE_FLAG(zone, DNS_ZONEFLG_NEEDSTARTUPNOTIFY))
 		{
@@ -13606,9 +13555,6 @@ dns_zone_logv(dns_zone_t *zone, isc_logcategory_t category, int level,
 	case dns_zone_key:
 		zstr = "managed-keys-zone";
 		break;
-	case dns_zone_redirect:
-		zstr = "redirect-zone";
-		break;
 	default:
 		zstr = "zone ";
 	}
@@ -13702,21 +13648,9 @@ dns_zonetype_name(dns_zonetype_t type) {
 		return "key";
 	case dns_zone_dlz:
 		return "dlz";
-	case dns_zone_redirect:
-		return "redirect";
 	default:
 		return "unknown";
 	}
-}
-
-dns_zonetype_t
-dns_zone_getredirecttype(dns_zone_t *zone) {
-	REQUIRE(DNS_ZONE_VALID(zone));
-	REQUIRE(zone->type == dns_zone_redirect);
-
-	return dns_remote_addresses(&zone->primaries) == NULL
-		       ? dns_zone_primary
-		       : dns_zone_secondary;
 }
 
 dns_notifyctx_t *
@@ -15292,9 +15226,7 @@ zone_replacedb(dns_zone_t *zone, dns_db_t *db, bool dump) {
 					  NULL);
 		RUNTIME_CHECK(result == ISC_R_SUCCESS);
 		RUNTIME_CHECK(soacount > 0U);
-		if ((zone->type == dns_zone_secondary ||
-		     (zone->type == dns_zone_redirect &&
-		      dns_remote_addresses(&zone->primaries) != NULL)) &&
+		if (zone->type == dns_zone_secondary &&
 		    !isc_serial_gt(serial, oldserial))
 		{
 			uint32_t serialmin, serialmax;
@@ -16205,10 +16137,7 @@ void
 dns_zone_forcexfr(dns_zone_t *zone) {
 	REQUIRE(DNS_ZONE_VALID(zone));
 
-	if (zone->type == dns_zone_primary ||
-	    (zone->type == dns_zone_redirect &&
-	     dns_remote_addresses(&zone->primaries) == NULL))
-	{
+	if (zone->type == dns_zone_primary) {
 		return;
 	}
 
@@ -16237,7 +16166,7 @@ zone_namerd_tostr(dns_zone_t *zone, char *buf, size_t length) {
 	 * Leave space for terminating '\0'.
 	 */
 	isc_buffer_init(&buffer, buf, (unsigned int)length - 1);
-	if (zone->type != dns_zone_redirect && zone->type != dns_zone_key) {
+	if (zone->type != dns_zone_key) {
 		if (dns_name_dynamic(&zone->origin)) {
 			result = dns_name_totext(
 				&zone->origin, DNS_NAME_OMITFINALDOT, &buffer);

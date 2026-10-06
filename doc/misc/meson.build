@@ -80,7 +80,6 @@ foreach zone : [
     'hint',
     'stub',
     'static-stub',
-    'redirect',
     'in-view',
 ]
     doc_misc_targets += custom_target(
