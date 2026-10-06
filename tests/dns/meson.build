@@ -84,6 +84,9 @@ deleg_probe_stub = custom_target(
     'deleg-test-probes-dns',
     input: files('../../lib/dns/probes-dns.d'),
     output: 'probes-dns.h',
+    # deleg_test.c includes lib/dns/deleg.c; the clang-tidy suite checks
+    # it without building the unit tests.
+    build_by_default: true,
     command: [
         files('../../util/dtrace.sh'),
         '-h',

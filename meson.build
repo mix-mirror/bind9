@@ -2256,6 +2256,25 @@ if find.found() and grep.found()
     )
 endif
 
+# Needs generated headers; run it after building, with --suite clang-tidy.
+if cc.get_id() == 'clang'
+    run_clang_tidy = find_program('run-clang-tidy', required: false)
+    if run_clang_tidy.found()
+        test(
+            'assert-side-effect',
+            run_clang_tidy,
+            suite: 'clang-tidy',
+            args: [
+                '-p', meson.project_build_root(),
+                '-config-file', 'util/assert-side-effect.clang-tidy',
+                '-quiet',
+            ],
+            timeout: 120,
+            workdir: meson.project_source_root(),
+        )
+    endif
+endif
+
 ###
 ### Summary
 ###

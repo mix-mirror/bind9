@@ -929,6 +929,21 @@ scan-build:
       - scan-build.reports/
     when: on_failure
 
+clang-tidy:
+  <<: *other_checks_job
+  variables:
+    EXTRA_SETUP_FILES: "--native-file ci/clang-trixie.ini"
+  script:
+    - *configure
+    # The clang-tidy suite needs the generated headers.
+    - meson compile -C build
+    - meson test -C build --suite clang-tidy --no-rebuild
+  artifacts:
+    paths:
+      - build/meson-logs/testlog.json
+      - build/meson-logs/testlog.txt
+    when: on_failure
+
 # Simple reproductibilty test, needs an image with meson >=1.6.0
 reproducible-build:
   <<: *other_checks_job
