@@ -9,9 +9,11 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-# Send A queries for the names read from stdin over a single TCP
-# connection, all of them before reading any response, and print the
-# answer sections in the order the responses arrive.
+"""
+Send A queries for the names read from stdin over a single TCP
+connection, all of them before reading any response, and print the
+answer sections in the order the responses arrive.
+"""
 
 import argparse
 import socket
@@ -22,13 +24,24 @@ import dns.message
 import dns.query
 import dns.rcode
 
-SERVER = "10.53.0.4"
 TIMEOUT = 30
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--port", type=int, default=5300)
+    parser = argparse.ArgumentParser(prog="pipequeries", description=__doc__)
+    parser.add_argument(
+        "-s",
+        "--server",
+        default="127.0.0.1",
+        help="server address (default: %(default)s)",
+    )
+    parser.add_argument(
+        "-p",
+        "--port",
+        type=int,
+        default=5300,
+        help="server port (default: %(default)s)",
+    )
     args = parser.parse_args()
 
     pending = {}
@@ -37,15 +50,16 @@ def main() -> None:
         pending[msgid] = query
 
     expiration = time.time() + TIMEOUT
-    with socket.create_connection((SERVER, args.port), timeout=TIMEOUT) as sock:
+    with socket.create_connection((args.server, args.port), timeout=TIMEOUT) as sock:
         for query in pending.values():
             dns.query.send_tcp(sock, query, expiration)
 
         while pending:
             response, _ = dns.query.receive_tcp(sock, expiration)
-            query = pending.pop(response.id, None)
-            if query is None or not query.is_response(response):
+            sent = pending.get(response.id)
+            if sent is None or not sent.is_response(response):
                 sys.exit(f"I:unexpected response:\n{response}")
+            del pending[response.id]
             if response.rcode() != dns.rcode.NOERROR:
                 sys.exit(f"I:response rcode: {dns.rcode.to_text(response.rcode())}")
             if len(response.answer) != 1:
