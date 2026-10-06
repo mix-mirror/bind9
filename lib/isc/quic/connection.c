@@ -2771,6 +2771,17 @@ isc_quic_conn_shutdown_stream(isc_quic_conn_t *conn, int64_t stream_id,
 	}
 }
 
+isc_nanosecs_t
+isc_quic_conn_next_expiry_time(isc_quic_conn_t *conn) {
+	REQUIRE(VALID_CONNECTION(conn));
+
+#if NGTCP2_VERSION_NUM >= 0x011700 /* 1.23.0 */
+	return ngtcp2_conn_get_expiry2(conn->inner);
+#else
+	return ngtcp2_conn_get_expiry(conn->inner);
+#endif
+}
+
 isc_result_t
 isc_quic_conn_open_bidi_stream(isc_quic_conn_t *conn, int64_t *stream_idp,
 			       void *user_data) {
