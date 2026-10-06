@@ -14,6 +14,19 @@ identifier false_value =~ "^false$";
 @@
 @@
 
+- REQUIRE(0);
++ UNREACHABLE();
+
+@@
+identifier false_value =~ "^false$";
+@@
+
+- REQUIRE(false_value);
++ UNREACHABLE();
+
+@@
+@@
+
 - ISC_UNREACHABLE();
 + UNREACHABLE();
 
