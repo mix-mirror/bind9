@@ -56,6 +56,11 @@ def main() -> None:
 
     expiration = time.time() + TIMEOUT
     with socket.create_connection((args.server, args.port), timeout=TIMEOUT) as sock:
+        # socket.create_connection() leaves the socket in timeout mode,
+        # where every recv() call would get its own TIMEOUT; switch to
+        # non-blocking mode so that dns.query.send_tcp() and
+        # dns.query.receive_tcp() honor the shared expiration deadline.
+        sock.setblocking(False)
         for query in pending.values():
             dns.query.send_tcp(sock, query, expiration)
 
