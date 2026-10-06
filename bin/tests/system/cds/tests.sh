@@ -124,6 +124,10 @@ err='has neither CDS nor CDNSKEY records'
 out=DS.1
 testcase 0 $CDS -v1 -s -7200 -f sig.null.nsec3 -d DS.1 $Z
 
+name='no CDS/CDNSKEY records (no apex nsec3)'
+err='Unable to prove non-existence of CDS and CDNSKEY'
+testcase 1 $CDS -s -7200 -f sig.null.nsec3.no-apex -d DS.1 $Z
+
 name='no CDS/CDNSKEY records (multi-signer: nsec + nsec)'
 out=DS.1
 testcase 0 $CDS -s -7200 -f sig.null -f sig.null -d DS.1 $Z
