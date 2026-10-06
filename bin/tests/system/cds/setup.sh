@@ -117,6 +117,10 @@ cat sig.null CDS.1 >brk.unsigned-cds
 
 cat db.null | sign3 null.nsec3
 
+sed -e 's/TATTDJ62PK2FV4AE70DVLE65OT9N06E9/TATTDJ62PK2FV4AE70DVLE65OT9N06E8/g' <sig.null.nsec3 >sig.null.nsec3.no-apex
+# re-sign with the modified NSEC3 owner
+$SIGNER >/dev/null -Z nonsecify -P -O full -o $Z -f sig.null.nsec3.no-apex sig.null.nsec3.no-apex $keyz $key1 $key2
+
 cat db.null CDS.1 | sign cds.1
 cat db.null CDS.2 | sign cds.2
 cat db.null CDS.1 CDS.2 | sign cds.both
