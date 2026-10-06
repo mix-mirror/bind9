@@ -205,7 +205,7 @@ ASSISTED_BY_VALID_RE = re.compile(
 # analysis tools (coccinelle, clang-tidy, AFL, cppcheck,
 # valgrind, sanitizers) are intentionally absent.
 ASSISTED_BY_BASIC_TOOL_RE = re.compile(
-    r"\b("
+    r"(?<!\S)("
     r"git|"
     r"gcc|g\+\+|clang|clang\+\+|cc|"
     r"meson|ninja|make|cmake|autoconf|automake|libtool|"
@@ -214,7 +214,7 @@ ASSISTED_BY_BASIC_TOOL_RE = re.compile(
     r"pytest|danger|"
     r"shellcheck|"
     r"sphinx"
-    r")\b",
+    r")(?!\S)",
     re.IGNORECASE,
 )
 fixup_error_logged = False
