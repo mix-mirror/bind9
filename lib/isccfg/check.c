@@ -73,6 +73,11 @@
 
 #define NAMED_CONTROL_PORT 953
 
+enum {
+	zonetype_hint = 1,
+	zonetype_other = 2,
+};
+
 static in_port_t dnsport = 53;
 
 static isc_result_t
@@ -3478,7 +3483,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		dns_rdataclass_format(zclass, classbuf, sizeof(classbuf));
 
 		tresult = exists(
-			zconfig, namebuf, ztype == CFG_ZONE_HINT ? 1 : 2,
+			zconfig, namebuf,
+			ztype == CFG_ZONE_HINT ? zonetype_hint : zonetype_other,
 			symtab,
 			"zone '%s': already exists previous definition: %s:%u",
 			mctx);
@@ -5524,7 +5530,8 @@ check_rpz_catz(const char *rpz_catz, const cfg_obj_t *rpz_obj,
 			continue;
 		}
 		dns_name_format(name, namebuf, sizeof(namebuf));
-		tresult = isc_symtab_lookup(symtab, namebuf, 2, &value);
+		tresult = isc_symtab_lookup(symtab, namebuf, zonetype_other,
+					    &value);
 		if (tresult == ISC_R_SUCCESS) {
 			obj = NULL;
 			zoneobj = value.as_cpointer;
