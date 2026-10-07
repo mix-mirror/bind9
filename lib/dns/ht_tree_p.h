@@ -75,9 +75,11 @@ dns_ht_tree_deinit(dns_ht_tree_t *tree);
  * Release the resources owned by 'tree', which must have been
  * initialized by dns_ht_tree_init(). Does not free 'tree' itself.
  *
- * There must be no concurrent access to 'tree' when this is called:
- * the reference held by the tree on each remaining node is released
- * immediately with methods->detach (not via an RCU grace period).
+ * There must be no concurrent access to 'tree' when this is called.
+ * The reference held by the tree on each remaining node is handed to
+ * methods->detach, which, as for dns_ht_tree_delete(), must not
+ * release it before an RCU grace period has elapsed: the hashmap may
+ * still be resizing in the background.
  *
  * Requires:
  * \li	'tree != NULL'

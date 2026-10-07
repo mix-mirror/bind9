@@ -67,10 +67,21 @@ dns_ht_tree_deinit(dns_ht_tree_t *tree) {
 
 	struct cds_lfht_node *ht_node = NULL;
 	struct cds_lfht_iter iter;
+
+	/*
+	 * Nothing else uses the table any more, but a resize may still
+	 * be running on the hashmap's own worker thread, and it reads
+	 * the nodes unlinked here; so walk the table as a reader, and
+	 * leave it to methods->detach to keep each node alive for a
+	 * grace period.
+	 */
+	rcu_read_lock();
 	cds_lfht_for_each(tree->ht, &iter, ht_node) {
 		INSIST(cds_lfht_del(tree->ht, ht_node) == 0);
 		tree->methods->detach(tree->uctx, ht_node);
 	}
+	rcu_read_unlock();
+
 	RUNTIME_CHECK(cds_lfht_destroy(tree->ht, NULL) == 0);
 }
 

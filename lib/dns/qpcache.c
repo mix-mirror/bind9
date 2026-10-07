@@ -318,11 +318,17 @@ qp_triename(void *uctx ISC_ATTR_UNUSED, char *buf, size_t size) {
 	snprintf(buf, size, "qpdb-lite");
 }
 
+static void
+qpcnode_detach_rcu(struct rcu_head *rcu_head) {
+	qpcnode_t *node = caa_container_of(rcu_head, qpcnode_t, rcu_head);
+	qpcnode_detach(&node);
+}
+
 /* Hashmap methods, for the NAMESPACE_NORMAL half of the cache. */
 static void
 ht_detach(void *uctx ISC_ATTR_UNUSED, dns_htnode_t *htnode) {
 	qpcnode_t *data = caa_container_of(htnode, qpcnode_t, htnode);
-	qpcnode_detach(&data);
+	call_rcu(&data->rcu_head, qpcnode_detach_rcu);
 }
 
 static const dns_name_t *
@@ -527,12 +533,6 @@ qpcache_hit(qpcache_t *qpdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
 /*
  * DB Routines
  */
-
-static void
-qpcnode_detach_rcu(struct rcu_head *rcu_head) {
-	qpcnode_t *node = caa_container_of(rcu_head, qpcnode_t, rcu_head);
-	qpcnode_detach(&node);
-}
 
 /*
  * Delete the auxiliary node of 'node' in namespace 'nspace', within the
@@ -1901,11 +1901,8 @@ qpcnode_expiredata(dns_dbnode_t *node, void *data) {
 }
 
 static void
-qpcache__destroy_rcu(struct rcu_head *rcu_head) {
+qpcache__free_rcu(struct rcu_head *rcu_head) {
 	qpcache_t *qpdb = caa_container_of(rcu_head, qpcache_t, rcu_head);
-
-	dns_ht_tree_deinit(&qpdb->tree_normal);
-	dns_qpmulti_destroy(&qpdb->tree_aux);
 
 	for (size_t i = 0; i < qpdb->buckets_count; i++) {
 		NODE_DESTROYLOCK(&qpdb->buckets[i].lock);
@@ -1922,6 +1919,22 @@ qpcache__destroy_rcu(struct rcu_head *rcu_head) {
 	isc_mem_putanddetach(&qpdb->common.mctx, qpdb,
 			     sizeof(*qpdb) + qpdb->buckets_count *
 						     sizeof(qpdb->buckets[0]));
+}
+
+static void
+qpcache__destroy_rcu(struct rcu_head *rcu_head) {
+	qpcache_t *qpdb = caa_container_of(rcu_head, qpcache_t, rcu_head);
+
+	dns_ht_tree_deinit(&qpdb->tree_normal);
+	dns_qpmulti_destroy(&qpdb->tree_aux);
+
+	/*
+	 * The nodes left in the hashmap are released from RCU callbacks
+	 * queued above, and those still holding data unlink it from the
+	 * buckets as they go.  They were queued from this thread, so a
+	 * callback queued now runs after them; free the rest then.
+	 */
+	call_rcu(&qpdb->rcu_head, qpcache__free_rcu);
 }
 
 static void

@@ -928,6 +928,46 @@ ISC_LOOP_TEST_IMPL(dname_ancestor_blocks_coveringnsec) {
 	isc_loopmgr_shutdown();
 }
 
+/*
+ * Destroying a cache that still holds data releases every node, and
+ * the data on it, from RCU callbacks before the cache itself is freed.
+ */
+ISC_LOOP_TEST_IMPL(teardown_releases_nodes_with_data) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	isc_mem_t *mctx = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+
+	isc_mem_create("test", &mctx);
+
+	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			       &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	for (size_t i = 0; i < 4096; i++) {
+		char namestr[DNS_NAME_FORMATSIZE];
+		dns_fixedname_t fname;
+
+		snprintf(namestr, sizeof(namestr), "n%zu.example.com.", i);
+		dns_test_namefromstring(namestr, &fname);
+		servestale_addrdataset(db, dns_fixedname_name(&fname), now,
+				       dns_rdatatype_a, "10.53.0.1", 3600,
+				       dns_trust_answer);
+	}
+	assert_int_equal(dns_db_nodecount(db), 4096);
+
+	dns_db_detach(&db);
+
+	/* The cache teardown queues the node and cache callbacks. */
+	rcu_barrier();
+	rcu_barrier();
+	assert_int_equal(isc_mem_inuse(mctx), 0);
+
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
@@ -943,6 +983,8 @@ ISC_TEST_ENTRY_CUSTOM(findnode_skips_deleted_node, setup_managers,
 ISC_TEST_ENTRY_CUSTOM(nodecount_tracks_inserts_and_deletes, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(dname_ancestor_blocks_coveringnsec, setup_managers,
+		      teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(teardown_releases_nodes_with_data, setup_managers,
 		      teardown_managers)
 ISC_TEST_LIST_END
 
