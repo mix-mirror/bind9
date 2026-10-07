@@ -67,11 +67,41 @@ check_stdout() {
   fail
 }
 
+testversion() {
+  n=$((n + 1))
+  echo_i "$name ($n)"
+  expect=$1
+  shift
+  result=$(runcmd "$@")
+  check_version
+  check_stderr
+  if [ "$expect" -ne "$result" ]; then
+    echo_d "exit status does not match $expect"
+    fail
+  fi
+  unset name err out
+}
+
+check_version() {
+  if [ -n "${out:=}" ]; then
+    grep -E "$out" out.$n >/dev/null && return 0
+    echo_d "stdout did not match '$out'"
+  else
+    [ -s out.$n ] || return 0
+  fi
+  cat out.$n | cat_d
+  fail
+}
+
 Z=cds.test
 
 name='usage'
 err='Usage'
 testcase 1 $CDS
+
+name='version'
+out='dnssec-cds 9'
+testversion 0 $CDS -V
 
 name='need a DS file'
 err='DS pathname'
