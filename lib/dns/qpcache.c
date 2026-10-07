@@ -114,6 +114,14 @@ struct qpcnode {
 	uint8_t		      : 0;
 
 	/*
+	 * In a DNAME auxiliary node: when the DNAME at its owner expires,
+	 * or 0 if the owner has none any more.  Lookups below the owner
+	 * read it without locking, to skip owners whose DNAME can't be
+	 * found anyway.  Written with the owner's node lock write-locked.
+	 */
+	atomic_uint_least32_t dname_expire;
+
+	/*
 	 * 'erefs' counts external references held by a caller: for
 	 * example, it could be incremented by dns_db_findnode(),
 	 * and decremented by dns_db_detachnode().
@@ -451,6 +459,9 @@ static size_t
 header_delete(qpcnode_t *node, dns_slabheader_t *header);
 
 static void
+update_dname_expire(qpcache_t *qpdb, qpcnode_t *node);
+
+static void
 flush_node(qpcache_t *qpdb, qpcnode_t *node, isc_rwlocktype_t *nlocktypep,
 	   dns_expire_t reason DNS__DB_FLARG);
 
@@ -463,6 +474,7 @@ expire_header(qpcache_t *qpdb, qpcnode_t *node, dns_slabheader_t *header,
 		expired += header_delete(node, header->related);
 	}
 	expired += header_delete(node, header);
+	update_dname_expire(qpdb, node);
 
 	flush_node(qpdb, node, nlocktypep, dns_expire_lru DNS__DB_FLARG_PASS);
 
@@ -553,6 +565,44 @@ delete_auxnode(qpcache_t *qpdb, dns_qp_t *qp, qpcnode_t *node,
 	}
 
 	atomic_fetch_sub_relaxed(&qpdb->buckets[node->locknum].nodes, 1);
+}
+
+/*
+ * Record in the DNAME auxiliary node of 'node' when its DNAME expires,
+ * or that it no longer has one.  Call after anything that may have
+ * added or removed the DNAME, with the node lock write-locked.
+ */
+static void
+update_dname_expire(qpcache_t *qpdb, qpcnode_t *node) {
+	isc_stdtime_t expire = 0;
+	qpcnode_t *auxnode = NULL;
+	dns_qpread_t qpr;
+	isc_result_t result;
+
+	if (!node->havedname) {
+		return;
+	}
+
+	DNS_SLABHEADER_FOREACH(header, &node->headers) {
+		if (header->typepair == DNS_TYPEPAIR(dns_rdatatype_dname) &&
+		    !NEGATIVE(header))
+		{
+			expire = header->expire;
+			break;
+		}
+	}
+
+	/*
+	 * Only deleting 'node' deletes its auxiliary node, and that can't
+	 * happen while we hold the node lock.
+	 */
+	dns_qpmulti_query(qpdb->tree_aux, &qpr);
+	result = dns_qp_getname(&qpr, &node->name, DNS_DBNAMESPACE_DNAME,
+				(void **)&auxnode, NULL);
+	dns_qpread_destroy(qpdb->tree_aux, &qpr);
+	INSIST(result == ISC_R_SUCCESS);
+
+	atomic_store_relaxed(&auxnode->dname_expire, expire);
 }
 
 /*
@@ -1491,11 +1541,24 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		len--;
 	}
 
+	uint64_t stale_ttl = KEEPSTALE(search.qpdb)
+				     ? search.qpdb->common.serve_stale_ttl
+				     : 0;
 	for (unsigned int i = 0; i < len; i++) {
 		isc_result_t tresult;
 		qpcnode_t *auxnode = NULL, *encloser = NULL;
 
 		dns_qpchain_node(&chain, i, (void **)&auxnode, NULL);
+
+		/*
+		 * Skip an owner whose DNAME is gone, or has expired beyond
+		 * the point where check_dname() could still use it as stale
+		 * data, without looking it up and locking it.
+		 */
+		uint64_t expire = atomic_load_relaxed(&auxnode->dname_expire);
+		if (expire + stale_ttl < search.now) {
+			continue;
+		}
 
 		tresult = getnode(search.qpdb, &auxnode->name, &encloser);
 		if (tresult != ISC_R_SUCCESS) {
@@ -2772,6 +2835,12 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		dns_slabheader_detach(&newheader);
 	}
 
+	/*
+	 * Adding a DNAME, or anything that displaces one (such as an
+	 * NXDOMAIN), changes when the DNAME at this node expires.
+	 */
+	update_dname_expire(qpdb, qpnode);
+
 	NODE_UNLOCK(nlock, &nlocktype);
 
 	if (result == ISC_R_EXISTS) {
@@ -2820,6 +2889,7 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 			break;
 		}
 	}
+	update_dname_expire(qpdb, qpnode);
 	NODE_UNLOCK(nlock, &nlocktype);
 
 	return result;

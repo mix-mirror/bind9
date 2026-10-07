@@ -849,7 +849,8 @@ ISC_LOOP_TEST_IMPL(nodecount_tracks_inserts_and_deletes) {
 }
 
 static isc_result_t
-coveringnsec_find(dns_db_t *db, const char *namestr, isc_stdtime_t now) {
+coveringnsec_find(dns_db_t *db, const char *namestr, isc_stdtime_t now,
+		  unsigned int options) {
 	isc_result_t result;
 	dns_fixedname_t fname, ffound;
 	dns_name_t *name = NULL, *foundname = NULL;
@@ -861,8 +862,8 @@ coveringnsec_find(dns_db_t *db, const char *namestr, isc_stdtime_t now) {
 	dns_rdataset_init(&rdataset);
 
 	result = dns_db_find(db, name, NULL, dns_rdatatype_a,
-			     DNS_DBFIND_COVERINGNSEC, now, foundname, &rdataset,
-			     NULL);
+			     DNS_DBFIND_COVERINGNSEC | options, now, foundname,
+			     &rdataset, NULL);
 	if (dns_rdataset_isassociated(&rdataset)) {
 		dns_rdataset_disassociate(&rdataset);
 	}
@@ -904,23 +905,23 @@ ISC_LOOP_TEST_IMPL(dname_ancestor_blocks_coveringnsec) {
 			       dns_rdatatype_nsec, "z.example.com. A NSEC",
 			       3600, dns_trust_secure);
 
-	assert_int_equal(coveringnsec_find(db, "m.example.com.", now),
+	assert_int_equal(coveringnsec_find(db, "m.example.com.", now, 0),
 			 DNS_R_COVERINGNSEC);
-	assert_int_equal(coveringnsec_find(db, "x.q.example.com.", now),
+	assert_int_equal(coveringnsec_find(db, "x.q.example.com.", now, 0),
 			 DNS_R_COVERINGNSEC);
 
 	/* A DNAME only affects the names below it. */
 	dname_addrdataset(db, "q.example.com.", now);
-	assert_int_equal(coveringnsec_find(db, "m.example.com.", now),
+	assert_int_equal(coveringnsec_find(db, "m.example.com.", now, 0),
 			 DNS_R_COVERINGNSEC);
-	assert_int_equal(coveringnsec_find(db, "x.q.example.com.", now),
+	assert_int_equal(coveringnsec_find(db, "x.q.example.com.", now, 0),
 			 ISC_R_NOTFOUND);
 
 	/* ...and covers every level below it. */
 	dname_addrdataset(db, "example.com.", now);
-	assert_int_equal(coveringnsec_find(db, "m.example.com.", now),
+	assert_int_equal(coveringnsec_find(db, "m.example.com.", now, 0),
 			 ISC_R_NOTFOUND);
-	assert_int_equal(coveringnsec_find(db, "y.x.q.example.com.", now),
+	assert_int_equal(coveringnsec_find(db, "y.x.q.example.com.", now, 0),
 			 ISC_R_NOTFOUND);
 
 	dns_db_detach(&db);
@@ -968,6 +969,28 @@ ISC_LOOP_TEST_IMPL(teardown_releases_nodes_with_data) {
 	isc_loopmgr_shutdown();
 }
 
+static void
+nxdomain_addrdataset(dns_db_t *db, dns_dbnode_t *node, isc_stdtime_t now,
+		     dns_trust_t trust) {
+	isc_result_t result;
+	dns_rdatalist_t rdatalist;
+	dns_rdataset_t rdataset;
+
+	dns_rdatalist_init(&rdatalist);
+	rdatalist.rdclass = dns_rdataclass_in;
+	rdatalist.type = dns_rdatatype_any;
+	rdatalist.ttl = 3600;
+	dns_rdataset_init(&rdataset);
+	dns_rdatalist_tordataset(&rdatalist, &rdataset);
+	rdataset.trust = trust;
+	rdataset.attributes.negative = true;
+	rdataset.attributes.nxdomain = true;
+
+	result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0, NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_rdataset_disassociate(&rdataset);
+}
+
 /*
  * A DNAME that the cache refuses to store doesn't get an auxiliary node,
  * which every lookup below it would otherwise have to check.
@@ -999,19 +1022,7 @@ ISC_LOOP_TEST_IMPL(rejected_dname_has_no_auxnode) {
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* A secure NXDOMAIN blocks less trusted data at the name. */
-	dns_rdatalist_init(&rdatalist);
-	rdatalist.rdclass = dns_rdataclass_in;
-	rdatalist.type = dns_rdatatype_any;
-	rdatalist.ttl = 3600;
-	dns_rdataset_init(&rdataset);
-	dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	rdataset.trust = dns_trust_secure;
-	rdataset.attributes.negative = true;
-	rdataset.attributes.nxdomain = true;
-
-	result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0, NULL);
-	assert_int_equal(result, ISC_R_SUCCESS);
-	dns_rdataset_disassociate(&rdataset);
+	nxdomain_addrdataset(db, node, now, dns_trust_secure);
 	assert_int_equal(dns_db_nodecount(db), 1);
 
 	result = dns_test_rdatafromstring(
@@ -1039,6 +1050,112 @@ ISC_LOOP_TEST_IMPL(rejected_dname_has_no_auxnode) {
 	isc_loopmgr_shutdown();
 }
 
+/* When the DNAME at 'name' expires, according to its auxiliary node. */
+static isc_stdtime_t
+dname_expire(dns_db_t *db, const dns_name_t *name) {
+	qpcache_t *qpdb = (qpcache_t *)db;
+	qpcnode_t *auxnode = NULL;
+	dns_qpread_t qpr;
+	isc_result_t result;
+	isc_stdtime_t expire;
+
+	dns_qpmulti_query(qpdb->tree_aux, &qpr);
+	result = dns_qp_getname(&qpr, name, DNS_DBNAMESPACE_DNAME,
+				(void **)&auxnode, NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	expire = atomic_load_relaxed(&auxnode->dname_expire);
+	dns_qpread_destroy(qpdb->tree_aux, &qpr);
+
+	return expire;
+}
+
+/*
+ * The DNAME auxiliary node follows the DNAME at its owner while the
+ * owner node lives on, so lookups can skip owners without a DNAME.
+ */
+ISC_LOOP_TEST_IMPL(dname_auxnode_tracks_expiry) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	dns_dbnode_t *node = NULL;
+	isc_mem_t *mctx = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	dns_fixedname_t fname;
+	dns_name_t *name = NULL;
+
+	isc_mem_create("test", &mctx);
+
+	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			       &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_test_namefromstring("example.com.", &fname);
+	name = dns_fixedname_name(&fname);
+
+	/* Other data keeps the node alive without the DNAME. */
+	servestale_addrdataset(db, name, now, dns_rdatatype_a, "10.53.0.1",
+			       3600, dns_trust_answer);
+	dname_addrdataset(db, "example.com.", now);
+	assert_int_equal(dname_expire(db, name), now + 3600);
+
+	result = dns_db_findnode(db, name, false, &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	result = dns_db_deleterdataset(db, node, NULL, dns_rdatatype_dname, 0);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_equal(dname_expire(db, name), 0);
+
+	dname_addrdataset(db, "example.com.", now + 60);
+	assert_int_equal(dname_expire(db, name), now + 60 + 3600);
+
+	/* An NXDOMAIN displaces the DNAME along with everything else. */
+	nxdomain_addrdataset(db, node, now, dns_trust_secure);
+	assert_int_equal(dname_expire(db, name), 0);
+
+	dns_db_detachnode(&node);
+	dns_db_detach(&db);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
+/*
+ * An expired DNAME that can still be served as stale data still stops
+ * a covering NSEC from being used below it when stale data is wanted.
+ */
+ISC_LOOP_TEST_IMPL(stale_dname_blocks_coveringnsec) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	isc_mem_t *mctx = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	dns_fixedname_t fname;
+
+	isc_mem_create("test", &mctx);
+
+	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			       &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_db_setservestalettl(db, 86400);
+
+	dns_test_namefromstring("a.example.com.", &fname);
+	servestale_addrdataset(db, dns_fixedname_name(&fname), now,
+			       dns_rdatatype_nsec, "z.example.com. A NSEC",
+			       3600, dns_trust_secure);
+
+	/* The DNAME expired an hour ago. */
+	dname_addrdataset(db, "example.com.", now - 7200);
+
+	assert_int_equal(coveringnsec_find(db, "m.example.com.", now, 0),
+			 DNS_R_COVERINGNSEC);
+	assert_int_equal(coveringnsec_find(db, "m.example.com.", now,
+					   DNS_DBFIND_STALEOK),
+			 ISC_R_NOTFOUND);
+
+	dns_db_detach(&db);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
@@ -1058,6 +1175,10 @@ ISC_TEST_ENTRY_CUSTOM(dname_ancestor_blocks_coveringnsec, setup_managers,
 ISC_TEST_ENTRY_CUSTOM(teardown_releases_nodes_with_data, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(rejected_dname_has_no_auxnode, setup_managers,
+		      teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(dname_auxnode_tracks_expiry, setup_managers,
+		      teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(stale_dname_blocks_coveringnsec, setup_managers,
 		      teardown_managers)
 ISC_TEST_LIST_END
 
