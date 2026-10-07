@@ -5524,7 +5524,7 @@ check_rpz_catz(const char *rpz_catz, const cfg_obj_t *rpz_obj,
 			continue;
 		}
 		dns_name_format(name, namebuf, sizeof(namebuf));
-		tresult = isc_symtab_lookup(symtab, namebuf, 3, &value);
+		tresult = isc_symtab_lookup(symtab, namebuf, 2, &value);
 		if (tresult == ISC_R_SUCCESS) {
 			obj = NULL;
 			zoneobj = value.as_cpointer;
