@@ -158,6 +158,13 @@ typedef struct qpcache_bucket {
 			/* Per-bucket lock. */
 			isc_rwlock_t lock;
 
+			/*
+			 * Number of tree nodes counted against this bucket:
+			 * the NAMESPACE_NORMAL nodes in it, and their
+			 * auxiliary NSEC nodes.
+			 */
+			atomic_uint_fast32_t nodes;
+
 			/* SIEVE-LRU cache cleaning state. */
 			ISC_SIEVE(dns_slabheader_t) sieve;
 		};
@@ -522,16 +529,21 @@ qpcnode_detach_rcu(struct rcu_head *rcu_head) {
 }
 
 /*
- * The node lock must be held write-locked. A NAMESPACE_NORMAL node is
- * unlinked from the hashmap while it's held, which is what lets
- * reactivate_node() refuse to hand out a node that has been deleted.
+ * The node lock must be held write-locked. The node is unlinked from
+ * the hashmap while it's held, which is what lets reactivate_node()
+ * refuse to hand out a node that has been deleted.
+ *
+ * Only NAMESPACE_NORMAL nodes are ever referenced externally, so only
+ * they get here; their auxiliary NSEC node is deleted together with
+ * them.
  */
 static void
 delete_node(qpcache_t *qpdb, qpcnode_t *node) {
-	isc_result_t result = ISC_R_UNEXPECTED;
+	isc_result_t result;
+	atomic_uint_fast32_t *nodes = &qpdb->buckets[node->locknum].nodes;
 
-	REQUIRE(node->nspace != DNS_DBNAMESPACE_NORMAL ||
-		!dns_ht_tree_isdeleted(&node->htnode));
+	REQUIRE(node->nspace == DNS_DBNAMESPACE_NORMAL);
+	REQUIRE(!dns_ht_tree_isdeleted(&node->htnode));
 
 	if (isc_log_wouldlog(ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL))) {
 		char printname[DNS_NAME_FORMATSIZE];
@@ -542,56 +554,39 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 			      printname, node->locknum);
 	}
 
-	dns_qp_t *qp = NULL;
-	switch (node->nspace) {
-	case DNS_DBNAMESPACE_NORMAL:
+	if (node->havensec) {
+		dns_qp_t *qp = NULL;
 
-		if (node->havensec) {
-			dns_qpmulti_write(qpdb->tree_nsec, &qp);
-			/*
-			 * Delete the corresponding node from the auxiliary NSEC
-			 * tree before deleting from the main tree.
-			 */
-			result = dns_qp_deletename(qp, &node->name,
-						   DNS_DBNAMESPACE_NSEC, NULL,
-						   NULL);
-			if (result != ISC_R_SUCCESS) {
-				isc_log_write(DNS_LOGCATEGORY_DATABASE,
-					      DNS_LOGMODULE_CACHE,
-					      ISC_LOG_WARNING,
-					      "delete_node(): "
-					      "dns_qp_deletename: %s",
-					      isc_result_totext(result));
-			}
-			dns_qpmulti_commit(qpdb->tree_nsec, &qp);
-		}
-
-		rcu_read_lock();
-		result = dns_ht_tree_delete(&qpdb->tree_normal, &node->htnode);
-		rcu_read_unlock();
-		if (result == ISC_R_SUCCESS) {
-			/*
-			 * Readers may still be looking at the node, so the
-			 * hashmap's reference is released only after a grace
-			 * period.
-			 */
-			call_rcu(&node->rcu_head, qpcnode_detach_rcu);
-		}
-		break;
-	case DNS_DBNAMESPACE_NSEC:
 		dns_qpmulti_write(qpdb->tree_nsec, &qp);
-		result = dns_qp_deletename(qp, &node->name, node->nspace, NULL,
-					   NULL);
+		/*
+		 * Delete the corresponding node from the auxiliary NSEC
+		 * tree before deleting from the main tree.
+		 */
+		result = dns_qp_deletename(qp, &node->name,
+					   DNS_DBNAMESPACE_NSEC, NULL, NULL);
+		if (result == ISC_R_SUCCESS) {
+			atomic_fetch_sub_relaxed(nodes, 1);
+		} else {
+			isc_log_write(DNS_LOGCATEGORY_DATABASE,
+				      DNS_LOGMODULE_CACHE, ISC_LOG_WARNING,
+				      "delete_node(): "
+				      "dns_qp_deletename: %s",
+				      isc_result_totext(result));
+		}
 		dns_qpmulti_commit(qpdb->tree_nsec, &qp);
-		break;
 	}
-	if (result != ISC_R_SUCCESS) {
-		isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
-			      ISC_LOG_WARNING,
-			      "delete_node(): "
-			      "dns_qp_deletename: %s",
-			      isc_result_totext(result));
-	}
+
+	rcu_read_lock();
+	result = dns_ht_tree_delete(&qpdb->tree_normal, &node->htnode);
+	rcu_read_unlock();
+	INSIST(result == ISC_R_SUCCESS);
+	atomic_fetch_sub_relaxed(nodes, 1);
+
+	/*
+	 * Readers may still be looking at the node, so the hashmap's
+	 * reference is released only after a grace period.
+	 */
+	call_rcu(&node->rcu_head, qpcnode_detach_rcu);
 }
 
 /*
@@ -1996,10 +1991,20 @@ again:
 		 */
 		qpcnode_t *newnode = new_qpcnode(qpdb, name, nspace);
 		dns_htnode_t *existing = NULL;
+
+		/*
+		 * Count the node before it becomes visible, so that a
+		 * concurrent deletion can't decrement the counter first.
+		 */
+		atomic_uint_fast32_t *nodes =
+			&qpdb->buckets[newnode->locknum].nodes;
+		atomic_fetch_add_relaxed(nodes, 1);
+
 		result = dns_ht_tree_insert(&qpdb->tree_normal,
 					    &newnode->htnode, &existing);
 		if (result == ISC_R_EXISTS) {
 			/* Someone else inserted first; use theirs. */
+			atomic_fetch_sub_relaxed(nodes, 1);
 			qpcnode_unref(newnode);
 			node = caa_container_of(existing, qpcnode_t, htnode);
 			result = ISC_R_SUCCESS;
@@ -2677,6 +2682,9 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 				result = dns_qp_insert(qp, nsecnode, 0);
 				INSIST(result == ISC_R_SUCCESS);
 				qpcnode_detach(&nsecnode);
+				atomic_fetch_add_relaxed(
+					&qpdb->buckets[qpnode->locknum].nodes,
+					1);
 			}
 			dns_qpmulti_commit(qpdb->tree_nsec, &qp);
 		}
@@ -2750,18 +2758,15 @@ qpcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
 static unsigned int
 nodecount(dns_db_t *db) {
 	qpcache_t *qpdb = (qpcache_t *)db;
-	size_t count_normal;
-	dns_qp_memusage_t mu_nsec;
+	size_t count = 0;
 
 	REQUIRE(VALID_QPDB(qpdb));
 
-	rcu_read_lock();
-	count_normal = dns_ht_tree_count(&qpdb->tree_normal);
-	rcu_read_unlock();
+	for (size_t i = 0; i < qpdb->buckets_count; i++) {
+		count += atomic_load_relaxed(&qpdb->buckets[i].nodes);
+	}
 
-	mu_nsec = dns_qpmulti_memusage(qpdb->tree_nsec);
-
-	return (unsigned int)count_normal + mu_nsec.leaves;
+	return (unsigned int)count;
 }
 
 isc_result_t
@@ -2799,6 +2804,8 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	dns_rdatasetstats_create(mctx, &qpdb->rrsetstats);
 	for (i = 0; i < (int)qpdb->buckets_count; i++) {
 		ISC_SIEVE_INIT(qpdb->buckets[i].sieve);
+
+		atomic_init(&qpdb->buckets[i].nodes, 0);
 
 		NODE_INITLOCK(&qpdb->buckets[i].lock);
 	}

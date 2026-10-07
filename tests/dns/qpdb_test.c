@@ -792,6 +792,62 @@ ISC_LOOP_TEST_IMPL(findnode_skips_deleted_node) {
 	isc_loopmgr_shutdown();
 }
 
+/*
+ * dns_db_nodecount() follows nodes being added to and deleted from both
+ * the hashmap and the auxiliary NSEC tree.
+ */
+ISC_LOOP_TEST_IMPL(nodecount_tracks_inserts_and_deletes) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	dns_dbnode_t *nodes[3] = { NULL };
+	dns_dbnode_t *node = NULL;
+	isc_mem_t *mctx = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	const char *namestr[3] = { "a.example.com.", "b.example.com.",
+				   "c.example.com." };
+	dns_fixedname_t fnames[3];
+	dns_name_t *names[3] = { NULL };
+
+	isc_mem_create("test", &mctx);
+
+	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			       &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_int_equal(dns_db_nodecount(db), 0);
+
+	for (size_t i = 0; i < ARRAY_SIZE(nodes); i++) {
+		dns_test_namefromstring(namestr[i], &fnames[i]);
+		names[i] = dns_fixedname_name(&fnames[i]);
+		result = dns_db_findnode(db, names[i], true, &nodes[i]);
+		assert_int_equal(result, ISC_R_SUCCESS);
+	}
+	assert_int_equal(dns_db_nodecount(db), 3);
+
+	/* An NSEC record adds the node's auxiliary NSEC node. */
+	servestale_addrdataset(db, names[0], now, dns_rdatatype_nsec,
+			       "b.example.com. A NSEC", 3600, dns_trust_secure);
+	assert_int_equal(dns_db_nodecount(db), 4);
+
+	/* Releasing the empty nodes deletes them. */
+	for (size_t i = 0; i < ARRAY_SIZE(nodes); i++) {
+		dns_db_detachnode(&nodes[i]);
+	}
+	assert_int_equal(dns_db_nodecount(db), 2);
+
+	/* Deleting the last node deletes its auxiliary NSEC node too. */
+	result = dns_db_findnode(db, names[0], false, &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	result = dns_db_deleterdataset(db, node, NULL, dns_rdatatype_nsec, 0);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_db_detachnode(&node);
+	assert_int_equal(dns_db_nodecount(db), 0);
+
+	dns_db_detach(&db);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
@@ -803,6 +859,8 @@ ISC_TEST_ENTRY_CUSTOM(servestale_fresh_cname_over_stale_type, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(cname_precedence, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(findnode_skips_deleted_node, setup_managers,
+		      teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(nodecount_tracks_inserts_and_deletes, setup_managers,
 		      teardown_managers)
 ISC_TEST_LIST_END
 

@@ -134,15 +134,3 @@ dns_ht_tree_isdeleted(dns_htnode_t *htnode) {
 
 	return cds_lfht_is_node_deleted(htnode);
 }
-
-size_t
-dns_ht_tree_count(dns_ht_tree_t *tree) {
-	long split_before, split_after;
-	unsigned long count;
-
-	REQUIRE(tree != NULL);
-
-	cds_lfht_count_nodes(tree->ht, &split_before, &count, &split_after);
-
-	return (size_t)count;
-}

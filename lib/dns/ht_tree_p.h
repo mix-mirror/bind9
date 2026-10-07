@@ -32,7 +32,7 @@
  * release the returned reference until an RCU grace period has elapsed
  * (e.g. by releasing it from a call_rcu() callback).
  *
- * dns_ht_tree_getname/insert/delete/count require the caller to
+ * dns_ht_tree_getname/insert/delete require the caller to
  * already hold the RCU read-side lock (rcu_read_lock()), same as
  * cds_lfht itself does. A node returned by dns_ht_tree_getname() is
  * only safe to dereference while still inside that same read-side
@@ -147,13 +147,4 @@ dns_ht_tree_isdeleted(dns_htnode_t *htnode);
  *
  * Requires:
  * \li	'htnode != NULL'
- */
-
-size_t
-dns_ht_tree_count(dns_ht_tree_t *tree);
-/*%<
- * Return the (approximate) number of entries in 'tree'.
- *
- * Requires:
- * \li	'tree != NULL'
  */
