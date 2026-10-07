@@ -380,5 +380,13 @@ name='No records with NSEC3 saying CDNSKEY should exist'
 err='CDNSKEY should exist \(NSEC3\)'
 testcase 1 $CDS -s -7200 -f sig.null.nsec3+CDNSKEY -d DS.1 $Z
 
+name='mangle RRSIG NSEC by ZSK'
+err='could not validate child NSEC RRset'
+testcase 1 $CDS -v1 -a1 -a2 -s -7200 -f brk.rrsig.nsec.zsk -d DS.1 $Z
+
+name='mangle RRSIG NSEC3 by ZSK'
+err='could not validate child NSEC3 RRset'
+testcase 1 $CDS -v1 -a1 -a2 -s -7200 -f brk.rrsig.nsec3.zsk -d DS.1 $Z
+
 echo_i "exit status: $status"
 [ $status -eq 0 ] || exit 1

@@ -113,6 +113,9 @@ sign null <<EOF
 ;
 EOF
 
+$mangle '\s+IN\s+RRSIG\s+NSEC .* '$idz' '$Z'\. ' \
+  <sig.null >brk.rrsig.nsec.zsk
+
 cat sig.null CDS.1 >brk.unsigned-cds
 cat sig.null CDNSKEY.1 >brk.unsigned-cdnskey
 
@@ -127,6 +130,9 @@ awk '$4 == "NSEC" { print $0, "CDNSKEY" ; next } { print }' sig.null >sig.null.n
 $SIGNER >/dev/null -Z nonsecify -P -O full -o $Z -f sig.null.nsec+CDNSKEY sig.null.nsec+CDNSKEY $keyz $key1 $key2
 
 cat db.null | sign3 null.nsec3
+
+$mangle '\s+IN\s+RRSIG\s+NSEC3 .* '$idz' '$Z'\. ' \
+  <sig.null.nsec3 >brk.rrsig.nsec3.zsk
 
 sed -e 's/TATTDJ62PK2FV4AE70DVLE65OT9N06E9/TATTDJ62PK2FV4AE70DVLE65OT9N06E8/g' <sig.null.nsec3 >sig.null.nsec3.no-apex
 # re-sign with the modified NSEC3 owner
