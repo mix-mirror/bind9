@@ -224,12 +224,15 @@ def test_cds_replay():
     # the new DS set but the mtime remained T0.
     dnskey_t0 = extract_from_signedzone("DNSKEY", f"{DIR['T0']}/{zone}.db.signed")
     cds_t2 = extract_from_signedzone("CDS", f"{DIR['T2']}/{zone}.db.signed")
+    nsec_t2 = extract_from_signedzone("NSEC", f"{DIR['T2']}/{zone}.db.signed")
 
     child_file = "child_file.dnskey_t0.cds_t2"
     with open(child_file, "w", encoding="utf-8") as file:
         for rr in dnskey_t0:
             file.write(f"{rr}\n")
         for rr in cds_t2:
+            file.write(f"{rr}\n")
+        for rr in nsec_t2:
             file.write(f"{rr}\n")
 
     cds(child_file, dsset_file, zone)
@@ -247,12 +250,15 @@ def test_cds_replay():
     # DNSKEY RRSIGs from T0 and an older CDS RRset signed at T1; the dsset
     # content changed back to the previous DS set.
     cds_t1 = extract_from_signedzone("CDS", f"{DIR['T1']}/{zone}.db.signed")
+    nsec_t1 = extract_from_signedzone("NSEC", f"{DIR['T1']}/{zone}.db.signed")
 
     child_file = "child_file.dnskey_t0.cds_t1"
     with open(child_file, "w", encoding="utf-8") as file:
         for rr in dnskey_t0:
             file.write(f"{rr}\n")
         for rr in cds_t1:
+            file.write(f"{rr}\n")
+        for rr in nsec_t1:
             file.write(f"{rr}\n")
 
     output = cds(child_file, dsset_file, zone, raise_on_exception=False)
