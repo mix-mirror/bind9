@@ -3414,11 +3414,11 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		} else if (strcasecmp(typestr, "hint") == 0) {
 			ztype = CFG_ZONE_HINT;
 		} else if (strcasecmp(typestr, "redirect") == 0) {
-			cfg_obj_log(obj, ISC_LOG_ERROR,
-				    "zone '%s': type 'redirect' is no "
-				    "longer supported",
+			cfg_obj_log(obj, ISC_LOG_WARNING,
+				    "zone '%s': type 'redirect' is obsolete "
+				    "and should be removed: ignoring zone",
 				    znamestr);
-			return ISC_R_FAILURE;
+			return ISC_R_SUCCESS;
 		} else {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
 				    "zone '%s': invalid type %s", znamestr,

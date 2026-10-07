@@ -6033,8 +6033,7 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 			CHECK(configure_forward(config, view, origin,
 						forwarders, forwardtype));
 		}
-		result = ISC_R_SUCCESS;
-		goto cleanup;
+		CLEANUP(ISC_R_SUCCESS);
 	}
 
 	(void)named_config_findopt(zoptions, toptions, "type", &typeobj);
@@ -6044,6 +6043,15 @@ configure_zone(const cfg_obj_t *config, const cfg_obj_t *zconfig,
 		CLEANUP(ISC_R_FAILURE);
 	}
 	ztypestr = cfg_obj_asstring(typeobj);
+
+	/* Redirect zones are no longer supported; skip it. */
+	if (strcasecmp(ztypestr, "redirect") == 0) {
+		cfg_obj_log(zconfig, ISC_LOG_WARNING,
+			    "zone '%s': type 'redirect' is obsolete "
+			    "and should be removed: ignoring zone",
+			    zname);
+		CLEANUP(ISC_R_SUCCESS);
+	}
 
 	/*
 	 * "hints zones" aren't zones.	If we've got one,

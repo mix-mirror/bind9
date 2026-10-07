@@ -772,10 +772,12 @@ fi
 status=$((status + ret))
 
 n=$((n + 1))
-echo_i "check that nxdomain-redirect generates a warning ($n)"
+echo_i "check that NXDOMAIN redirect generates warnings ($n)"
 ret=0
-$CHECKCONF warn-nxdomain-redirect.conf >checkconf.out$n 2>/dev/null || ret=1
-grep "is obsolete and should be removed" <checkconf.out$n >/dev/null || ret=1
+for file in warn-nxdomain-redirect.conf warn-redirect-zone.conf; do
+        $CHECKCONF "$file" >checkconf.out$n 2>/dev/null || ret=1
+        grep "is obsolete and should be removed" <checkconf.out$n >/dev/null || ret=1
+done
 if [ $ret -ne 0 ]; then
   echo_i "failed"
   ret=1
