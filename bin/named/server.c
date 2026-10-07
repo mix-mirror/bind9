@@ -12144,8 +12144,10 @@ do_addzone(named_server_t *server, dns_view_t *view, dns_name_t *name,
 
 	/* Zone shouldn't already exist */
 	result = dns_view_findzone(view, name, DNS_ZTFIND_EXACT, &zone);
-	if (result != ISC_R_SUCCESS && result != ISC_R_NOTFOUND) {
-		goto cleanup;
+	if (result == ISC_R_SUCCESS) {
+		CHECK(ISC_R_EXISTS);
+	} else if (result != ISC_R_NOTFOUND) {
+		CHECK(result);
 	}
 
 	isc_loopmgr_pause();
