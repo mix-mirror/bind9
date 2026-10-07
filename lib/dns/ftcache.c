@@ -1,0 +1,4160 @@
+/*
+ * Copyright (C) Internet Systems Consortium, Inc. ("ISC")
+ *
+ * SPDX-License-Identifier: MPL-2.0
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, you can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * See the COPYRIGHT file distributed with this work for additional
+ * information regarding copyright ownership.
+ */
+
+/*! \file */
+
+#include <inttypes.h>
+#include <stdalign.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <string.h>
+
+#include <isc/ascii.h>
+#include <isc/async.h>
+#include <isc/atomic.h>
+#include <isc/buffer.h>
+#include <isc/list.h>
+#include <isc/log.h>
+#include <isc/loop.h>
+#include <isc/mem.h>
+#include <isc/mutex.h>
+#include <isc/os.h>
+#include <isc/queue.h>
+#include <isc/random.h>
+#include <isc/refcount.h>
+#include <isc/result.h>
+#include <isc/sieve.h>
+#include <isc/spinlock.h>
+#include <isc/string.h>
+#include <isc/urcu.h>
+#include <isc/util.h>
+
+#include <dns/callbacks.h>
+#include <dns/db.h>
+#include <dns/dbiterator.h>
+#include <dns/fixedname.h>
+#include <dns/masterdump.h>
+#include <dns/nsec.h>
+#include <dns/rdata.h>
+#include <dns/rdataset.h>
+#include <dns/rdatasetiter.h>
+#include <dns/rdataslab.h>
+#include <dns/rdatastruct.h>
+#include <dns/rdatatype.h>
+#include <dns/stats.h>
+#include <dns/time.h>
+#include <dns/types.h>
+#include <dns/view.h>
+
+#include "db_p.h"
+#include "ftcache_p.h"
+#include "rdataslab_p.h"
+
+#ifndef DNS_FTCACHE_LOG_STATS_LEVEL
+#define DNS_FTCACHE_LOG_STATS_LEVEL 3
+#endif
+
+#define STALE_TTL(header, ftdb) \
+	(NXDOMAIN(header) ? 0 : ftdb->common.serve_stale_ttl)
+
+#define ACTIVE(header, now)            \
+	(((header)->expire > (now)) || \
+	 ((header)->expire == (now) && ZEROTTL(header)))
+
+#define EXPIREDOK(iterator) \
+	(((iterator)->common.options & DNS_DB_EXPIREDOK) != 0)
+
+#define STALEOK(iterator) (((iterator)->common.options & DNS_DB_STALEOK) != 0)
+
+#define KEEPSTALE(ftdb) ((ftdb)->common.serve_stale_ttl > 0)
+
+/*%
+ * Note that "impmagic" is not the first four bytes of the struct, so
+ * ISC_MAGIC_VALID cannot be used.
+ */
+#define FTDB_MAGIC ISC_MAGIC('F', 'T', 'D', '4')
+#define VALID_FTDB(ftdb) \
+	((ftdb) != NULL && (ftdb)->common.impmagic == FTDB_MAGIC)
+
+#define HEADERNODE(h) ((ftcnode_t *)((h)->node))
+
+/*%
+ * Forward declarations
+ */
+typedef struct ftcache ftcache_t;
+
+/*
+ * cds_ft key for a cache node. Unlike the qp key, this is a plain byte
+ * key -- cds_ft is a full 256-ary trie -- so it needs no escape coding:
+ * a leading namespace byte, then one octet per name byte with labels
+ * emitted root-first and each closed by a 0x00 separator.
+ *
+ * A label may contain any octet, including 0x00, so the separator value
+ * must be reserved: after case folding (which frees 0x41..0x5A, 'A'-'Z')
+ * the label octets 0x00..0x40 are shifted up by one, mapping label
+ * content onto [0x01..0x41] and [0x5B..0xFF] and leaving 0x00 to the
+ * separator alone. The shift is strictly monotonic and one byte per
+ * octet, so the encoding is injective, preserves DNS canonical order
+ * (for cds_ft_lookup_lt) and the ancestor-prefix property (for
+ * cds_ft_lookup_longest_match_key), and stays within cds_ft's 256-byte
+ * limit for every valid name (key length == 1 + wire length <= 256).
+ */
+#define FTC_KEY_MAXLEN 256
+typedef uint8_t ftc_key_t[FTC_KEY_MAXLEN];
+
+/*
+ * Key length of the root name: the namespace byte plus the root's
+ * empty label closed by its separator.
+ */
+#define FTC_KEY_ROOTLEN 2
+
+/*%
+ * The structure used for each node in the cache trie.
+ */
+typedef struct ftcnode ftcnode_t;
+struct ftcnode {
+	DBNODE_FIELDS;
+
+	ftcache_t *ftdb;
+
+	unsigned int nspace : 2; /*%< range is 0..3; immutable */
+
+	/*
+	 * Set once the node's name also has an auxiliary node in the
+	 * NSEC namespace (see ftcache_addrdataset()); written under the
+	 * node lock, read lock-free.
+	 */
+	atomic_bool havensec;
+
+	/*
+	 * The node is empty, unreferenced and awaiting removal from the
+	 * trie. Set -- and undone, on a lost race -- only by the
+	 * deleter, cleanup_deadnodes() phase 1, under the node lock, in
+	 * a seq_cst handshake with the lock-free reference acquisition:
+	 * the acquirer publishes its reference first and checks
+	 * 'deleted' after, the deleter sets 'deleted' first and
+	 * re-checks 'erefs' after, so whatever the interleaving, at
+	 * least one side observes the other.
+	 */
+	atomic_bool deleted;
+
+	/*
+	 * The node is linked on its bucket's deadnodes queue. A node
+	 * must never be enqueued twice -- re-initialising 'deadlink'
+	 * while linked corrupts the queue -- so enqueueing is gated by
+	 * a test-and-set on this flag; the deleter clears it right
+	 * after taking the node off the queue.
+	 */
+	atomic_bool enqueued;
+
+	/*
+	 * True once the node has been removed from the trie. Protected by
+	 * the writer mutex, which serialises all structural removals; it
+	 * keeps the removal of a 'deleted' node exactly-once when a
+	 * findnode() displaces the node (see ftcache_findnode()) before
+	 * cleanup_deadnodes() gets to it.
+	 */
+	bool removed;
+
+	/*
+	 * Serialises all mutation of this node's header list and the
+	 * write-side node state. A LEAF lock: never acquire the writer
+	 * mutex, another node's spinlock, or wait for an RCU grace
+	 * period while holding it (see the locking discipline below).
+	 */
+	isc_spinlock_t lock;
+
+	/*
+	 * 'erefs' counts external references held by a caller: for
+	 * example, it could be incremented by dns_db_findnode(),
+	 * and decremented by dns_db_detachnode().
+	 *
+	 * 'references' counts internal references to the node object,
+	 * including the one held by the trie so the node won't be
+	 * deleted while it's quiescently stored in the database - even
+	 * though 'erefs' may be zero because no external caller is
+	 * using it at the time.
+	 *
+	 * Generally when 'erefs' is incremented or decremented,
+	 * 'references' is too. When both go to zero (meaning callers
+	 * and the database have both released the object) the object
+	 * is freed.
+	 *
+	 * Whenever 'erefs' is incremented from zero, we also acquire a
+	 * node use reference (see 'ftcache->references' below), and
+	 * release it when 'erefs' goes back to zero. This prevents the
+	 * database from being shut down until every caller has released
+	 * all nodes.
+	 */
+	isc_refcount_t references;
+	isc_refcount_t erefs;
+
+	struct cds_list_head headers;
+
+	/*%
+	 * Intrusive linkage into the cds_ft trie. The trie holds one
+	 * internal reference to the node; it is dropped through 'rcu_head'
+	 * (call_rcu) once the node has been removed from the trie.
+	 */
+	struct cds_ft_node ftnode;
+	struct rcu_head rcu_head;
+
+	/*%
+	 * Linkage into the bucket's deadnodes queue. A node that became
+	 * empty and unreferenced is queued here (see ftcnode_release())
+	 * and removed from the trie asynchronously by the bucket's loop
+	 * (see cleanup_deadnodes()).
+	 */
+	isc_queue_node_t deadlink;
+
+	/*
+	 * The trie key: the case-folded, root-first byte encoding of this
+	 * node's namespace and name (see ftc_key_fromname()). It is the
+	 * node's only stored copy of its name -- the generic dns_name_t in
+	 * DBNODE_FIELDS is left empty and callers recover the (lower-cased)
+	 * name with ftc_name_fromkey(). cds_ft validates candidate lookups
+	 * by comparing against these bytes, so 'key' must stay at a fixed
+	 * offset from 'ftnode'. It is a flexible array of exactly 'keylen'
+	 * bytes, so short names don't pay for the full FTC_KEY_MAXLEN.
+	 */
+	uint16_t keylen;
+	uint8_t key[];
+};
+
+/*%
+ * A bucket holds a queue of dead nodes awaiting cleanup; every node is
+ * assigned to one at creation (see FTC_BUCKETS_PER_LOOP below).
+ */
+typedef struct ftcache_bucket {
+	union {
+		/*%
+		 * Temporary storage for stale cache nodes and
+		 * dynamically deleted nodes that await being cleaned
+		 * up.
+		 */
+		isc_queue_t deadnodes;
+		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
+	};
+} ftcache_bucket_t;
+
+STATIC_ASSERT(sizeof(ftcache_bucket_t) % ISC_OS_CACHELINE_SIZE == 0,
+	      "ftcache_bucket_t size must be a multiple of the cacheline "
+	      "size");
+
+/*
+ * Per-loop SIEVE-LRU state, owned EXCLUSIVELY by the loop whose tid
+ * indexes it: only that thread ever links, unlinks or walks the list,
+ * so no lock protects it. Other threads interact with it only
+ * indirectly -- marking a header visited (an atomic flag the sieve
+ * macros already share safely) or marking it dead for the owner to
+ * reap.
+ */
+typedef struct ftcache_sieve {
+	union {
+		struct {
+			ISC_SIEVE(dns_slabheader_t) sieve;
+
+			/*
+			 * Dead headers handed over by deleting
+			 * threads, waiting for the owner to unlink
+			 * them (see header_delete()).  MPSC: any
+			 * thread pushes, only the owner pops.
+			 */
+			struct __cds_wfs_stack zombies;
+		};
+		uint8_t __padding[ISC_OS_CACHELINE_SIZE];
+	};
+} ftcache_sieve_t;
+
+STATIC_ASSERT(sizeof(ftcache_sieve_t) % ISC_OS_CACHELINE_SIZE == 0,
+	      "ftcache_sieve_t size must be a multiple of the cacheline "
+	      "size");
+
+/*
+ * Buckets per event loop. A bucket holds only a deadnodes queue; nodes
+ * are assigned one at random when created -- uniform regardless of the
+ * name distribution and unpredictable to an attacker -- and the
+ * cleanup for bucket B runs only on loop B % nloops, so the queue
+ * maintenance stays thread-local. The write-side locks are per-node
+ * (see ftcnode.lock) and the LRU lives in per-loop sieves (see
+ * ftcache_sieve_t), so the bucket count no longer shards any lock.
+ */
+#define FTC_BUCKETS_PER_LOOP 16
+
+/*
+ * Overmem purge-size headroom for allocations the cache cannot easily
+ * attribute to a single insert: trie-internal nodes and the memory
+ * pinned until deferred reclamation runs. (It's okay to overestimate,
+ * we want to get cache memory down quickly.)
+ */
+#define FTC_SAFETY_MARGIN ((1ul << 12ul) * 12)
+
+/*
+ * A deleted header stays linked in its sieve as a "zombie" (marked
+ * DEAD, memory pinned by the sieve's reference) because only the
+ * sieve's owner may unlink it. The deleter hands the exact header to
+ * the owner through the sieve's wait-free zombie stack and the owner
+ * unlinks the handed-over headers -- O(1) per death -- on its next
+ * pass through sieve_drain(). Scanning the sieve for zombies instead
+ * would be O(cache size) per batch: the sieve only ever grows until
+ * the cache reaches overmem, so under sustained header churn the scans
+ * progressively overwhelm the write path.
+ */
+
+#define DEAD(header)                                   \
+	((atomic_load_acquire(&(header)->attributes) & \
+	  DNS_SLABHEADERATTR_DEAD) != 0)
+
+/*
+ * Locking discipline
+ * ==================
+ *
+ * The read path is lock-free: the RCU read-side keeps a reader's view
+ * of the trie, the nodes it reaches AND their header lists (mutated
+ * with the RCU-safe list primitives, freed a grace period after the
+ * last reference) alive for the duration of the read. Readers acquire
+ * headers with dns_slabheader_tryref() and node references with the
+ * seq_cst handshake against 'deleted' (see reactivate_node()).
+ *
+ * Two locks serialise the writers:
+ *
+ *   - 'wmutex' serialises every cds_ft structural write
+ *     (cds_ft_insert_unique, cds_ft_remove): there is a single writer.
+ *   - 'node->lock', a per-node spinlock, serialises all mutation of
+ *     that node's header list (add, delete, expire, the deadnode
+ *     cleanup phase 1). Writer-writer contention therefore exists only
+ *     on the same owner name.
+ *
+ * cds_ft writes drain readers with synchronize_rcu() before reclaiming the
+ * memory they unlink, so the overriding rule is: a thread inside the RCU
+ * read-side must never wait, directly or indirectly, for a grace period.
+ * Concretely:
+ *
+ *   - The node spinlock is a LEAF lock: never acquire 'wmutex', another
+ *     node's spinlock, or wait for a grace period while holding it.
+ *     cds_ft writes take 'wmutex' ALONE -- see ftcache_findnode() and
+ *     the NSEC path in ftcache_addrdataset().
+ *   - Nesting 'wmutex' -> node spinlock is allowed (the displacement in
+ *     ftcache_findnode() needs it) and safe by the rule above.
+ *   - Take 'wmutex' BEFORE entering the read-side, never after. A thread
+ *     holding rcu_read_lock() that then blocks on 'wmutex' would deadlock a
+ *     writer draining readers under it -- see cleanup_deadnodes() and the
+ *     drain in the database teardown.
+ *   - Taking a node spinlock inside the read-side is fine (holders never
+ *     block on RCU); the eviction walk in expire_lru() relies on it.
+ */
+struct ftcache {
+	/* Unlocked. */
+	dns_db_t common;
+
+	/*
+	 * NOTE: 'references' is NOT the global reference counter for
+	 * the database object handled by dns_db_attach() and _detach();
+	 * that one is 'common.references'.
+	 *
+	 * Instead, 'references' counts the number of nodes being used by
+	 * at least one external caller. (It's called 'references' to
+	 * leverage the ISC_REFCOUNT_STATIC macros, but 'nodes_in_use'
+	 * might be a clearer name.)
+	 *
+	 * One additional reference to this counter is held by the database
+	 * object itself. When 'common.references' goes to zero, that
+	 * reference is released. When in turn 'references' goes to zero,
+	 * the database is shut down and freed.
+	 */
+	isc_refcount_t references;
+
+	dns_stats_t *rrsetstats;
+	isc_stats_t *cachestats;
+
+	uint32_t maxrrperset;	 /* Maximum RRs per RRset */
+	uint32_t maxtypepername; /* Maximum number of RR types per owner */
+
+	/*
+	 * The time after a failed lookup, where stale answers from cache
+	 * may be used directly in a DNS response without attempting a
+	 * new iterative lookup.
+	 */
+	uint32_t serve_stale_refresh;
+
+	/*
+	 * The cds_ft trie holding the cache nodes, its enclosing group,
+	 * and the single-writer mutex serialising structural mutations.
+	 * Reads run lock-free under the RCU read-side lock.
+	 */
+	struct cds_ft_group *ftgroup;
+	struct cds_ft *ft;
+	isc_mutex_t wmutex;
+
+	/*
+	 * The trie teardown (see ftcache__destroy()) must run on a loop, and
+	 * the last database reference can be dropped from contexts that
+	 * outlive the loops (a call_rcu worker draining after shutdown).
+	 * Holding a main-loop reference for the database's whole lifetime
+	 * keeps that loop running -- and with it the loop manager valid --
+	 * until the deferred teardown has executed, by construction.
+	 */
+	isc_loop_t *loop;
+
+	struct rcu_head rcu_head;
+
+	/*
+	 * Per-loop SIEVE-LRU shards (sieves_count == nloops).
+	 */
+	ftcache_sieve_t *sieves;
+	size_t sieves_count;
+
+	size_t buckets_count;
+	ftcache_bucket_t buckets[]; /* attribute((counted_by(buckets_count))) */
+};
+
+#ifdef DNS_DB_NODETRACE
+#define ftcache_ref(ptr)   ftcache__ref(ptr, __func__, __FILE__, __LINE__)
+#define ftcache_unref(ptr) ftcache__unref(ptr, __func__, __FILE__, __LINE__)
+#define ftcache_attach(ptr, ptrp) \
+	ftcache__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
+#define ftcache_detach(ptrp) ftcache__detach(ptrp, __func__, __FILE__, __LINE__)
+ISC_REFCOUNT_STATIC_TRACE_DECL(ftcache);
+#else
+ISC_REFCOUNT_STATIC_DECL(ftcache);
+#endif
+
+/*%
+ * Search Context
+ */
+typedef struct {
+	ftcache_t *ftdb;
+	unsigned int options;
+	bool need_cleanup;
+	ftcnode_t *zonecut;
+	dns_slabheader_t *zonecut_header;
+	dns_slabheader_t *zonecut_sigheader;
+	isc_stdtime_t now;
+} ftc_search_t;
+
+static isc_result_t
+ftc_lookup_with_key(struct cds_ft *ft, const uint8_t *key, size_t keylen,
+		    ftcnode_t **nodep);
+static isc_result_t
+ftc_lookup(struct cds_ft *ft, const dns_name_t *name, dns_namespace_t space,
+	   ftcnode_t **nodep);
+
+static size_t
+ftc_key_fromname(uint8_t *key, const dns_name_t *name, dns_namespace_t space) {
+	REQUIRE(ISC_MAGIC_VALID(name, DNS_NAME_MAGIC));
+
+	dns_offsets_t offsets;
+	size_t labels = dns_name_offsets(name, offsets);
+	size_t len = 0;
+
+	key[len++] = (uint8_t)space;
+
+	size_t label = labels;
+	while (label-- > 0) {
+		const uint8_t *ldata = name->ndata + offsets[label];
+		size_t label_len = *ldata++;
+		for (size_t j = 0; j < label_len; j++) {
+			/*
+			 * Case-fold, then shift 0x00..0x40 up by one to
+			 * reserve 0x00 for the label separator; the fold has
+			 * just freed 0x41 ('A'), so the shift cannot collide.
+			 * See the ftc_key_t comment for the full rationale.
+			 */
+			uint8_t byte = isc_ascii_tolower(ldata[j]);
+			if (byte <= 0x40) {
+				byte += 1;
+			}
+			key[len++] = byte;
+		}
+		key[len++] = 0x00; /* label separator (sorts before any octet)
+				    */
+	}
+
+	INSIST(len <= FTC_KEY_MAXLEN);
+	return len;
+}
+
+/*
+ * Reconstruct a DNS name from a trie key produced by ftc_key_fromname().
+ * The key is a namespace byte followed by the labels, root first, each
+ * label's octets terminated by a 0x00 separator. We emit the labels
+ * leaf-first (wire order) straight into the target name's own buffer by
+ * walking the slices in reverse; the first (root) slice is empty and
+ * becomes the trailing zero octet. 'name' must be buffer-backed (all
+ * callers pass a dns_fixedname), as dns_name_copy() would have required.
+ *
+ * The label octets are stored case-folded with the 0x00..0x40 range
+ * shifted up by one (see the ftc_key_t comment), so each octet up to
+ * 0x41 is shifted back down while emitting; the recovered name is
+ * lower-cased. Callers that need the presentation case must apply it
+ * separately (for example dns_rdataset_getownercase()).
+ */
+static void
+ftc_name_fromkey(dns_name_t *name, const uint8_t *key, size_t keylen) {
+	size_t labstart[DNS_NAME_MAXLABELS];
+	size_t lablen[DNS_NAME_MAXLABELS];
+	size_t nlabels = 0;
+	size_t i = 1; /* skip the namespace byte */
+	isc_buffer_t *b = name->buffer;
+	isc_region_t r;
+
+	REQUIRE(b != NULL);
+
+	while (i < keylen) {
+		size_t start = i;
+		while (i < keylen && key[i] != 0x00) {
+			i++;
+		}
+		INSIST(nlabels < DNS_NAME_MAXLABELS);
+		labstart[nlabels] = start;
+		lablen[nlabels] = i - start;
+		nlabels++;
+		i++; /* skip the 0x00 separator */
+	}
+
+	isc_buffer_clear(b);
+	for (size_t k = nlabels; k-- > 1;) {
+		isc_buffer_putuint8(b, (uint8_t)lablen[k]);
+		for (size_t j = 0; j < lablen[k]; j++) {
+			uint8_t byte = key[labstart[k] + j];
+			/* Undo the encoder's 0x00..0x40 -> +1 shift. */
+			if (byte <= 0x41) {
+				byte -= 1;
+			}
+			isc_buffer_putuint8(b, byte);
+		}
+	}
+	isc_buffer_putuint8(b, 0x00); /* root label */
+
+	isc_buffer_usedregion(b, &r);
+	dns_name_fromregion(name, &r);
+}
+
+#ifdef DNS_DB_NODETRACE
+#define ftcnode_ref(ptr)   ftcnode__ref(ptr, __func__, __FILE__, __LINE__)
+#define ftcnode_unref(ptr) ftcnode__unref(ptr, __func__, __FILE__, __LINE__)
+#define ftcnode_attach(ptr, ptrp) \
+	ftcnode__attach(ptr, ptrp, __func__, __FILE__, __LINE__)
+#define ftcnode_detach(ptrp) ftcnode__detach(ptrp, __func__, __FILE__, __LINE__)
+ISC_REFCOUNT_STATIC_TRACE_DECL(ftcnode);
+#else
+ISC_REFCOUNT_STATIC_DECL(ftcnode);
+#endif
+
+/*
+ * Node methods forward declarations
+ */
+static void
+ftcnode_attachnode(dns_dbnode_t *source, dns_dbnode_t **targetp DNS__DB_FLARG);
+static void
+ftcnode_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG);
+static void
+ftcnode_expiredata(dns_dbnode_t *node, void *data);
+
+static dns_dbnode_methods_t ftcnode_methods = (dns_dbnode_methods_t){
+	.attachnode = ftcnode_attachnode,
+	.detachnode = ftcnode_detachnode,
+	.expiredata = ftcnode_expiredata,
+};
+
+static void
+rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
+static isc_result_t
+rdatasetiter_first(dns_rdatasetiter_t *iterator DNS__DB_FLARG);
+static isc_result_t
+rdatasetiter_next(dns_rdatasetiter_t *iterator DNS__DB_FLARG);
+static void
+rdatasetiter_current(dns_rdatasetiter_t *iterator,
+		     dns_rdataset_t *rdataset DNS__DB_FLARG);
+
+static dns_rdatasetitermethods_t rdatasetiter_methods = {
+	rdatasetiter_destroy, rdatasetiter_first, rdatasetiter_next,
+	rdatasetiter_current
+};
+
+typedef struct ftc_rditer {
+	dns_rdatasetiter_t common;
+	dns_rdataset_t *current;
+	ISC_LIST(dns_rdataset_t) rdatasets;
+} ftc_rditer_t;
+
+static void
+dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG);
+static isc_result_t
+dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG);
+static isc_result_t
+dbiterator_last(dns_dbiterator_t *iterator DNS__DB_FLARG);
+static isc_result_t
+dbiterator_seek(dns_dbiterator_t *iterator,
+		const dns_name_t *name DNS__DB_FLARG);
+static isc_result_t
+dbiterator_seek3(dns_dbiterator_t *iterator,
+		 const dns_name_t *name DNS__DB_FLARG);
+static isc_result_t
+dbiterator_prev(dns_dbiterator_t *iterator DNS__DB_FLARG);
+static isc_result_t
+dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG);
+static isc_result_t
+dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
+		   dns_name_t *name DNS__DB_FLARG);
+static isc_result_t
+dbiterator_pause(dns_dbiterator_t *iterator);
+static isc_result_t
+dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name);
+
+static dns_dbiteratormethods_t dbiterator_methods = {
+	dbiterator_destroy, dbiterator_first,	dbiterator_last,
+	dbiterator_seek,    dbiterator_seek3,	dbiterator_prev,
+	dbiterator_next,    dbiterator_current, dbiterator_pause,
+	dbiterator_origin
+};
+
+/*
+ * In the cache, NSEC3 records are currently stored in the NORMAL
+ * namespace.  If we ever implement synth-from-dnssec using NSEC3 records,
+ * they'll need be moved into the NSEC3 namespace for efficiency, and
+ * the iterator implementation will need to be more complex, as in
+ * qpzone.
+ */
+typedef struct ftc_dbit {
+	dns_dbiterator_t common;
+	bool paused;
+	isc_result_t result;
+	dns_fixedname_t fixed;
+	dns_name_t *name;
+	struct cds_ft_iter *iter;
+	ftcnode_t *node;
+} ftc_dbit_t;
+
+static void
+ftcache__destroy(ftcache_t *ftdb);
+
+static dns_dbmethods_t ftdb_cachemethods;
+
+static void
+cleanup_deadnodes_cb(void *arg);
+
+/*
+ * Cache-eviction routines.
+ */
+
+static size_t
+header_delete(ftcnode_t *node, dns_slabheader_t *header);
+
+static void
+flush_node(ftcache_t *ftdb, ftcnode_t *node, dns_expire_t reason DNS__DB_FLARG);
+
+static size_t
+expire_header(ftcache_t *ftdb, ftcnode_t *node,
+	      dns_slabheader_t *header DNS__DB_FLARG) {
+	size_t expired = 0;
+
+	if (header->related != NULL) {
+		expired += header_delete(node, header->related);
+	}
+	expired += header_delete(node, header);
+
+	flush_node(ftdb, node, dns_expire_lru DNS__DB_FLARG_PASS);
+
+	return expired;
+}
+
+/*
+ * Unlink the dead headers other threads have handed to this sieve
+ * since the last drain. Runs on the owner only; each pusher's own
+ * reference keeps its header alive until it is popped here. The
+ * linked state is re-checked because the deleter's check was racy
+ * against the owner's eviction walk: a header that lost that race was
+ * already unlinked (and the sieve's reference dropped) by the walk,
+ * so only the pusher's reference is dropped.
+ */
+static void
+sieve_drain(ftcache_sieve_t *s) {
+	if (cds_wfs_empty(&s->zombies)) {
+		return;
+	}
+
+	struct cds_wfs_head *head = __cds_wfs_pop_all(&s->zombies);
+
+	for (struct cds_wfs_node *node = cds_wfs_first(head); node != NULL;) {
+		dns_slabheader_t *header =
+			caa_container_of(node, dns_slabheader_t, zombie_link);
+		node = cds_wfs_next_blocking(node);
+
+		if (ISC_SIEVE_LINKED(header, lrulink)) {
+			ISC_SIEVE_UNLINK(s->sieve, header, lrulink);
+			DNS_SLABHEADER_CLRATTR(header,
+					       DNS_SLABHEADERATTR_INSIEVE);
+			/* The sieve's own reference. */
+			dns_slabheader_unref(header);
+		}
+		/* The pusher's reference. */
+		dns_slabheader_detach(&header);
+	}
+}
+
+/*
+ * Maximum estimated size of the data being added: the size of the
+ * rdataset, plus a new node and key and a possible additional NSEC node
+ * and key, plus a safety margin for trie-internal allocations.
+ */
+static size_t
+overmem_purgesize(dns_slabheader_t *newheader) {
+	return 2 * (sizeof(ftcnode_t) + HEADERNODE(newheader)->keylen) +
+	       dns_rdataslab_size(newheader) + FTC_SAFETY_MARGIN;
+}
+
+/*
+ * Evict least-recently-visited entries until 'requested' bytes have
+ * been reclaimed. The walk covers the calling loop's OWN sieve,
+ * lock-free by the strong affinity: headers inserted by other loops
+ * live in their sieves and are evicted by them, so every loop evicts
+ * only its shard of the cache and the sieves approximate a global LRU
+ * together. For a live candidate, only the candidate's node spinlock
+ * is taken, one node at a time. The 'dead' state is re-checked under
+ * that lock; a header that went dead meanwhile was already deleted by
+ * someone else and only its sieve reference is dropped. The callers
+ * purge BEFORE adding their new header, while it is still private, so
+ * the walk can neither find nor evict it and no protection check is
+ * needed.
+ */
+static void
+expire_lru(ftcache_t *ftdb, size_t requested DNS__DB_FLARG) {
+	ftcache_sieve_t *s = &ftdb->sieves[isc_tid()];
+	size_t expired = 0;
+
+	/*
+	 * Reap the handed-over zombies first: their slabs free without
+	 * evicting anything live, and the walk below then cannot waste
+	 * its passes on them.
+	 */
+	sieve_drain(s);
+
+	while (expired < requested) {
+		dns_slabheader_t *header = ISC_SIEVE_NEXT(s->sieve, visited,
+							  lrulink);
+		if (header == NULL) {
+			break;
+		}
+
+		ISC_SIEVE_UNLINK(s->sieve, header, lrulink);
+		DNS_SLABHEADER_CLRATTR(header, DNS_SLABHEADERATTR_INSIEVE);
+
+		/*
+		 * The read-side lock pins the candidate's node: seeing
+		 * the header not dead INSIDE the critical section means
+		 * the header is still on its node's list, so the node
+		 * removal -- whose deferred free could invalidate
+		 * HEADERNODE() -- has not started, and any later free
+		 * waits out this read section.
+		 */
+		rcu_read_lock();
+		if (!DEAD(header)) {
+			ftcnode_t *node = HEADERNODE(header);
+
+			SPINLOCK(&node->lock);
+			if (!DEAD(header)) {
+				expired += expire_header(
+					ftdb, node, header DNS__DB_FLARG_PASS);
+			}
+			SPINUNLOCK(&node->lock);
+		}
+		rcu_read_unlock();
+
+		/* The sieve's own reference. */
+		dns_slabheader_detach(&header);
+	}
+}
+
+static void
+ftcache_miss(ftcache_t *ftdb, dns_slabheader_t *newheader) {
+	ftcache_sieve_t *s = &ftdb->sieves[isc_tid()];
+
+	/* The sieve link owns a reference of its own. */
+	dns_slabheader_ref(newheader);
+	newheader->sieve_tid = (uint16_t)isc_tid();
+	DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_INSIEVE);
+	ISC_SIEVE_INSERT(s->sieve, newheader, lrulink);
+}
+
+static void
+ftcache_hit(ftcache_t *ftdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
+	/*
+	 * On cache hit, we only mark the header as seen.
+	 */
+	ISC_SIEVE_MARK(header, visited);
+}
+
+/*
+ * DB Routines
+ */
+
+/*
+ * Write transaction must be open.
+ */
+/* RCU callback: drop the trie's reference once readers have drained. */
+static void
+ftc_drop_tree_ref(struct rcu_head *rcu_head) {
+	ftcnode_t *node = caa_container_of(rcu_head, ftcnode_t, rcu_head);
+	cds_ft_node_init(&node->ftnode);
+	ftcnode_detach(&node);
+}
+
+/*
+ * Remove a node from the cds_ft trie. The node has already been marked
+ * 'deleted' under its NODE lock (which blocks new reactivate_node()
+ * references); the caller holds the writer mutex and the RCU read-side
+ * lock and holds NO node lock -- the writer mutex only ever wraps the
+ * structural cds_ft call. 'iter' is a scratch iterator (UNCACHED).
+ *
+ * A 'havensec' node also owns an auxiliary node of the same name in the
+ * NSEC namespace (see ftcache_addrdataset()). That node carries no data
+ * and no external references, so it never reaches the deadnodes queue on
+ * its own; co-deleting it here is the only thing that reclaims it.
+ */
+static void
+delete_node_trie(ftcache_t *ftdb, struct cds_ft_iter *iter, ftcnode_t *node) {
+	enum cds_ft_status status;
+
+	INSIST(atomic_load(&node->deleted));
+	INSIST(!node->removed);
+
+	status = cds_ft_iter_set_key(iter, node->key, node->keylen);
+	INSIST(status == CDS_FT_STATUS_OK);
+
+	status = cds_ft_lookup(ftdb->ft, iter);
+	INSIST(status == CDS_FT_STATUS_OK);
+	INSIST(cds_ft_iter_node(iter) == &node->ftnode);
+	INSIST(cds_ft_node_next_rcu(cds_ft_iter_node(iter)) == NULL);
+
+	status = cds_ft_remove(ftdb->ft, iter, cds_ft_iter_node(iter));
+	INSIST(status == CDS_FT_STATUS_OK);
+	node->removed = true;
+
+	call_rcu(&node->rcu_head, ftc_drop_tree_ref);
+
+	if (atomic_load(&node->havensec)) {
+		ftc_key_t nseckey;
+
+		/* Same name, NSEC namespace: only the namespace byte differs.
+		 */
+		memcpy(nseckey, node->key, node->keylen);
+		nseckey[0] = DNS_DBNAMESPACE_NSEC;
+
+		status = cds_ft_iter_set_key(iter, nseckey, node->keylen);
+		INSIST(status == CDS_FT_STATUS_OK);
+
+		if (cds_ft_lookup(ftdb->ft, iter) == CDS_FT_STATUS_OK) {
+			struct cds_ft_node *ftn = cds_ft_iter_node(iter);
+			ftcnode_t *nsecnode = caa_container_of(ftn, ftcnode_t,
+							       ftnode);
+
+			status = cds_ft_remove(ftdb->ft, iter, ftn);
+			INSIST(status == CDS_FT_STATUS_OK);
+			nsecnode->removed = true;
+
+			call_rcu(&nsecnode->rcu_head, ftc_drop_tree_ref);
+		}
+	}
+}
+
+/*
+ * Increment the external references; if incrementing from zero, also
+ * increment the node use counter in the ftcache object.
+ *
+ * No lock is needed: the increment is a seq_cst RMW forming the
+ * acquirer's half of the handshake with the deleter (see the 'deleted'
+ * member and reactivate_node()), so it cannot reorder with the
+ * acquirer's subsequent 'deleted' check.
+ *
+ * This function is called from ftcnode_acquire(), so that internal
+ * and external references are acquired at the same time.
+ */
+static void
+ftcnode_erefs_increment(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
+	uint_fast32_t refs = atomic_fetch_add(&node->erefs, 1);
+
+	INSIST(refs < UINT32_MAX);
+
+#if DNS_DB_NODETRACE
+	fprintf(stderr, "incr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
+		func, file, line, node, refs + 1);
+#endif
+
+	if (refs > 0) {
+		return;
+	}
+
+	ftcache_ref(ftdb);
+}
+
+static void
+ftcnode_acquire(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
+	ftcnode_ref(node);
+	ftcnode_erefs_increment(ftdb, node DNS__DB_FLARG_PASS);
+}
+
+/*
+ * Decrement the external references to a node. If the counter
+ * goes to zero, decrement the node use counter in the ftcache object
+ * as well, and return true. Otherwise return false.
+ */
+static bool
+ftcnode_erefs_decrement(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
+	uint_fast32_t refs = isc_refcount_decrement(&node->erefs);
+
+#if DNS_DB_NODETRACE
+	fprintf(stderr, "decr:node:%s:%s:%u:%p->erefs = %" PRIuFAST32 "\n",
+		func, file, line, node, refs - 1);
+#endif
+	if (refs > 1) {
+		return false;
+	}
+
+	ftcache_unref(ftdb);
+	return true;
+}
+
+/*
+ * A lock-free check whether the node's header list is empty. The
+ * writers mutate the list with the RCU-safe primitives, so observing
+ * the head's next pointer is safe from any context; the answer is
+ * advisory by nature -- a concurrent add or delete can change it
+ * immediately after.
+ */
+static bool
+ftcnode_empty(ftcnode_t *node) {
+	return rcu_dereference(node->headers.next) == &node->headers;
+}
+
+/*
+ * Decrement the external node reference counter (and possibly the node
+ * use counter); when the last reference is dropped on a node without
+ * headers, queue the node for cleanup, then decrement the internal
+ * reference counter as well.
+ *
+ * No lock is needed. The enqueue is gated by the atomic 'enqueued'
+ * test-and-set, so the node can be on its bucket's deadnodes queue at
+ * most once -- re-initialising the deadlink of a linked node would
+ * corrupt the queue; cleanup_deadnodes() phase 1 clears the flag when
+ * it takes the node off the queue. A node marked 'deleted' refuses the
+ * enqueue: it is already past its final cleanup.
+ */
+static void
+ftcnode_release(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
+	if (!ftcnode_erefs_decrement(ftdb, node DNS__DB_FLARG_PASS)) {
+		goto unref;
+	}
+
+	/* Handle easy and typical case first. */
+	if (!ftcnode_empty(node)) {
+		goto unref;
+	}
+
+	if (atomic_load(&node->deleted)) {
+		/* Already being removed from the trie. */
+		goto unref;
+	}
+
+	if (!atomic_exchange(&node->enqueued, true)) {
+		/* The queue holds an external reference of its own. */
+		ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
+
+		isc_queue_node_init(&node->deadlink);
+		if (!isc_queue_enqueue_entry(
+			    &ftdb->buckets[node->locknum].deadnodes, node,
+			    deadlink))
+		{
+			/* Queue was empty, trigger new cleaning */
+			isc_loop_t *loop = isc_loop_get(node->locknum %
+							isc_loopmgr_nloops());
+
+			ftcache_ref(ftdb);
+			isc_async_run(loop, cleanup_deadnodes_cb, ftdb);
+		}
+	}
+unref:
+	ftcnode_unref(node);
+}
+
+static void
+update_rrsetstats(dns_stats_t *stats, const dns_typepair_t typepair,
+		  const uint_least16_t hattributes, const bool increment) {
+	dns_rdatastatstype_t statattributes = 0;
+	dns_rdatastatstype_t base = 0;
+	dns_rdatastatstype_t type;
+	dns_slabheader_t *header = &(dns_slabheader_t){
+		.typepair = typepair,
+		.attributes = hattributes,
+	};
+
+	if (!STATCOUNT(header)) {
+		return;
+	}
+
+	if (NEGATIVE(header)) {
+		if (NXDOMAIN(header)) {
+			statattributes = DNS_RDATASTATSTYPE_ATTR_NXDOMAIN;
+		} else {
+			statattributes = DNS_RDATASTATSTYPE_ATTR_NXRRSET;
+			base = DNS_TYPEPAIR_TYPE(header->typepair);
+		}
+	} else {
+		base = DNS_TYPEPAIR_TYPE(header->typepair);
+	}
+
+	if (STALE(header)) {
+		statattributes |= DNS_RDATASTATSTYPE_ATTR_STALE;
+	}
+
+	type = DNS_RDATASTATSTYPE_VALUE(base, statattributes);
+	if (increment) {
+		dns_rdatasetstats_increment(stats, type);
+	} else {
+		dns_rdatasetstats_decrement(stats, type);
+	}
+}
+
+static void
+mark(dns_slabheader_t *header, uint_least16_t flag) {
+	uint_least16_t attributes = atomic_load_acquire(&header->attributes);
+	uint_least16_t newattributes = 0;
+	ftcache_t *ftdb = HEADERNODE(header)->ftdb;
+
+	/*
+	 * If we are already ancient there is nothing to do.
+	 */
+	do {
+		if ((attributes & flag) != 0) {
+			return;
+		}
+		newattributes = attributes | flag;
+	} while (!atomic_compare_exchange_weak_acq_rel(
+		&header->attributes, &attributes, newattributes));
+
+	/*
+	 * Decrement and increment the stats counter for the appropriate
+	 * RRtype.
+	 */
+	update_rrsetstats(ftdb->rrsetstats, header->typepair, attributes,
+			  false);
+	update_rrsetstats(ftdb->rrsetstats, header->typepair, newattributes,
+			  true);
+}
+
+static void
+setttl(dns_slabheader_t *header, isc_stdtime_t newts) {
+	header->expire = newts;
+}
+
+static size_t
+header__delete(ftcnode_t *node, dns_slabheader_t *header, bool clear_partner) {
+	/*
+	 * The slabheader has already been removed from the node headers.
+	 * The DEAD attribute is the marker for that: cds_list_del_rcu()
+	 * leaves the removed element's own pointers intact for the sake
+	 * of concurrent readers, so emptiness of the link cannot be
+	 * tested. All deleters run under the node lock, so the check
+	 * and the SETATTR below cannot race each other.
+	 */
+	if (DEAD(header)) {
+		return 0;
+	}
+
+	size_t expired = dns_rdataslab_size(header);
+	ftcache_t *ftdb = node->ftdb;
+
+	cds_list_del_rcu(&header->headers_link);
+
+	/*
+	 * This place is the only place where we actually need header->typepair.
+	 */
+	update_rrsetstats(ftdb->rrsetstats, header->typepair,
+			  atomic_load_acquire(&header->attributes), false);
+
+	/*
+	 * The sieve holding the header belongs exclusively to the loop
+	 * that inserted it, so it cannot be unlinked from here (any
+	 * thread). Mark the header dead instead -- unconditionally,
+	 * because the eviction walk relies on "not dead" to mean "still
+	 * on its node's list" -- and hand it to the owner through the
+	 * sieve's zombie stack; the sieve's own reference keeps the
+	 * memory alive meanwhile. The INSIEVE hint is an atomic the
+	 * owner maintains at insert/unlink, so this thread never reads
+	 * the plain lrulink pointers it does not own; the hint can be
+	 * stale against the owner's concurrent eviction walk, so the
+	 * push takes a reference of its own and only the owner's view
+	 * of the linked state, at the drain, is exact. The DEAD gate
+	 * above makes this push once-only.
+	 */
+	DNS_SLABHEADER_SETATTR(header, DNS_SLABHEADERATTR_DEAD);
+	if (DNS_SLABHEADER_GETATTR(header, DNS_SLABHEADERATTR_INSIEVE) != 0) {
+		ftcache_sieve_t *s = &ftdb->sieves[header->sieve_tid];
+
+		dns_slabheader_ref(header);
+		cds_wfs_node_init(&header->zombie_link);
+		cds_wfs_push(&s->zombies, &header->zombie_link);
+	}
+
+	/*
+	 * The pointer fields are cleared with rcu_assign_pointer()
+	 * because lock-free readers may be following them; the
+	 * references are dropped only afterwards, via a local copy.
+	 */
+	dns_slabheader_t *related = header->related;
+	if (related != NULL) {
+		if (clear_partner) {
+			INSIST(related->related == header);
+			rcu_assign_pointer(related->related, NULL);
+			dns_slabheader_unref(header);
+		}
+		rcu_assign_pointer(header->related, NULL);
+		dns_slabheader_unref(related);
+	}
+
+	dns_slabheader_detach(&header);
+
+	return expired;
+}
+
+static size_t
+header_delete(ftcnode_t *node, dns_slabheader_t *header) {
+	return header__delete(node, header, true);
+}
+
+/*
+ * Delete a header whose signature partner has already been repointed
+ * to its successor by the caller (see add()); only this header's own
+ * forward reference to the partner is dropped.
+ */
+static size_t
+header_delete_repointed(ftcnode_t *node, dns_slabheader_t *header) {
+	return header__delete(node, header, false);
+}
+
+static void
+flush_node(ftcache_t *ftdb, ftcnode_t *node,
+	   dns_expire_t reason DNS__DB_FLARG) {
+	if (isc_refcount_current(&node->erefs) != 0) {
+		return;
+	}
+
+	/*
+	 * If no one else is using the node, we can clean it up now: a
+	 * transient acquire/release pair routes the node through the
+	 * release path's enqueue-for-cleanup decision.
+	 */
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
+	ftcnode_release(ftdb, node DNS__DB_FLARG_PASS);
+
+	if (ftdb->cachestats == NULL) {
+		return;
+	}
+
+	switch (reason) {
+	case dns_expire_lru:
+		isc_stats_increment(ftdb->cachestats,
+				    dns_cachestatscounter_deletelru);
+		break;
+	default:
+		break;
+	}
+}
+
+static void
+update_cachestats(ftcache_t *ftdb, isc_result_t result) {
+	if (ftdb->cachestats == NULL) {
+		return;
+	}
+
+	switch (result) {
+	case DNS_R_COVERINGNSEC:
+		isc_stats_increment(ftdb->cachestats,
+				    dns_cachestatscounter_coveringnsec);
+		FALLTHROUGH;
+	case ISC_R_SUCCESS:
+	case DNS_R_CNAME:
+	case DNS_R_DNAME:
+	case DNS_R_DELEGATION:
+	case DNS_R_NCACHENXDOMAIN:
+	case DNS_R_NCACHENXRRSET:
+		isc_stats_increment(ftdb->cachestats,
+				    dns_cachestatscounter_hits);
+		break;
+	default:
+		isc_stats_increment(ftdb->cachestats,
+				    dns_cachestatscounter_misses);
+	}
+}
+
+static bool
+bindrdataset(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
+	     isc_stdtime_t now, dns_rdataset_t *rdataset DNS__DB_FLARG) {
+	bool stale = STALE(header);
+
+	if (rdataset == NULL) {
+		return true;
+	}
+
+	/*
+	 * A lock-free reader can select a header whose last reference
+	 * is dropped before it gets here; the memory stays valid for
+	 * the duration of the RCU read-side critical section, but the
+	 * header must not be bound anymore.  The caller treats the
+	 * failure as "deleted concurrently" and either skips the header
+	 * or redoes its walk (the header is guaranteed to be delisted,
+	 * so a fresh walk cannot select it again).  Writers bind only
+	 * headers that are on the node's list, whose list reference
+	 * makes the acquire infallible.
+	 */
+	if (!dns_slabheader_tryref(header)) {
+		return false;
+	}
+
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
+
+	INSIST(rdataset->methods == NULL); /* We must be disassociated. */
+
+	/*
+	 * Mark header stale if the RRset is no longer active.
+	 */
+	if (!ACTIVE(header, now)) {
+		dns_ttl_t stale_ttl = header->expire + STALE_TTL(header, ftdb);
+		/*
+		 * If this data is in the stale window keep it and if
+		 * DNS_DBFIND_STALEOK is not set we tell the caller to
+		 * skip this record.  We skip the records with ZEROTTL
+		 * (these records should not be cached anyway).
+		 */
+
+		if (!ZEROTTL(header) && KEEPSTALE(ftdb) && stale_ttl > now) {
+			stale = true;
+		}
+	}
+
+	rdataset->methods = &dns_rdataslab_rdatasetmethods;
+	rdataset->rdclass = ftdb->common.rdclass;
+	rdataset->type = DNS_TYPEPAIR_TYPE(header->typepair);
+	rdataset->covers = DNS_TYPEPAIR_COVERS(header->typepair);
+	rdataset->ttl = !ZEROTTL(header) ? header->expire - now : 0;
+	rdataset->trust = atomic_load(&header->trust);
+	rdataset->resign = 0;
+
+	if (NEGATIVE(header)) {
+		rdataset->attributes.negative = true;
+	}
+	if (NXDOMAIN(header)) {
+		rdataset->attributes.nxdomain = true;
+	}
+	if (OPTOUT(header)) {
+		rdataset->attributes.optout = true;
+	}
+	if (PREFETCH(header)) {
+		rdataset->attributes.prefetch = true;
+	}
+
+	if (stale) {
+		dns_ttl_t stale_ttl = header->expire + STALE_TTL(header, ftdb);
+		if (stale_ttl > now) {
+			rdataset->ttl = stale_ttl - now;
+		} else {
+			rdataset->ttl = 0;
+		}
+		if (STALE_WINDOW(header)) {
+			rdataset->attributes.stale_window = true;
+		}
+		rdataset->attributes.stale = true;
+		rdataset->expire = header->expire;
+	} else if (!ACTIVE(header, now)) {
+		/*
+		 * The entry is expired but still present in the cache (it has
+		 * not yet been removed); flag it so that, e.g., a cache dump
+		 * including expired entries can mark it.
+		 */
+		rdataset->attributes.ancient = true;
+		rdataset->ttl = 0;
+	}
+
+	rdataset->slab.node = (dns_dbnode_t *)node;
+	rdataset->slab.raw = header->raw;
+	rdataset->slab.iter_pos = NULL;
+	rdataset->slab.iter_count = 0;
+
+	/*
+	 * Add noqname proof.  The proofs can be published onto an
+	 * already-visible header by a concurrent add() (see the proof
+	 * moves there), so each field is loaded exactly once: a second
+	 * load could yield a different answer than the one the
+	 * attribute was derived from.
+	 */
+	dns_slabheader_proof_t *noqname = rcu_dereference(header->noqname);
+	rdataset->slab.noqname = noqname;
+	if (noqname != NULL) {
+		rdataset->attributes.noqname = true;
+	}
+
+	return true;
+}
+
+/*
+ * Bind the found header and (for positive answers) its signature,
+ * all-or-nothing: when the signature has been concurrently deleted
+ * down to its last reference, the answer bind is undone again, so a
+ * retrying caller never publishes a positive answer stripped of its
+ * RRSIG.
+ */
+static bool
+bindrdatasets(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *found,
+	      dns_slabheader_t *foundsig, isc_stdtime_t now,
+	      dns_rdataset_t *rdataset,
+	      dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	if (!bindrdataset(ftdb, qpnode, found, now,
+			  rdataset DNS__DB_FLARG_PASS))
+	{
+		return false;
+	}
+	ftcache_hit(ftdb, found);
+	if (!NEGATIVE(found) && foundsig != NULL) {
+		if (!bindrdataset(ftdb, qpnode, foundsig, now,
+				  sigrdataset DNS__DB_FLARG_PASS))
+		{
+			if (rdataset != NULL &&
+			    dns_rdataset_isassociated(rdataset))
+			{
+				dns_rdataset_disassociate(rdataset);
+			}
+			return false;
+		}
+		ftcache_hit(ftdb, foundsig);
+	}
+
+	return true;
+}
+
+/*
+ * Writer-side bind: the caller holds the node's spinlock and 'header'
+ * is on the node's list, whose own reference makes the bind
+ * infallible.
+ */
+static void
+bindrdataset_writer(ftcache_t *ftdb, ftcnode_t *node, dns_slabheader_t *header,
+		    isc_stdtime_t now, dns_rdataset_t *rdataset DNS__DB_FLARG) {
+	bool bound = bindrdataset(ftdb, node, header, now,
+				  rdataset DNS__DB_FLARG_PASS);
+	INSIST(bound);
+}
+
+static isc_result_t
+setup_delegation(ftc_search_t *search, dns_rdataset_t *rdataset,
+		 dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	dns_typepair_t typepair;
+	ftcnode_t *node = NULL;
+
+	REQUIRE(search != NULL);
+	REQUIRE(search->zonecut != NULL);
+	REQUIRE(search->zonecut_header != NULL);
+
+	/*
+	 * The caller MUST NOT be holding any node locks.
+	 */
+
+	node = search->zonecut;
+	typepair = search->zonecut_header->typepair;
+
+	if (rdataset != NULL) {
+		/*
+		 * The search block holds references on the zonecut
+		 * headers (see check_dname()), so the binds cannot
+		 * fail.
+		 */
+		bool bound = bindrdatasets(
+			search->ftdb, node, search->zonecut_header,
+			search->zonecut_sigheader, search->now, rdataset,
+			sigrdataset DNS__DB_FLARG_PASS);
+		INSIST(bound);
+	}
+
+	if (typepair == DNS_TYPEPAIR_VALUE(dns_rdatatype_dname, 0)) {
+		return DNS_R_DNAME;
+	}
+	return DNS_R_DELEGATION;
+}
+
+static bool
+check_stale_header(dns_slabheader_t *header, ftc_search_t *search) {
+	if (ACTIVE(header, search->now)) {
+		return false;
+	}
+
+	isc_stdtime_t stale = header->expire + STALE_TTL(header, search->ftdb);
+	/*
+	 * If this data is in the stale window keep it and if
+	 * DNS_DBFIND_STALEOK is not set we tell the caller to
+	 * skip this record.  We skip the records with ZEROTTL
+	 * (these records should not be cached anyway).
+	 */
+
+	DNS_SLABHEADER_CLRATTR(header, DNS_SLABHEADERATTR_STALE_WINDOW);
+	if (!ZEROTTL(header) && KEEPSTALE(search->ftdb) && stale > search->now)
+	{
+		mark(header, DNS_SLABHEADERATTR_STALE);
+		/*
+		 * If DNS_DBFIND_STALESTART is set then it means we
+		 * failed to resolve the name during recursion, in
+		 * this case we mark the time in which the refresh
+		 * failed.
+		 */
+		if ((search->options & DNS_DBFIND_STALESTART) != 0) {
+			atomic_store_release(&header->last_refresh_fail_ts,
+					     search->now);
+		} else if ((search->options & DNS_DBFIND_STALEENABLED) != 0 &&
+			   search->now <
+				   (atomic_load_acquire(
+					    &header->last_refresh_fail_ts) +
+				    search->ftdb->serve_stale_refresh))
+		{
+			/*
+			 * If we are within interval between last
+			 * refresh failure time + 'stale-refresh-time',
+			 * then don't skip this stale entry but use it
+			 * instead.
+			 */
+			DNS_SLABHEADER_SETATTR(header,
+					       DNS_SLABHEADERATTR_STALE_WINDOW);
+			return false;
+		} else if ((search->options & DNS_DBFIND_STALETIMEOUT) != 0) {
+			/*
+			 * We want stale RRset due to timeout, so we
+			 * don't skip it.
+			 */
+			return false;
+		}
+		return (search->options & DNS_DBFIND_STALEOK) == 0;
+	}
+
+	return true;
+}
+
+static bool
+invalid_header(dns_slabheader_t *header, ftc_search_t *search) {
+	return header == NULL || check_stale_header(header, search);
+}
+
+/*
+ * Return true if we've found headers for both 'type' and RRSIG('type'),
+ * or (optionally, if 'negtype' is nonzero) if we've found a single
+ * negative header covering either 'negtype' or ANY.
+ */
+static bool
+related_headers(dns_slabheader_t *header, dns_slabheader_t *sigheader,
+		dns_typepair_t typepair, dns_slabheader_t **foundp,
+		dns_slabheader_t **foundsigp) {
+	if (header != NULL) {
+		REQUIRE(DNS_TYPEPAIR_TYPE(header->typepair) !=
+			dns_rdatatype_rrsig);
+		REQUIRE(DNS_TYPEPAIR_COVERS(header->typepair) ==
+			dns_rdatatype_none);
+	}
+	if (sigheader != NULL) {
+		REQUIRE(DNS_TYPEPAIR_TYPE(sigheader->typepair) ==
+			dns_rdatatype_rrsig);
+		REQUIRE(DNS_TYPEPAIR_COVERS(sigheader->typepair) !=
+				dns_rdatatype_none ||
+			NEGATIVE(sigheader));
+	}
+
+	/*
+	 * Nothing exists if there's a NEGATIVE(dns_typepair_any).
+	 */
+	if (header != NULL && header->typepair == dns_typepair_any) {
+		INSIST(NEGATIVE(header));
+		INSIST(sigheader == NULL);
+		*foundp = header;
+		*foundsigp = NULL;
+		return true;
+	}
+
+	/*
+	 * Use the sigheader if we are looking for RRSIG.
+	 */
+	if (DNS_TYPEPAIR_TYPE(typepair) == dns_rdatatype_rrsig) {
+		if (sigheader == NULL) {
+			return false;
+		}
+
+		if (sigheader->typepair == typepair) {
+			*foundp = sigheader;
+			*foundsigp = NULL;
+			return true;
+		}
+		return false;
+	} else {
+		if (header == NULL) {
+			return false;
+		}
+
+		REQUIRE(!NEGATIVE(header) || sigheader == NULL);
+
+		if (header->typepair == typepair) {
+			*foundp = header;
+			*foundsigp = sigheader;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static void
+store_headers(dns_slabheader_t *tmp, dns_slabheader_t **headerp,
+	      dns_slabheader_t **sigheaderp, ftc_search_t *search) {
+	dns_slabheader_t *header = NULL, *sigheader = NULL;
+	if (DNS_TYPEPAIR_TYPE(tmp->typepair) == dns_rdatatype_rrsig) {
+		header = rcu_dereference(tmp->related);
+		sigheader = tmp;
+	} else {
+		header = tmp;
+		sigheader = rcu_dereference(tmp->related);
+	}
+
+	if (invalid_header(header, search)) {
+		return;
+	}
+
+	*headerp = header;
+
+	if (invalid_header(sigheader, search)) {
+		return;
+	}
+	*sigheaderp = sigheader;
+}
+
+static void
+find_headers(ftcnode_t *node, ftc_search_t *search, dns_rdatatype_t type,
+	     dns_slabheader_t **foundp, dns_slabheader_t **foundsigp) {
+	DNS_SLABHEADER_FOREACH_RCU(tmp, &node->headers) {
+		dns_slabheader_t *header = NULL, *sigheader = NULL;
+
+		if (tmp->typepair == dns_typepair_any) {
+			INSIST(rcu_dereference(tmp->related) == NULL);
+			INSIST(NEGATIVE(tmp));
+			if (invalid_header(tmp, search)) {
+				/*
+				 * NEGATIVE(ANY), but it is no longer valid.
+				 */
+				continue;
+			}
+			*foundp = NULL;
+			*foundsigp = NULL;
+			return;
+		}
+
+		if (tmp->typepair != DNS_TYPEPAIR(type) &&
+		    tmp->typepair != DNS_SIGTYPEPAIR(type))
+		{
+			/* Not our type; continue with next slabtop */
+			continue;
+		}
+
+		store_headers(tmp, &header, &sigheader, search);
+
+		/*
+		 * This function only sets positive headers.
+		 */
+		if (header != NULL && !NEGATIVE(header)) {
+			*foundp = header;
+			*foundsigp = sigheader;
+		}
+
+		return;
+	}
+}
+
+static isc_result_t
+check_dname(ftcnode_t *node, void *arg DNS__DB_FLARG) {
+	ftc_search_t *search = arg;
+	dns_slabheader_t *found = NULL, *foundsig = NULL;
+	isc_result_t result;
+
+	REQUIRE(search->zonecut == NULL);
+
+	/*
+	 * Look for a DNAME or RRSIG DNAME rdataset.
+	 */
+	find_headers(node, search, dns_rdatatype_dname, &found, &foundsig);
+
+	if (found != NULL &&
+	    (!DNS_TRUST_PENDING(atomic_load(&found->trust)) ||
+	     (search->options & DNS_DBFIND_PENDINGOK) != 0) &&
+	    dns_slabheader_tryref(found))
+	{
+		/*
+		 * The search block holds its own references on the
+		 * zonecut node AND headers: setup_delegation() binds
+		 * them long after this node's walk, when the headers
+		 * may have been concurrently deleted.  A vanished
+		 * DNAME (the tryref above fails) means there is no
+		 * zonecut here anymore; a vanished signature is
+		 * dropped from the answer.
+		 */
+		if (foundsig != NULL && !dns_slabheader_tryref(foundsig)) {
+			foundsig = NULL;
+		}
+		ftcnode_acquire(search->ftdb, node DNS__DB_FLARG_PASS);
+		search->zonecut = node;
+		search->zonecut_header = found;
+		search->zonecut_sigheader = foundsig;
+		search->need_cleanup = true;
+		result = DNS_R_PARTIALMATCH;
+	} else {
+		result = DNS_R_CONTINUE;
+	}
+
+	return result;
+}
+
+/*
+ * Look for a potentially covering NSEC in the cache where `name`
+ * is known not to exist.  This uses the auxiliary NSEC tree to find
+ * the potential NSEC owner. If found, we update 'foundname',
+ * 'rdataset' and 'sigrdataset', and return DNS_R_COVERINGNSEC.
+ * Otherwise, return ISC_R_NOTFOUND.
+ */
+static isc_result_t
+find_coveringnsec(ftc_search_t *search, const dns_name_t *name,
+		  dns_name_t *foundname, dns_rdataset_t *rdataset,
+		  dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	dns_fixedname_t fpredecessor, fixed;
+	dns_name_t *predecessor = NULL, *fname = NULL;
+	ftcnode_t *node = NULL;
+	ftcnode_t *exact = NULL;
+	struct cds_ft_iter *iter = NULL;
+	ftc_key_t key;
+	size_t keylen = ftc_key_fromname(key, name, DNS_DBNAMESPACE_NSEC);
+	isc_result_t result;
+	dns_slabheader_t *found = NULL, *foundsig = NULL;
+
+	/*
+	 * An exact match in the NSEC namespace is not a covering NSEC.
+	 */
+	if (ftc_lookup_with_key(search->ftdb->ft, key, keylen, &exact) ==
+	    ISC_R_SUCCESS)
+	{
+		return ISC_R_NOTFOUND;
+	}
+
+	fname = dns_fixedname_initname(&fixed);
+	predecessor = dns_fixedname_initname(&fpredecessor);
+
+	/*
+	 * Find the predecessor in the NSEC namespace: the largest NSEC owner
+	 * strictly below the query name.
+	 */
+	RUNTIME_CHECK(cds_ft_iter_create(search->ftdb->ft, &iter) ==
+		      CDS_FT_STATUS_OK);
+	cds_ft_iter_set_key(iter, key, keylen);
+	if (cds_ft_lookup_lt(search->ftdb->ft, iter) != CDS_FT_STATUS_OK) {
+		cds_ft_iter_destroy(iter);
+		return ISC_R_NOTFOUND;
+	}
+	node = caa_container_of(cds_ft_iter_node(iter), ftcnode_t, ftnode);
+	cds_ft_iter_destroy(iter);
+
+	/* The predecessor must itself be in the NSEC namespace. */
+	if (node->nspace != DNS_DBNAMESPACE_NSEC) {
+		return ISC_R_NOTFOUND;
+	}
+	ftc_name_fromkey(predecessor, node->key, node->keylen);
+
+	/*
+	 * Lookup the predecessor in the normal namespace.
+	 */
+	node = NULL;
+	RETERR(ftc_lookup(search->ftdb->ft, predecessor, DNS_DBNAMESPACE_NORMAL,
+			  &node));
+	ftc_name_fromkey(fname, node->key, node->keylen);
+
+again:
+	found = NULL;
+	foundsig = NULL;
+	find_headers(node, search, dns_rdatatype_nsec, &found, &foundsig);
+
+	if (found != NULL) {
+		if (!bindrdatasets(search->ftdb, node, found, foundsig,
+				   search->now, rdataset,
+				   sigrdataset DNS__DB_FLARG_PASS))
+		{
+			/* Deleted concurrently; redo the walk. */
+			goto again;
+		}
+		dns_name_copy(fname, foundname);
+
+		result = DNS_R_COVERINGNSEC;
+	} else {
+		result = ISC_R_NOTFOUND;
+	}
+	return result;
+}
+
+static inline bool
+missing_answer(dns_slabheader_t *found, unsigned int options) {
+	if (found == NULL) {
+		return true;
+	}
+
+	dns_trust_t trust = atomic_load(&found->trust);
+	return (DNS_TRUST_ADDITIONAL(trust) &&
+		(options & DNS_DBFIND_ADDITIONALOK) == 0) ||
+	       (DNS_TRUST_GLUE(trust) && (options & DNS_DBFIND_GLUEOK) == 0) ||
+	       (DNS_TRUST_PENDING(trust) &&
+		(options & DNS_DBFIND_PENDINGOK) == 0);
+}
+
+static void
+ftc_search_init(ftc_search_t *search, ftcache_t *db, unsigned int options,
+		isc_stdtime_t now) {
+	*search = (ftc_search_t){
+		.ftdb = (ftcache_t *)db,
+		.options = options,
+		.now = now ? now : isc_stdtime_now(),
+	};
+
+	/* Reads run under the RCU read-side lock for the whole search. */
+	rcu_read_lock();
+}
+
+static void
+ftc_search_deinit(ftc_search_t *search DNS__DB_FLARG) {
+	rcu_read_unlock();
+
+	/* Drop the zonecut header references taken in check_dname(). */
+	if (search->zonecut_header != NULL) {
+		dns_slabheader_detach(&search->zonecut_header);
+	}
+	if (search->zonecut_sigheader != NULL) {
+		dns_slabheader_detach(&search->zonecut_sigheader);
+	}
+
+	if (!search->need_cleanup) {
+		return;
+	}
+
+	ftcnode_t *node = search->zonecut;
+	INSIST(node != NULL);
+
+	ftcnode_release(search->ftdb, node DNS__DB_FLARG_PASS);
+}
+
+static isc_result_t
+ftcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
+	     dns_rdatatype_t type, unsigned int options, isc_stdtime_t __now,
+	     dns_name_t *foundname,
+	     dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
+	     dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
+	     dns_rdataset_t *rdataset,
+	     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	ftcnode_t *node = NULL;
+	isc_result_t result;
+	bool cname_ok = true;
+	bool found_noqname = false;
+	bool all_negative = true;
+	bool empty_node = true;
+	dns_slabheader_t *found = NULL, *foundsig = NULL;
+	dns_slabheader_t *nsecheader = NULL, *nsecsig = NULL;
+	dns_typepair_t typepair = DNS_TYPEPAIR(type);
+
+	/*
+	 * Meta-types can't exist in the cache, with the sole exception
+	 * of ANY, which matches any type at the node (both ANY and
+	 * RRSIG queries are looked up as ANY).
+	 */
+	if (type == dns_rdatatype_none ||
+	    (dns_rdatatype_ismeta(type) && type != dns_rdatatype_any))
+	{
+		return ISC_R_NOTFOUND;
+	}
+
+	ftc_search_t search;
+	ftc_search_init(&search, (ftcache_t *)db, options, __now);
+
+	REQUIRE(VALID_FTDB((ftcache_t *)db));
+	REQUIRE(version == NULL);
+
+	/*
+	 * Search down from the root of the tree. cds_ft has no search chain,
+	 * so we take the exact match if present, otherwise the closest
+	 * enclosing ancestor (longest prefix match).
+	 */
+	ftc_key_t key;
+	size_t keylen = ftc_key_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
+	result = ftc_lookup_with_key(search.ftdb->ft, key, keylen, &node);
+	if (result != ISC_R_SUCCESS) {
+		size_t match_len;
+		struct cds_ft_node *ftn = NULL;
+
+		if (cds_ft_lookup_longest_match_key(search.ftdb->ft, key,
+						    keylen, &match_len,
+						    &ftn) == CDS_FT_STATUS_OK)
+		{
+			node = caa_container_of(ftn, ftcnode_t, ftnode);
+			result = DNS_R_PARTIALMATCH;
+		} else {
+			node = NULL;
+			result = ISC_R_NOTFOUND;
+		}
+	}
+	if (result != ISC_R_NOTFOUND && foundname != NULL) {
+		ftc_name_fromkey(foundname, node->key, node->keylen);
+	}
+
+	/*
+	 * Walk the ancestors of QNAME, shallowest first, looking for a node
+	 * above us with an active DNAME rdataset. We consider only nodes
+	 * strictly above QNAME and below the root.
+	 *
+	 * The ancestor names' keys are exactly the proper prefixes of
+	 * QNAME's key that end at a label separator (see
+	 * ftc_key_fromname()), so a partial-match descent yields the
+	 * deepest EXISTING ancestor node directly and the next descent
+	 * continues strictly above it: the chain costs one lookup per
+	 * existing ancestor node instead of one per QNAME label.
+	 * Successive ancestor keys shrink by at least two bytes (a
+	 * label byte and its separator), which bounds the chain.
+	 */
+	ftcnode_t *ancestors[FTC_KEY_MAXLEN / 2];
+	size_t nanc = 0;
+
+	for (size_t plen = keylen - 1; plen > FTC_KEY_ROOTLEN;) {
+		size_t mlen = 0;
+		struct cds_ft_node *ftn = NULL;
+
+		if (cds_ft_lookup_partial_key(search.ftdb->ft, key, plen, &mlen,
+					      &ftn) != CDS_FT_STATUS_OK ||
+		    mlen <= FTC_KEY_ROOTLEN)
+		{
+			break;
+		}
+		INSIST(nanc < ARRAY_SIZE(ancestors));
+		ancestors[nanc++] = caa_container_of(ftn, ftcnode_t, ftnode);
+		plen = mlen - 1;
+	}
+
+	while (nanc > 0) {
+		ftcnode_t *encloser = ancestors[--nanc];
+
+		if (check_dname(encloser, (void *)&search DNS__DB_FLARG_PASS) !=
+		    DNS_R_CONTINUE)
+		{
+			result = DNS_R_PARTIALMATCH;
+			node = encloser;
+			if (foundname != NULL) {
+				ftc_name_fromkey(foundname, node->key,
+						 node->keylen);
+			}
+			break;
+		}
+	}
+
+	if (result == DNS_R_PARTIALMATCH) {
+		/*
+		 * If we discovered a covering DNAME skip looking for a covering
+		 * NSEC.
+		 */
+		if ((search.options & DNS_DBFIND_COVERINGNSEC) != 0 &&
+		    (search.zonecut_header == NULL ||
+		     search.zonecut_header->typepair != dns_rdatatype_dname))
+		{
+			result = find_coveringnsec(
+				&search, name, foundname, rdataset,
+				sigrdataset DNS__DB_FLARG_PASS);
+			if (result == DNS_R_COVERINGNSEC) {
+				goto tree_exit;
+			}
+		}
+		if (search.zonecut != NULL) {
+			result = setup_delegation(
+				&search, rdataset,
+				sigrdataset DNS__DB_FLARG_PASS);
+			goto tree_exit;
+		} else {
+			result = ISC_R_NOTFOUND;
+			goto tree_exit;
+		}
+	} else if (result != ISC_R_SUCCESS) {
+		goto tree_exit;
+	}
+
+	/*
+	 * Certain DNSSEC types are not subject to CNAME matching
+	 * (RFC4035, section 2.5).
+	 */
+	if (type == dns_rdatatype_nsec || type == dns_rdatatype_rrsig) {
+		cname_ok = false;
+	}
+
+	/*
+	 * We now go looking for rdata...
+	 */
+
+again:
+	found = NULL;
+	foundsig = NULL;
+	nsecheader = NULL;
+	nsecsig = NULL;
+	empty_node = true;
+	found_noqname = false;
+	all_negative = true;
+
+	DNS_SLABHEADER_FOREACH_RCU(tmp, &node->headers) {
+		dns_slabheader_t *header = NULL, *sigheader = NULL;
+
+		store_headers(tmp, &header, &sigheader, &search);
+
+		if (header == NULL && sigheader == NULL) {
+			continue;
+		}
+
+		/*
+		 * We now know that there is at least one active
+		 * rdataset at this node.
+		 */
+		empty_node = false;
+
+		if (header != NULL &&
+		    rcu_dereference(header->noqname) != NULL &&
+		    atomic_load(&header->trust) == dns_trust_secure)
+		{
+			found_noqname = true;
+		}
+
+		if (header != NULL && !NEGATIVE(header)) {
+			all_negative = false;
+		}
+
+		if (sigheader != NULL && !NEGATIVE(sigheader)) {
+			all_negative = false;
+		}
+
+		if (related_headers(header, sigheader, typepair, &found,
+				    &foundsig))
+		{
+			/*
+			 * We can't exit early until we have an answer with
+			 * sufficient trust level - see missing_answer()
+			 * for details - because we might need NS or NSEC
+			 * records.
+			 */
+			if (missing_answer(found, options) || STALE(found)) {
+				continue;
+			}
+
+			/* We found something, continue with next header */
+			break;
+		}
+
+		if (header == NULL || NEGATIVE(header)) {
+			/*
+			 * We are not interested in the negative headers for the
+			 * auxiliary types, only for the main type we are
+			 * looking for.
+			 */
+			continue;
+		}
+
+		switch (tmp->typepair) {
+		case dns_rdatatype_cname:
+		case DNS_SIGTYPEPAIR(dns_rdatatype_cname):
+			if (cname_ok) {
+				found = header;
+				foundsig = sigheader;
+			}
+			break;
+
+		case dns_rdatatype_nsec:
+		case DNS_SIGTYPEPAIR(dns_rdatatype_nsec):
+			nsecheader = header;
+			nsecsig = sigheader;
+			break;
+
+		default:
+			if (typepair == dns_typepair_any) {
+				/* QTYPE==ANY, so any anwers will do */
+				found = header;
+				break;
+			}
+		}
+
+		if (!missing_answer(found, options) && !STALE(found)) {
+			break;
+		}
+	}
+
+	if (empty_node) {
+		/*
+		 * We have an exact match for the name, but there are no
+		 * extant rdatasets.  That means that this node doesn't
+		 * meaningfully exist, and that we really have a partial match.
+		 */
+		if ((search.options & DNS_DBFIND_COVERINGNSEC) != 0) {
+			result = find_coveringnsec(
+				&search, name, foundname, rdataset,
+				sigrdataset DNS__DB_FLARG_PASS);
+			if (result == DNS_R_COVERINGNSEC) {
+				goto tree_exit;
+			}
+		}
+
+		result = ISC_R_NOTFOUND;
+		goto tree_exit;
+	}
+
+	/*
+	 * If we didn't find what we were looking for...
+	 */
+	if (missing_answer(found, options)) {
+		/*
+		 * Return covering NODATA NSEC record.
+		 */
+		if ((search.options & DNS_DBFIND_COVERINGNSEC) != 0 &&
+		    nsecheader != NULL)
+		{
+			if (!bindrdatasets(search.ftdb, node, nsecheader,
+					   nsecsig, search.now, rdataset,
+					   sigrdataset DNS__DB_FLARG_PASS))
+			{
+				/* Deleted concurrently; redo the walk. */
+				goto again;
+			}
+			result = DNS_R_COVERINGNSEC;
+			goto tree_exit;
+		}
+
+		/*
+		 * This name was from a wild card.  Look for a covering NSEC.
+		 */
+		if (found == NULL && (found_noqname || all_negative) &&
+		    (search.options & DNS_DBFIND_COVERINGNSEC) != 0)
+		{
+			result = find_coveringnsec(
+				&search, name, foundname, rdataset,
+				sigrdataset DNS__DB_FLARG_PASS);
+			if (result != DNS_R_COVERINGNSEC) {
+				result = ISC_R_NOTFOUND;
+			}
+			goto tree_exit;
+		}
+
+		result = ISC_R_NOTFOUND;
+		goto tree_exit;
+	}
+
+	/*
+	 * We found what we were looking for, or we found a CNAME.
+	 */
+
+	if (NEGATIVE(found)) {
+		/*
+		 * We found a negative cache entry.
+		 */
+		if (NXDOMAIN(found)) {
+			result = DNS_R_NCACHENXDOMAIN;
+		} else {
+			result = DNS_R_NCACHENXRRSET;
+		}
+	} else if (typepair != found->typepair &&
+		   typepair != dns_typepair_any &&
+		   found->typepair == DNS_TYPEPAIR(dns_rdatatype_cname))
+	{
+		/*
+		 * We weren't doing an ANY query and we found a CNAME instead
+		 * of the type we were looking for, so we need to indicate
+		 * that result to the caller.
+		 */
+		result = DNS_R_CNAME;
+	} else {
+		/*
+		 * An ordinary successful query!
+		 */
+		result = ISC_R_SUCCESS;
+	}
+
+	if (typepair != dns_typepair_any || result == DNS_R_NCACHENXDOMAIN ||
+	    result == DNS_R_NCACHENXRRSET)
+	{
+		if (!bindrdatasets(search.ftdb, node, found, foundsig,
+				   search.now, rdataset,
+				   sigrdataset DNS__DB_FLARG_PASS))
+		{
+			/* Deleted concurrently; redo the walk. */
+			goto again;
+		}
+	}
+
+tree_exit:
+	/*
+	 * If we found a zonecut but aren't going to use it, we have to
+	 * let go of it.
+	 */
+	ftc_search_deinit(&search DNS__DB_FLARG_PASS);
+
+	update_cachestats(search.ftdb, result);
+	return result;
+}
+
+static isc_result_t
+ftcache_findrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		     dns_rdatatype_t type, dns_rdatatype_t covers,
+		     isc_stdtime_t __now, dns_rdataset_t *rdataset,
+		     dns_rdataset_t *sigrdataset DNS__DB_FLARG) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+	ftcnode_t *qpnode = (ftcnode_t *)node;
+	dns_slabheader_t *found = NULL, *foundsig = NULL;
+	dns_typepair_t typepair = DNS_TYPEPAIR_VALUE(type, covers);
+	dns_typepair_t sigpair = !dns_rdatatype_issig(type)
+					 ? DNS_SIGTYPEPAIR(type)
+					 : dns_typepair_none;
+	isc_result_t result = ISC_R_SUCCESS;
+	ftc_search_t search = (ftc_search_t){
+		.ftdb = (ftcache_t *)db,
+		.now = __now ? __now : isc_stdtime_now(),
+	};
+
+	REQUIRE(VALID_FTDB(ftdb));
+	REQUIRE(version == NULL);
+	REQUIRE(type != dns_rdatatype_any);
+
+	/*
+	 * Meta-types can't exist in the cache, with the sole
+	 * exception of ANY, which records the nonexistence of all
+	 * types at the node (NXDOMAIN or NODATA(QTYPE=ANY) proof),
+	 * but can't be looked up using this function.
+	 */
+	if (type == dns_rdatatype_none || dns_rdatatype_ismeta(type)) {
+		return ISC_R_NOTFOUND;
+	}
+
+	/*
+	 * The caller's node reference pins the node but not its
+	 * headers: the whole walk-and-bind (including the result
+	 * classification, which reads the found header) runs inside an
+	 * RCU read-side critical section to keep concurrently deleted
+	 * headers valid until we are done with them.
+	 */
+	rcu_read_lock();
+
+again:
+	found = NULL;
+	foundsig = NULL;
+	DNS_SLABHEADER_FOREACH_RCU(tmp, &qpnode->headers) {
+		dns_slabheader_t *header = NULL, *sigheader = NULL;
+
+		if (tmp->typepair != typepair && tmp->typepair != sigpair &&
+		    tmp->typepair != dns_typepair_any)
+		{
+			continue;
+		}
+
+		store_headers(tmp, &header, &sigheader, &search);
+
+		(void)related_headers(header, sigheader, typepair, &found,
+				      &foundsig);
+		break;
+	}
+
+	if (found != NULL) {
+		if (!bindrdatasets(ftdb, qpnode, found, foundsig, search.now,
+				   rdataset, sigrdataset DNS__DB_FLARG_PASS))
+		{
+			/* Deleted concurrently; redo the walk. */
+			goto again;
+		}
+
+		if (NEGATIVE(found)) {
+			/*
+			 * We found a negative cache entry.
+			 */
+			if (NXDOMAIN(found)) {
+				result = DNS_R_NCACHENXDOMAIN;
+			} else {
+				result = DNS_R_NCACHENXRRSET;
+			}
+		}
+	}
+
+	rcu_read_unlock();
+
+	if (found == NULL) {
+		return ISC_R_NOTFOUND;
+	}
+
+	update_cachestats(ftdb, result);
+
+	return result;
+}
+
+static isc_result_t
+setcachestats(dns_db_t *db, isc_stats_t *stats) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+
+	REQUIRE(VALID_FTDB(ftdb));
+	REQUIRE(stats != NULL);
+
+	isc_stats_attach(stats, &ftdb->cachestats);
+	return ISC_R_SUCCESS;
+}
+
+static dns_stats_t *
+getrrsetstats(dns_db_t *db) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	return ftdb->rrsetstats;
+}
+
+static isc_result_t
+setservestalettl(dns_db_t *db, dns_ttl_t ttl) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	/* currently no bounds checking.  0 means disable. */
+	ftdb->common.serve_stale_ttl = ttl;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+getservestalettl(dns_db_t *db, dns_ttl_t *ttl) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	*ttl = ftdb->common.serve_stale_ttl;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+setservestalerefresh(dns_db_t *db, uint32_t interval) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	/* currently no bounds checking.  0 means disable. */
+	ftdb->serve_stale_refresh = interval;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+getservestalerefresh(dns_db_t *db, uint32_t *interval) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	*interval = ftdb->serve_stale_refresh;
+	return ISC_R_SUCCESS;
+}
+
+static void
+ftcnode_expiredata(dns_dbnode_t *node, void *data) {
+	ftcnode_t *qpnode = (ftcnode_t *)node;
+	ftcache_t *ftdb = (ftcache_t *)qpnode->ftdb;
+
+	dns_slabheader_t *header = data;
+
+	SPINLOCK(&qpnode->lock);
+	(void)expire_header(ftdb, qpnode, header DNS__DB_FILELINE);
+	SPINUNLOCK(&qpnode->lock);
+}
+
+static void
+ftcache__destroy_rcu(struct rcu_head *rcu_head) {
+	ftcache_t *ftdb = caa_container_of(rcu_head, ftcache_t, rcu_head);
+	char buf[DNS_NAME_FORMATSIZE];
+
+	if (dns_name_dynamic(&ftdb->common.origin)) {
+		dns_name_format(&ftdb->common.origin, buf, sizeof(buf));
+	} else {
+		strlcpy(buf, "<UNKNOWN>", sizeof(buf));
+	}
+	isc_log_write(DNS_LOGCATEGORY_DATABASE, DNS_LOGMODULE_CACHE,
+		      ISC_LOG_DEBUG(DNS_FTCACHE_LOG_STATS_LEVEL), "done %s(%s)",
+		      __func__, buf);
+
+	if (dns_name_dynamic(&ftdb->common.origin)) {
+		dns_name_free(&ftdb->common.origin, ftdb->common.mctx);
+	}
+
+	for (size_t i = 0; i < ftdb->buckets_count; i++) {
+		INSIST(isc_queue_empty(&ftdb->buckets[i].deadnodes));
+		isc_queue_destroy(&ftdb->buckets[i].deadnodes);
+	}
+
+	for (size_t i = 0; i < ftdb->sieves_count; i++) {
+		INSIST(ISC_SIEVE_EMPTY(ftdb->sieves[i].sieve));
+		INSIST(cds_wfs_empty(&ftdb->sieves[i].zombies));
+	}
+	isc_mem_cput(ftdb->common.mctx, ftdb->sieves, ftdb->sieves_count,
+		     sizeof(ftdb->sieves[0]));
+
+	dns_stats_detach(&ftdb->rrsetstats);
+
+	if (ftdb->cachestats != NULL) {
+		isc_stats_detach(&ftdb->cachestats);
+	}
+
+	isc_refcount_destroy(&ftdb->references);
+	isc_refcount_destroy(&ftdb->common.references);
+
+	ftdb->common.magic = 0;
+	ftdb->common.impmagic = 0;
+
+	isc_mem_putanddetach(&ftdb->common.mctx, ftdb,
+			     sizeof(*ftdb) + ftdb->buckets_count *
+						     sizeof(ftdb->buckets[0]));
+}
+
+static void
+ftcache__destroy_work(void *arg) {
+	ftcache_t *ftdb = arg;
+	struct cds_ft_iter *iter = NULL;
+
+	/*
+	 * Drop the sieve references first. The strong per-loop affinity
+	 * no longer matters: the database is unreferenced, so nothing
+	 * runs concurrently, and this single thread may safely touch
+	 * every loop's sieve. The zombie stacks are drained first so
+	 * the pushers' references are dropped too; nothing pushes after
+	 * this point, because every remaining header is unlinked here
+	 * and a deleter only pushes a header it saw linked.
+	 */
+	for (size_t i = 0; i < ftdb->sieves_count; i++) {
+		dns_slabheader_t *header = NULL;
+
+		sieve_drain(&ftdb->sieves[i]);
+		while ((header = ISC_LIST_TAIL(ftdb->sieves[i].sieve.list)) !=
+		       NULL)
+		{
+			ISC_SIEVE_UNLINK(ftdb->sieves[i].sieve, header,
+					 lrulink);
+			DNS_SLABHEADER_CLRATTR(header,
+					       DNS_SLABHEADERATTR_INSIEVE);
+			dns_slabheader_detach(&header);
+		}
+	}
+
+	/*
+	 * cds_ft_destroy() does not reclaim a populated trie's external
+	 * nodes, so drain the trie first: remove every node and drop the
+	 * trie's reference to it. The drops are deferred with call_rcu (as
+	 * in delete_node); being queued before ftcache__destroy_rcu, they
+	 * run first, so each node is freed before the teardown checks.
+	 */
+	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &iter) == CDS_FT_STATUS_OK);
+
+	LOCK(&ftdb->wmutex);
+	rcu_read_lock();
+	while (cds_ft_lookup_first(ftdb->ft, iter) == CDS_FT_STATUS_OK) {
+		struct cds_ft_node *ftn = cds_ft_iter_node(iter);
+		ftcnode_t *node = caa_container_of(ftn, ftcnode_t, ftnode);
+
+		RUNTIME_CHECK(cds_ft_remove(ftdb->ft, iter, ftn) ==
+			      CDS_FT_STATUS_OK);
+		call_rcu(&node->rcu_head, ftc_drop_tree_ref);
+	}
+	rcu_read_unlock();
+	UNLOCK(&ftdb->wmutex);
+
+	cds_ft_iter_destroy(iter);
+	cds_ft_destroy(ftdb->ft);
+	RUNTIME_CHECK(cds_ft_group_destroy(ftdb->ftgroup) == CDS_FT_STATUS_OK);
+	isc_mutex_destroy(&ftdb->wmutex);
+
+	call_rcu(&ftdb->rcu_head, ftcache__destroy_rcu);
+
+	/*
+	 * Release the loop reference held since creation. This may be the
+	 * last reference keeping the main loop (and the loop manager) alive;
+	 * nothing after this point needs either -- ftcache__destroy_rcu()
+	 * only frees memory, which the final rcu_barrier() in the library
+	 * shutdown waits for.
+	 */
+	isc_loop_detach(&ftdb->loop);
+}
+
+static void
+ftcache__destroy(ftcache_t *ftdb) {
+	/*
+	 * cds_ft_destroy() calls rcu_barrier(), which must not run inside an
+	 * RCU read-side critical section -- and ftcache__destroy() can be
+	 * reached from within one (e.g. a cache detached on the query path).
+	 * It cannot run from a call_rcu callback either, as the barrier would
+	 * then wait on its own worker. Defer the trie teardown to a fresh
+	 * event on the loop pinned at creation time, where neither holds.
+	 *
+	 * The loop reference the database has held since dns__ftcache_create()
+	 * guarantees that loop is still running: the loop manager cannot have
+	 * been shut down while the reference exists, so this enqueue is safe
+	 * from any context -- including a call_rcu worker draining after the
+	 * rest of the system has stopped. The database is already
+	 * unreferenced, so nothing else touches it before the job runs.
+	 */
+	isc_async_run(ftdb->loop, ftcache__destroy_work, ftdb);
+}
+
+static void
+ftcache_destroy(dns_db_t *arg) {
+	ftcache_t *ftdb = (ftcache_t *)arg;
+
+	ftcache_detach(&ftdb);
+}
+
+/*%
+ * Clean up dead nodes. These are nodes which have no references and no
+ * data. The deleters queue them instead of removing them inline
+ * because the structural removal takes the writer mutex, which must
+ * not be acquired under a node spinlock or inside the RCU read-side
+ * (see the locking discipline above).
+ */
+static void
+cleanup_deadnodes(ftcache_t *ftdb, uint16_t locknum) {
+	ftcnode_t *qpnode = NULL, *qpnext = NULL;
+	isc_queue_t deadnodes, removenodes;
+	struct cds_ft_iter *iter = NULL;
+
+	INSIST(locknum < ftdb->buckets_count);
+
+	isc_queue_init(&deadnodes);
+	isc_queue_init(&removenodes);
+
+	/*
+	 * Phase 1: under each node's spinlock, take the dead node off
+	 * the queue, drop the queue's reference and mark the
+	 * still-empty, now-unreferenced ones deleted. No trie mutation
+	 * here, so the writer mutex is never taken from under a node
+	 * lock.
+	 *
+	 * The marking is the deleter's half of the handshake with the
+	 * lock-free reference acquisition (see reactivate_node()): set
+	 * 'deleted' (seq_cst), then re-check 'erefs'. A racing acquirer
+	 * publishes its reference before checking 'deleted', so either
+	 * we observe no reference and the acquirer backs off, or we
+	 * observe its reference and undo the deletion. Both the set and
+	 * the undo happen inside this locked section, which is what
+	 * makes a 'deleted' value observed under the node lock final
+	 * (see the displacement in ftcache_findnode()).
+	 *
+	 * The deleted nodes move to a private queue for phase 2, pinned
+	 * with a fresh reference. A surviving node can be re-enqueued
+	 * the moment its 'enqueued' flag is cleared, re-initialising
+	 * its deadlink; the iteration is immune because it captures the
+	 * next pointer before the body runs, and the node itself cannot
+	 * be re-enqueued before the queue's reference is dropped (no
+	 * release can reach zero while it is held). Nodes marked
+	 * deleted can be neither reactivated nor re-enqueued. The pin,
+	 * taken first, keeps a node alive across phase 2 even if a
+	 * concurrent findnode() displaces it from the trie and the
+	 * trie's reference is dropped first.
+	 */
+	isc_queue_splice(&deadnodes, &ftdb->buckets[locknum].deadnodes);
+
+	isc_queue_for_each_entry_safe(&deadnodes, qpnode, qpnext, deadlink) {
+		ftcnode_ref(qpnode);
+
+		SPINLOCK(&qpnode->lock);
+
+		/* Off the queue now; allow future re-enqueueing. */
+		atomic_store(&qpnode->enqueued, false);
+
+		/* Drop the queue's external reference. */
+		if (ftcnode_erefs_decrement(ftdb, qpnode DNS__DB_FILELINE) &&
+		    ftcnode_empty(qpnode))
+		{
+			atomic_store(&qpnode->deleted, true);
+			if (atomic_load(&qpnode->erefs) > 0) {
+				/* Lost the race with an acquirer; undo. */
+				atomic_store(&qpnode->deleted, false);
+			}
+		}
+
+		if (atomic_load(&qpnode->deleted)) {
+			isc_queue_node_init(&qpnode->deadlink);
+			isc_queue_enqueue_entry(&removenodes, qpnode, deadlink);
+			SPINUNLOCK(&qpnode->lock);
+		} else {
+			SPINUNLOCK(&qpnode->lock);
+			ftcnode_unref(qpnode);
+		}
+	}
+
+	/*
+	 * Phase 2: remove the nodes marked deleted from the trie, under the
+	 * writer mutex and with no node lock held. Nodes a concurrent
+	 * findnode() has already displaced from the trie are skipped via
+	 * 'removed'; phase 1's pin is dropped either way.
+	 */
+	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &iter) == CDS_FT_STATUS_OK);
+	cds_ft_iter_set_cache_mode(iter, CDS_FT_ITER_UNCACHED);
+
+	/*
+	 * Acquire the writer mutex before entering the RCU read-side, never
+	 * the other way round: a writer holding the mutex may wait for an RCU
+	 * grace period, so a thread that parked on the mutex while inside
+	 * rcu_read_lock() would deadlock it (its read-side could never end).
+	 */
+	LOCK(&ftdb->wmutex);
+	rcu_read_lock();
+	isc_queue_for_each_entry_safe(&removenodes, qpnode, qpnext, deadlink) {
+		if (!qpnode->removed) {
+			delete_node_trie(ftdb, iter, qpnode);
+		}
+		ftcnode_unref(qpnode);
+	}
+	rcu_read_unlock();
+	UNLOCK(&ftdb->wmutex);
+
+	cds_ft_iter_destroy(iter);
+}
+
+static void
+cleanup_deadnodes_cb(void *arg) {
+	ftcache_t *ftdb = arg;
+	uint16_t tid = isc_tid();
+	size_t nloops = isc_loopmgr_nloops();
+
+	/*
+	 * This loop owns every bucket congruent to its tid modulo the
+	 * loop count; sweep them all. The empty-check keeps a sweep
+	 * triggered by one bucket from paying for the others: a queue
+	 * that becomes non-empty after the check is not lost, because
+	 * the enqueue that made it non-empty scheduled its own sweep.
+	 */
+	for (size_t locknum = tid; locknum < ftdb->buckets_count;
+	     locknum += nloops)
+	{
+		if (isc_queue_empty(&ftdb->buckets[locknum].deadnodes)) {
+			continue;
+		}
+		cleanup_deadnodes(ftdb, locknum);
+	}
+	ftcache_unref(ftdb);
+}
+/*
+ * This function is assumed to be called when a node is newly referenced
+ * and can be in the deadnode list.  In that case the node will be references
+ * and cleanup_deadnodes() will remove it from the list when the cleaning
+ * happens.
+ * Note: while a new reference is gained in multiple places, there are only very
+ * few cases where the node can be in the deadnode list (only empty nodes can
+ * have been added to the list).
+ */
+static isc_result_t
+reactivate_node(ftcache_t *ftdb, ftcnode_t *node DNS__DB_FLARG) {
+	/*
+	 * A lock-free handshake with the deleter (cleanup_deadnodes()
+	 * phase 1): publish our reference FIRST (a seq_cst RMW), then
+	 * check 'deleted'. The deleter sets 'deleted' first and
+	 * re-checks 'erefs' after, so whatever the interleaving, at
+	 * least one side observes the other: either we see 'deleted'
+	 * and back off, or the deleter sees our reference and undoes
+	 * the deletion.
+	 *
+	 * The back-off runs through the full release path: by the time
+	 * it drops the reference, the deleter may have undone the
+	 * deletion, in which case the empty node is re-queued for
+	 * cleanup. When both sides back off in exactly the wrong
+	 * order, an empty unqueued node can linger in the trie; it is
+	 * reclaimed the next time anything touches it (or displaced by
+	 * ftcache_findnode(), or at teardown).
+	 */
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
+	if (atomic_load(&node->deleted)) {
+		ftcnode_release(ftdb, node DNS__DB_FLARG_PASS);
+		return ISC_R_NOTFOUND;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+static ftcnode_t *
+new_ftcnode(ftcache_t *ftdb, const dns_name_t *name, dns_namespace_t nspace) {
+	ftc_key_t key;
+	size_t keylen = ftc_key_fromname(key, name, nspace);
+	ftcnode_t *newdata = isc_mem_get(ftdb->common.mctx,
+					 sizeof(*newdata) + keylen);
+	*newdata = (ftcnode_t){
+		.headers = CDS_LIST_HEAD_INIT(newdata->headers),
+		.methods = &ftcnode_methods,
+		.ftdb = ftdb,
+		.name = DNS_NAME_INITEMPTY,
+		.nspace = nspace,
+		.keylen = (uint16_t)keylen,
+		.references = ISC_REFCOUNT_INITIALIZER(1),
+		.locknum = isc_random_uniform(ftdb->buckets_count),
+	};
+	memcpy(newdata->key, key, keylen);
+
+	isc_mem_attach(ftdb->common.mctx, &newdata->mctx);
+
+	isc_spinlock_init(&newdata->lock);
+	cds_ft_node_init(&newdata->ftnode);
+
+#ifdef DNS_DB_NODETRACE
+	fprintf(stderr, "new_ftcnode:%s:%s:%d:%p->references = 1\n", __func__,
+		__FILE__, __LINE__ + 1, name);
+#endif
+	return newdata;
+}
+
+/*
+ * Exact lookup of a name by its trie 'key'. cds_ft's candidate descent
+ * may land on a near-miss, so the candidate is verified against the
+ * caller's key: an exact match has the same length and bytes. The caller
+ * must hold the RCU read-side lock, or exclude concurrent writers.
+ */
+static isc_result_t
+ftc_lookup_with_key(struct cds_ft *ft, const uint8_t *key, size_t keylen,
+		    ftcnode_t **nodep) {
+	struct cds_ft_node *ftn = NULL;
+
+	if (cds_ft_lookup_candidate_key(ft, key, keylen, 0, &ftn) !=
+	    CDS_FT_STATUS_OK)
+	{
+		return ISC_R_NOTFOUND;
+	}
+
+	ftcnode_t *node = caa_container_of(ftn, ftcnode_t, ftnode);
+	if (node->keylen != keylen || memcmp(key, node->key, keylen) != 0) {
+		return ISC_R_NOTFOUND;
+	}
+
+	*nodep = node;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+ftc_lookup(struct cds_ft *ft, const dns_name_t *name, dns_namespace_t space,
+	   ftcnode_t **nodep) {
+	ftc_key_t key;
+	size_t keylen = ftc_key_fromname(key, name, space);
+
+	return ftc_lookup_with_key(ft, key, keylen, nodep);
+}
+
+static void
+ftcnode_destroy(ftcnode_t *qpnode);
+
+static isc_result_t
+ftcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
+		 dns_clientinfomethods_t *methods ISC_ATTR_UNUSED,
+		 dns_clientinfo_t *clientinfo ISC_ATTR_UNUSED,
+		 dns_dbnode_t **nodep DNS__DB_FLARG) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+	ftcnode_t *node = NULL;
+	isc_result_t result;
+	ftc_key_t key;
+	size_t keylen = ftc_key_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
+
+	for (;;) {
+		/* Look up an existing node and reactivate it. */
+		rcu_read_lock();
+		result = ftc_lookup_with_key(ftdb->ft, key, keylen, &node);
+		if (result == ISC_R_SUCCESS) {
+			/* maybe we found an already deleted node */
+			result = reactivate_node(ftdb, node DNS__DB_FLARG_PASS);
+		}
+		rcu_read_unlock();
+
+		if (result == ISC_R_SUCCESS) {
+			*nodep = (dns_dbnode_t *)node;
+			return ISC_R_SUCCESS;
+		}
+		if (!create) {
+			return ISC_R_NOTFOUND;
+		}
+
+		/*
+		 * Create the node. Give the caller's external reference to the
+		 * still-private node before publishing it, so it can't be
+		 * reaped in the window before we return it -- without holding
+		 * the writer mutex across a NODE lock. The mutex wraps only
+		 * the structural trie calls; the raw 'found' pointer is only
+		 * examined while it is held (removals are serialised by it,
+		 * so the node can't go away), never after unlocking. On a
+		 * duplicate that is live we drop the private node and retry
+		 * the lock-free lookup.
+		 */
+		node = new_ftcnode(ftdb, name, DNS_DBNAMESPACE_NORMAL);
+		ftcnode_ref(node);
+		(void)isc_refcount_increment0(&node->erefs);
+		ftcache_ref(ftdb);
+
+		struct cds_ft_node *found = NULL;
+
+		LOCK(&ftdb->wmutex);
+		int r = cds_ft_insert_unique(ftdb->ft, key, keylen,
+					     &node->ftnode, &found);
+		if (r == CDS_FT_STATUS_DUPLICATE_FOUND) {
+			/*
+			 * The key may be occupied by a node that lost its last
+			 * reference and was marked deleted, but whose removal
+			 * from the trie (cleanup_deadnodes() phase 2) has not
+			 * run yet. Retrying until the cleanup catches up would
+			 * busy-spin for the whole window, so displace the stale
+			 * node here, under the writer mutex we already hold,
+			 * and insert again. 'removed' keeps the trie removal
+			 * exactly-once and tells the cleanup to skip the node.
+			 * Because all removals happen under the writer mutex,
+			 * the found node cannot go away under us here.
+			 */
+			ftcnode_t *stale = caa_container_of(found, ftcnode_t,
+							    ftnode);
+			/*
+			 * Read 'deleted' under the stale node's
+			 * spinlock: the deleter sets it and can undo it
+			 * (having lost the race with an acquirer)
+			 * within one locked section, so only a value
+			 * observed under the lock is final. Lock order
+			 * writer mutex -> node lock is safe: node-lock
+			 * holders never take the writer mutex nor wait
+			 * for a grace period.
+			 */
+			bool stale_deleted;
+			SPINLOCK(&stale->lock);
+			stale_deleted = atomic_load(&stale->deleted);
+			SPINUNLOCK(&stale->lock);
+
+			if (stale_deleted && !stale->removed) {
+				struct cds_ft_iter *iter = NULL;
+				RUNTIME_CHECK(
+					cds_ft_iter_create(ftdb->ft, &iter) ==
+					CDS_FT_STATUS_OK);
+				cds_ft_iter_set_cache_mode(
+					iter, CDS_FT_ITER_UNCACHED);
+
+				rcu_read_lock();
+				delete_node_trie(ftdb, iter, stale);
+				rcu_read_unlock();
+
+				cds_ft_iter_destroy(iter);
+
+				found = NULL;
+				r = cds_ft_insert_unique(ftdb->ft, key, keylen,
+							 &node->ftnode, &found);
+			}
+		}
+		UNLOCK(&ftdb->wmutex);
+
+		if (r == CDS_FT_STATUS_OK) {
+			*nodep = (dns_dbnode_t *)node;
+			return ISC_R_SUCCESS;
+		}
+		INSIST(r == CDS_FT_STATUS_DUPLICATE_FOUND);
+
+		/* A concurrent creator won the race; retry the lookup. */
+		ftcache_unref(ftdb);
+		ftcnode_destroy(node);
+	}
+}
+
+static isc_result_t
+ftcache_createiterator(dns_db_t *db, unsigned int options ISC_ATTR_UNUSED,
+		       dns_dbiterator_t **iteratorp) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+	ftc_dbit_t *ftdbiter = NULL;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	ftdbiter = isc_mem_get(ftdb->common.mctx, sizeof(*ftdbiter));
+	*ftdbiter = (ftc_dbit_t){
+		.common.methods = &dbiterator_methods,
+		.common.magic = DNS_DBITERATOR_MAGIC,
+		.paused = true,
+	};
+
+	ftdbiter->name = dns_fixedname_initname(&ftdbiter->fixed);
+	dns_db_attach(db, &ftdbiter->common.db);
+	RUNTIME_CHECK(cds_ft_iter_create(ftdb->ft, &ftdbiter->iter) ==
+		      CDS_FT_STATUS_OK);
+
+	*iteratorp = (dns_dbiterator_t *)ftdbiter;
+	return ISC_R_SUCCESS;
+}
+
+static bool
+iterator_active(ftcache_t *ftdb, ftc_rditer_t *iterator,
+		dns_slabheader_t *header) {
+	dns_ttl_t stale_ttl = header->expire + STALE_TTL(header, ftdb);
+
+	/*
+	 * If this header is still active then return it.
+	 */
+	if (ACTIVE(header, iterator->common.now)) {
+		return true;
+	}
+
+	/*
+	 * If we are not returning stale records or the rdataset is
+	 * too old don't return it.
+	 */
+	if (!STALEOK(iterator) || (iterator->common.now > stale_ttl)) {
+		return false;
+	}
+	return true;
+}
+
+static isc_result_t
+ftcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		     unsigned int options, isc_stdtime_t __now,
+		     dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+	ftcnode_t *qpnode = (ftcnode_t *)node;
+	ftc_rditer_t *iterator = NULL;
+
+	REQUIRE(VALID_FTDB(ftdb));
+	REQUIRE(version == NULL);
+
+	iterator = isc_mem_get(ftdb->common.mctx, sizeof(*iterator));
+	*iterator = (ftc_rditer_t){
+		.common.magic = DNS_RDATASETITER_MAGIC,
+		.common.methods = &rdatasetiter_methods,
+		.common.db = db,
+		.common.node = node,
+		.common.options = options,
+		.common.now = __now ? __now : isc_stdtime_now(),
+		.rdatasets = ISC_LIST_INITIALIZER,
+	};
+
+	ftcnode_acquire(ftdb, qpnode DNS__DB_FLARG_PASS);
+
+	/* See ftcache_findrdataset() about the RCU read-side section. */
+	rcu_read_lock();
+
+	DNS_SLABHEADER_FOREACH_RCU(header, &qpnode->headers) {
+		if (EXPIREDOK(iterator) ||
+		    iterator_active(ftdb, iterator, header))
+		{
+			dns_rdataset_t *rdataset =
+				isc_mem_get(qpnode->mctx, sizeof(*rdataset));
+			dns_rdataset_init(rdataset);
+
+			if (!bindrdataset(ftdb, qpnode, header,
+					  iterator->common.now,
+					  rdataset DNS__DB_FLARG_PASS))
+			{
+				/* Deleted concurrently; skip it. */
+				isc_mem_put(qpnode->mctx, rdataset,
+					    sizeof(*rdataset));
+				continue;
+			}
+
+			ISC_LIST_APPEND(iterator->rdatasets, rdataset, link);
+		}
+	}
+
+	rcu_read_unlock();
+
+	*iteratorp = (dns_rdatasetiter_t *)iterator;
+
+	return ISC_R_SUCCESS;
+}
+
+static bool
+overmaxtype(ftcache_t *ftdb, uint32_t ntypes) {
+	if (ftdb->maxtypepername == 0) {
+		return false;
+	}
+
+	return ntypes >= ftdb->maxtypepername;
+}
+
+static bool
+prio_header(dns_slabheader_t *header) {
+	return prio_type(header->typepair);
+}
+
+static void
+ftcnode_attachnode(dns_dbnode_t *source, dns_dbnode_t **targetp DNS__DB_FLARG) {
+	REQUIRE(targetp != NULL && *targetp == NULL);
+
+	ftcnode_t *node = (ftcnode_t *)source;
+	ftcache_t *ftdb = (ftcache_t *)node->ftdb;
+
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
+
+	*targetp = source;
+}
+
+static void
+ftcnode_detachnode(dns_dbnode_t **nodep DNS__DB_FLARG) {
+	ftcnode_t *node = NULL;
+
+	REQUIRE(nodep != NULL && *nodep != NULL);
+
+	node = (ftcnode_t *)(*nodep);
+	ftcache_t *ftdb = (ftcache_t *)node->ftdb;
+	*nodep = NULL;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	/*
+	 * The database must not be destroyed from under the release, so
+	 * hold a reference across it.
+	 *
+	 * No RCU read-side is needed here: the caller still holds a
+	 * reference, so the node cannot be reclaimed, and
+	 * ftcnode_release() touches only atomic node state and the
+	 * wait-free deadnodes queue -- it performs no cds_ft operation.
+	 */
+	ftcache_ref(ftdb);
+	ftcnode_release(ftdb, node DNS__DB_FLARG_PASS);
+	ftcache_detach(&ftdb);
+}
+
+static isc_result_t
+check_ncache_block(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *header,
+		   dns_slabheader_t *newheader, dns_trust_t trust,
+		   dns_rdataset_t *addedrdataset,
+		   isc_stdtime_t now DNS__DB_FLARG) {
+	bool block = false;
+
+	/*
+	 * 1. If we have a cached NXDOMAIN, we won't cache
+	 *    anything else here (dns_typepair_any).
+	 * 2. If we have a cached NODATA for a given type,
+	 *    we won't cache an RRSIG covering the same type.
+	 */
+	if (header->typepair == dns_typepair_any) {
+		block = true;
+	} else if (DNS_TYPEPAIR_TYPE(newheader->typepair) ==
+			   dns_rdatatype_rrsig &&
+		   DNS_TYPEPAIR_COVERS(newheader->typepair) ==
+			   DNS_TYPEPAIR_TYPE(header->typepair))
+	{
+		block = true;
+	}
+
+	if (block) {
+		/*
+		 * If the ncache entry causing the block is less trusted
+		 * than the new data, evict it from the cache. Otherwise,
+		 * bind to it and leave the cache unchanged.
+		 */
+		if (trust >= header->trust) {
+			header_delete(qpnode, header);
+			return DNS_R_CONTINUE;
+		} else {
+			ftcache_hit(ftdb, header);
+			bindrdataset_writer(ftdb, qpnode, header, now,
+					    addedrdataset DNS__DB_FLARG_PASS);
+			return DNS_R_UNCHANGED;
+		}
+	}
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+add(ftcache_t *ftdb, ftcnode_t *qpnode, dns_slabheader_t *newheader,
+    unsigned int options, dns_rdataset_t *addedrdataset,
+    isc_stdtime_t now DNS__DB_FLARG) {
+	dns_slabheader_t *prioheader = NULL, *evictheader = NULL;
+	dns_slabheader_t *oldheader = NULL, *related = NULL;
+	dns_trust_t trust;
+	uint32_t ntypes = 0;
+	dns_rdatatype_t rdtype = DNS_TYPEPAIR_TYPE(newheader->typepair);
+	dns_rdatatype_t covers = DNS_TYPEPAIR_COVERS(newheader->typepair);
+	ftc_search_t search = (ftc_search_t){
+		.ftdb = ftdb,
+		.now = now,
+	};
+
+	REQUIRE(rdtype != dns_rdatatype_none);
+	if (dns_rdatatype_issig(rdtype)) {
+		/*
+		 * signature must be either negative or cover something
+		 * that's not a signature
+		 */
+		REQUIRE(NEGATIVE(newheader) || (covers != dns_rdatatype_none &&
+						!dns_rdatatype_issig(covers)));
+	} else {
+		/* non-signature it must cover nothing */
+		REQUIRE(covers == dns_rdatatype_none);
+	}
+	/* positive header can't be for type ANY */
+	REQUIRE(rdtype != dns_rdatatype_any || NEGATIVE(newheader));
+
+	if ((options & DNS_DBADD_FORCE) != 0) {
+		trust = dns_trust_ultimate;
+	} else {
+		trust = newheader->trust;
+	}
+
+	/*
+	 * An unvalidated negative entry covering all types (NXDOMAIN or
+	 * NODATA(QTYPE=ANY)) must not purge secure data. Check for it in a
+	 * separate pass first: evicting as we go and bailing out later would
+	 * destroy lower-trust siblings before we found the secure header.
+	 */
+	if (NEGATIVE(newheader) && rdtype == dns_rdatatype_any &&
+	    trust < dns_trust_secure)
+	{
+		DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
+			if (header->trust >= dns_trust_secure) {
+				ftcache_hit(ftdb, header);
+				bindrdataset_writer(
+					ftdb, qpnode, header, now,
+					addedrdataset DNS__DB_FLARG_PASS);
+				return DNS_R_UNCHANGED;
+			}
+		}
+	}
+
+	DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
+		if (NEGATIVE(newheader)) {
+			if (rdtype == dns_rdatatype_any) {
+				/*
+				 * We're adding a negative cache entry which
+				 * covers all types (NXDOMAIN,
+				 * NODATA(QTYPE=ANY)).
+				 *
+				 * Delete all other data so that the only
+				 * rdataset that can be found at this node is
+				 * the negative cache entry.
+				 */
+				header_delete(qpnode, header);
+				continue;
+			} else if (rdtype == dns_rdatatype_rrsig) {
+				/*
+				 * We're adding a proof that a signature doesn't
+				 * exist.
+				 *
+				 * Delete all existing signatures.
+				 */
+				if (DNS_TYPEPAIR_TYPE(header->typepair) ==
+				    dns_rdatatype_rrsig)
+				{
+					header_delete(qpnode, header);
+					continue;
+				}
+			}
+		}
+		if (NEGATIVE(header) && !NEGATIVE(newheader) &&
+		    ACTIVE(header, now))
+		{
+			/*
+			 * There's an existing NXDOMAIN or negative
+			 * covered type in the cache. If it's more
+			 * trusted than the new data, keep it, but
+			 * if not, purge and replace it.
+			 */
+			isc_result_t result = check_ncache_block(
+				ftdb, qpnode, header, newheader, trust,
+				addedrdataset, now);
+			if (result == DNS_R_UNCHANGED) {
+				return result;
+			}
+			if (result == DNS_R_CONTINUE) {
+				/* the header has been invalidated */
+				continue;
+			}
+			INSIST(result == ISC_R_SUCCESS);
+		}
+
+		if (check_stale_header(header, &search)) {
+			header_delete(qpnode, header);
+			continue;
+		}
+
+		++ntypes;
+
+		if (prio_header(header)) {
+			prioheader = header;
+		}
+
+		if (header->typepair == newheader->typepair) {
+			INSIST(oldheader == NULL);
+			oldheader = header;
+		}
+
+		if ((rdtype == dns_rdatatype_rrsig &&
+		     DNS_TYPEPAIR_TYPE(header->typepair) == covers) ||
+		    header->typepair == DNS_SIGTYPEPAIR(rdtype))
+		{
+			INSIST(related == NULL);
+			related = header;
+		}
+
+		/*
+		 * This simple condition works here because:
+		 *
+		 * 1. if related is the last header then we won't progress
+		 * evictheader
+		 *
+		 * 2. if related is not the last header then we progress
+		 * evictheader.
+		 */
+		if (header != related) {
+			evictheader = header;
+		}
+	}
+
+	if (oldheader != NULL) {
+		/*
+		 * Trying to add an rdataset with lower trust to a cache
+		 * DB has no effect, provided that the cache data isn't
+		 * stale. If the cache data is stale, new lower trust
+		 * data will supersede it below. Unclear what the best
+		 * policy is here.
+		 */
+		dns_trust_t oldtrust = atomic_load(&oldheader->trust);
+		if (trust < oldtrust && ACTIVE(oldheader, now)) {
+			ftcache_hit(ftdb, oldheader);
+			bindrdataset_writer(ftdb, qpnode, oldheader, now,
+					    addedrdataset DNS__DB_FLARG_PASS);
+			if (ACTIVE(oldheader, now) &&
+			    (options & DNS_DBADD_EQUALOK) != 0 &&
+			    dns_rdataslab_equalx(
+				    oldheader, newheader, ftdb->common.rdclass,
+				    DNS_TYPEPAIR_TYPE(oldheader->typepair)))
+			{
+				/*
+				 * Updated by caller to ISC_R_SUCCESS after
+				 * cleaning up newheader.
+				 */
+				return ISC_R_EXISTS;
+			}
+			return DNS_R_UNCHANGED;
+		}
+
+		/*
+		 * Don't replace existing NS in the cache if they already exist
+		 * and replacing the existing one would increase the TTL. This
+		 * prevents named being locked to old servers. Don't lower trust
+		 * of existing record if the update is forced. Nothing special
+		 * to be done w.r.t stale data; it gets replaced normally
+		 * further down.
+		 */
+		if (ACTIVE(oldheader, now) &&
+		    oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_ns) &&
+		    newheader->trust < oldtrust &&
+		    oldheader->expire < newheader->expire &&
+		    dns_rdataslab_equalx(
+			    oldheader, newheader, ftdb->common.rdclass,
+			    DNS_TYPEPAIR_TYPE(oldheader->typepair)))
+		{
+			/*
+			 * The proofs move onto the published oldheader
+			 * with rcu_assign_pointer(): lock-free readers
+			 * load these fields once and tolerate NULL, but
+			 * must never see a partially published proof.
+			 */
+			if (oldheader->noqname == NULL &&
+			    newheader->noqname != NULL)
+			{
+				rcu_assign_pointer(oldheader->noqname,
+						   newheader->noqname);
+				newheader->noqname = NULL;
+			}
+
+			ftcache_hit(ftdb, oldheader);
+			bindrdataset_writer(ftdb, qpnode, oldheader, now,
+					    addedrdataset DNS__DB_FLARG_PASS);
+			if ((options & DNS_DBADD_EQUALOK) != 0) {
+				/*
+				 * Updated by caller to ISC_R_SUCCESS after
+				 * cleaning up newheader.
+				 */
+				return ISC_R_EXISTS;
+			}
+			return DNS_R_UNCHANGED;
+		}
+
+		/*
+		 * If we will be replacing an NS RRset, force its TTL
+		 * to be no more than the current NS RRset's TTL.  This
+		 * ensures the delegations that are withdrawn are honoured.
+		 */
+		if (ACTIVE(oldheader, now) &&
+		    oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_ns) &&
+		    newheader->trust > oldtrust)
+		{
+			if (newheader->expire > oldheader->expire) {
+				if (ZEROTTL(oldheader)) {
+					DNS_SLABHEADER_SETATTR(
+						newheader,
+						DNS_SLABHEADERATTR_ZEROTTL);
+				}
+				newheader->expire = oldheader->expire;
+			}
+		}
+		if (ACTIVE(oldheader, now) &&
+		    (options & DNS_DBADD_PREFETCH) == 0 &&
+		    (oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_a) ||
+		     oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_aaaa) ||
+		     oldheader->typepair == DNS_TYPEPAIR(dns_rdatatype_ds) ||
+		     oldheader->typepair ==
+			     DNS_SIGTYPEPAIR(dns_rdatatype_ds)) &&
+		    newheader->trust < oldtrust &&
+		    oldheader->expire < newheader->expire &&
+		    dns_rdataslab_equal(oldheader, newheader))
+		{
+			/* See the proof-move comment above. */
+			if (oldheader->noqname == NULL &&
+			    newheader->noqname != NULL)
+			{
+				rcu_assign_pointer(oldheader->noqname,
+						   newheader->noqname);
+				newheader->noqname = NULL;
+			}
+
+			ftcache_hit(ftdb, oldheader);
+			bindrdataset_writer(ftdb, qpnode, oldheader, now,
+					    addedrdataset DNS__DB_FLARG_PASS);
+			if ((options & DNS_DBADD_EQUALOK) != 0) {
+				/*
+				 * Updated by caller to ISC_R_SUCCESS after
+				 * cleaning up newheader.
+				 */
+				return ISC_R_EXISTS;
+			}
+			return DNS_R_UNCHANGED;
+		}
+
+		INSIST(oldheader->related == related);
+		if (related != NULL) {
+			/*
+			 * Cross-link the new header with the surviving
+			 * signature partner and repoint the partner
+			 * BEFORE deleting the old header, so lock-free
+			 * readers never see a published answer without
+			 * its signature: the new header is fully
+			 * initialized and reference-counted here, it is
+			 * just not linked into the list yet.
+			 */
+			/* protect the related from LRU eviction */
+			ftcache_hit(ftdb, related);
+			newheader->related = dns_slabheader_ref(related);
+			dns_slabheader_ref(newheader);
+			rcu_assign_pointer(related->related, newheader);
+			/* ... which replaced the partner's old back-ref. */
+			dns_slabheader_unref(oldheader);
+			header_delete_repointed(qpnode, oldheader);
+		} else {
+			header_delete(qpnode, oldheader);
+		}
+
+	} else if (related != NULL) {
+		INSIST(related->related == NULL);
+		/* protect the related from LRU eviction */
+		ftcache_hit(ftdb, related);
+		newheader->related = dns_slabheader_ref(related);
+		rcu_assign_pointer(related->related,
+				   dns_slabheader_ref(newheader));
+	}
+
+	/*
+	 * No rdatasets of the given type exist at the node or we removed the
+	 * oldheader.
+	 */
+
+	if (prio_header(newheader)) {
+		/* This is a priority type, prepend it */
+		cds_list_add_rcu(&newheader->headers_link, &qpnode->headers);
+	} else if (prioheader != NULL) {
+		/* Append after the priority headers */
+		cds_list_add_rcu(&newheader->headers_link,
+				 &prioheader->headers_link);
+	} else {
+		/* There were no priority headers */
+		cds_list_add_rcu(&newheader->headers_link, &qpnode->headers);
+	}
+
+	bindrdataset_writer(ftdb, qpnode, newheader, now,
+			    addedrdataset DNS__DB_FLARG_PASS);
+
+	if (oldheader == NULL && overmaxtype(ftdb, ntypes)) {
+		INSIST(evictheader != newheader);
+
+		if (evictheader != NULL) {
+			INSIST(evictheader->related != newheader);
+			if (evictheader->related != NULL) {
+				header_delete(qpnode, evictheader->related);
+			}
+			header_delete(qpnode, evictheader);
+		}
+	}
+
+	ftcache_miss(ftdb, newheader);
+
+	/*
+	 * We've added a proof that a rdtype doesn't exist.
+	 *
+	 * Delete the related rrsig in the cache.
+	 */
+	if (NEGATIVE(newheader) && !dns_rdatatype_issig(rdtype) &&
+	    related != NULL)
+	{
+		header_delete(qpnode, related);
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+addnoqname(isc_mem_t *mctx, dns_slabheader_t *newheader, uint32_t maxrrperset,
+	   dns_rdataset_t *rdataset) {
+	isc_result_t result;
+	dns_slabheader_proof_t *noqname = NULL;
+	dns_name_t name = DNS_NAME_INITEMPTY;
+	dns_rdataset_t neg = DNS_RDATASET_INIT, negsig = DNS_RDATASET_INIT;
+	isc_region_t r1 = { .base = NULL }, r2 = { .base = NULL };
+
+	result = dns_rdataset_getnoqname(rdataset, &name, &neg, &negsig);
+	RUNTIME_CHECK(result == ISC_R_SUCCESS);
+
+	CHECK(dns_rdataslab_fromrdataset(&neg, mctx, &r1, maxrrperset));
+
+	CHECK(dns_rdataslab_fromrdataset(&negsig, mctx, &r2, maxrrperset));
+
+	noqname = isc_mem_get(mctx, sizeof(*noqname));
+	*noqname = (dns_slabheader_proof_t){
+		.neg = ((dns_slabheader_t *)r1.base)->raw,
+		.negsig = ((dns_slabheader_t *)r2.base)->raw,
+		.type = neg.type,
+		.name = DNS_NAME_INITEMPTY,
+	};
+	dns_name_dup(&name, mctx, &noqname->name);
+	newheader->noqname = noqname;
+
+cleanup:
+	if (result != ISC_R_SUCCESS) {
+		if (r1.base != NULL) {
+			dns_slabheader_t *header = (dns_slabheader_t *)r1.base;
+			dns_slabheader_detach(&header);
+		}
+		if (r2.base != NULL) {
+			dns_slabheader_t *header = (dns_slabheader_t *)r2.base;
+			dns_slabheader_detach(&header);
+		}
+	}
+	dns_rdataset_disassociate(&neg);
+	dns_rdataset_disassociate(&negsig);
+
+	return result;
+}
+
+/*
+ * Record the owner name's case in the slabheader's case bitmap, so that
+ * dns_rdataset_getownercase() can restore it later (e.g. rndc dumpdb).
+ * The node itself only keeps the case-folded trie key -- unlike qpcache,
+ * which kept the presentation case in the per-node name it stored.
+ * The bit layout mirrors rdataset_getownercase() in rdataslab.c.
+ */
+static void
+ftc_setownercase(dns_slabheader_t *header, const dns_name_t *name) {
+	bool fully_lower = true;
+
+	memset(header->upper, 0, sizeof(header->upper));
+	for (size_t i = 0; i < name->length; i++) {
+		if (name->ndata[i] >= 'A' && name->ndata[i] <= 'Z') {
+			header->upper[i / 8] |= 1 << (i % 8);
+			fully_lower = false;
+		}
+	}
+	DNS_SLABHEADER_SETATTR(header, DNS_SLABHEADERATTR_CASESET);
+	if (fully_lower) {
+		DNS_SLABHEADER_SETATTR(header,
+				       DNS_SLABHEADERATTR_CASEFULLYLOWER);
+	}
+}
+
+static isc_result_t
+ftcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
+		    isc_stdtime_t __now, dns_rdataset_t *rdataset,
+		    unsigned int options,
+		    dns_rdataset_t *addedrdataset DNS__DB_FLARG) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+	ftcnode_t *qpnode = (ftcnode_t *)node;
+	isc_region_t region;
+	dns_slabheader_t *newheader = NULL;
+	isc_result_t result;
+	bool newnsec = false;
+	dns_fixedname_t fixed;
+	dns_name_t *name = NULL;
+	isc_stdtime_t now = __now ? __now : isc_stdtime_now();
+
+	REQUIRE(VALID_FTDB(ftdb));
+	REQUIRE(version == NULL);
+
+	/*
+	 * Meta-types can't be added to the cache, with the sole
+	 * exception of a negative ANY entry, which records the
+	 * nonexistence of all types at the node (NXDOMAIN or
+	 * NODATA(QTYPE=ANY) proof).
+	 */
+	if (rdataset->type == dns_rdatatype_none ||
+	    (dns_rdatatype_ismeta(rdataset->type) &&
+	     !(rdataset->type == dns_rdatatype_any &&
+	       rdataset->attributes.negative)))
+	{
+		return ISC_R_NOTIMPLEMENTED;
+	}
+
+	name = dns_fixedname_initname(&fixed);
+	ftc_name_fromkey(name, qpnode->key, qpnode->keylen);
+	dns_rdataset_getownercase(rdataset, name);
+
+	result = dns_rdataslab_fromrdataset(rdataset, qpnode->mctx, &region,
+					    ftdb->maxrrperset);
+	if (result != ISC_R_SUCCESS) {
+		if (result == DNS_R_TOOMANYRECORDS) {
+			dns__db_logtoomanyrecords((dns_db_t *)ftdb, name,
+						  rdataset->type, "adding",
+						  ftdb->maxrrperset);
+		}
+		return result;
+	}
+
+	newheader = (dns_slabheader_t *)region.base;
+	dns_slabheader_reset(newheader, node);
+	/* Lock-free readers require the grace-period-deferred free. */
+	DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_RCUFREE);
+	ftc_setownercase(newheader, name);
+
+	/*
+	 * Set the correct expire time.
+	 */
+	setttl(newheader, now + rdataset->ttl);
+	if (rdataset->ttl == 0U) {
+		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_ZEROTTL);
+	}
+
+	if (rdataset->attributes.prefetch) {
+		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_PREFETCH);
+	}
+	if (rdataset->attributes.negative) {
+		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_NEGATIVE);
+	}
+	if (rdataset->attributes.nxdomain) {
+		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_NXDOMAIN);
+	}
+	if (rdataset->attributes.optout) {
+		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_OPTOUT);
+	}
+	if (rdataset->attributes.noqname) {
+		CHECK(addnoqname(newheader->mctx, newheader, ftdb->maxrrperset,
+				 rdataset));
+	}
+
+	/*
+	 * The cache is over the memory limit: purge room for the new data
+	 * up front, before any lock is taken -- the new header is still
+	 * private here, so the eviction walk cannot find or evict it.
+	 */
+	if (isc_mem_isovermem(ftdb->common.mctx)) {
+		expire_lru(ftdb,
+			   overmem_purgesize(newheader) DNS__DB_FLARG_PASS);
+	}
+
+	/*
+	 * When we add an NSEC record we also need the auxiliary node in the
+	 * NSEC namespace to exist. Its cds_ft insert must run under the writer
+	 * mutex ALONE -- never under a NODE lock: a cds_ft write drains RCU
+	 * readers with synchronize_rcu(), so a reader parked on this node's
+	 * lock while inside rcu_read_lock() would deadlock it. We therefore
+	 * do the insert before taking the node lock, and only record the
+	 * 'havensec' hint under it. cds_ft_insert_unique() dedups if a
+	 * concurrent update races us to the same NSEC node.
+	 */
+	if (rdataset->type == dns_rdatatype_nsec) {
+		newnsec = !atomic_load(&qpnode->havensec);
+	}
+
+	if (newnsec) {
+		ftcnode_t *nsecnode = new_ftcnode(ftdb, name,
+						  DNS_DBNAMESPACE_NSEC);
+		struct cds_ft_node *found = NULL;
+
+		LOCK(&ftdb->wmutex);
+		int r = cds_ft_insert_unique(ftdb->ft, nsecnode->key,
+					     nsecnode->keylen,
+					     &nsecnode->ftnode, &found);
+		UNLOCK(&ftdb->wmutex);
+
+		switch (r) {
+		case CDS_FT_STATUS_OK:
+			break;
+		case CDS_FT_STATUS_DUPLICATE_FOUND:
+			ftcnode_destroy(nsecnode);
+			break;
+		default:
+			UNREACHABLE();
+		}
+	}
+
+	SPINLOCK(&qpnode->lock);
+
+	if (newnsec) {
+		atomic_store(&qpnode->havensec, true);
+	}
+
+	result = add(ftdb, qpnode, newheader, options, addedrdataset,
+		     now DNS__DB_FLARG_PASS);
+
+	if (result == ISC_R_SUCCESS) {
+		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_STATCOUNT);
+		update_rrsetstats(ftdb->rrsetstats, newheader->typepair,
+				  newheader->attributes, true);
+	} else {
+		dns_slabheader_detach(&newheader);
+	}
+
+	SPINUNLOCK(&qpnode->lock);
+
+	/*
+	 * Reap the dead headers other threads have handed to this
+	 * loop's sieve -- off the node lock, because the drain frees
+	 * slabs and only touches loop-local state.
+	 */
+	sieve_drain(&ftdb->sieves[isc_tid()]);
+
+	if (result == ISC_R_EXISTS) {
+		result = ISC_R_SUCCESS;
+	}
+
+	return result;
+cleanup:
+	dns_slabheader_detach(&newheader);
+	return result;
+}
+
+static isc_result_t
+ftcache_deleterdataset(dns_db_t *db, dns_dbnode_t *node,
+		       dns_dbversion_t *version, dns_rdatatype_t type,
+		       dns_rdatatype_t covers DNS__DB_FLARG) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+	ftcnode_t *qpnode = (ftcnode_t *)node;
+	isc_result_t result = DNS_R_UNCHANGED;
+	dns_typepair_t typepair;
+
+	REQUIRE(VALID_FTDB(ftdb));
+	REQUIRE(version == NULL);
+
+	/*
+	 * Type none can't exist in the cache; note that type ANY is
+	 * a valid argument here because it matches the negative cache
+	 * entry left behind by an NXDOMAIN or NODATA(QTYPE=ANY) response.
+	 */
+	if (type == dns_rdatatype_none ||
+	    (dns_rdatatype_ismeta(type) && type != dns_rdatatype_any))
+	{
+		return ISC_R_NOTIMPLEMENTED;
+	}
+
+	typepair = DNS_TYPEPAIR_VALUE(type, covers);
+
+	SPINLOCK(&qpnode->lock);
+	DNS_SLABHEADER_FOREACH(header, &qpnode->headers) {
+		if (header->typepair == typepair) {
+			header_delete(qpnode, header);
+			result = ISC_R_SUCCESS;
+			break;
+		}
+	}
+	SPINUNLOCK(&qpnode->lock);
+
+	sieve_drain(&ftdb->sieves[isc_tid()]);
+
+	return result;
+}
+
+static unsigned int
+nodecount(dns_db_t *db) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+	unsigned int count;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	rcu_read_lock();
+	count = (unsigned int)cds_ft_count_keys(ftdb->ft);
+	rcu_read_unlock();
+
+	return count;
+}
+
+isc_result_t
+dns__ftcache_create(isc_mem_t *mctx, const dns_name_t *origin,
+		    dns_dbtype_t type, dns_rdataclass_t rdclass,
+		    unsigned int argc, char *argv[],
+		    void *driverarg ISC_ATTR_UNUSED, dns_db_t **dbp) {
+	ftcache_t *ftdb = NULL;
+	isc_loop_t *loop = isc_loop();
+	int i;
+	size_t buckets_count = isc_loopmgr_nloops() * FTC_BUCKETS_PER_LOOP;
+
+	/* This database implementation only supports cache semantics */
+	REQUIRE(type == dns_dbtype_cache);
+	REQUIRE(loop != NULL);
+	REQUIRE(argc == 0);
+	REQUIRE(argv == NULL);
+
+	ftdb = isc_mem_get(
+		mctx, sizeof(*ftdb) + buckets_count * sizeof(ftdb->buckets[0]));
+	*ftdb = (ftcache_t){
+		.common.methods = &ftdb_cachemethods,
+		.common.origin = DNS_NAME_INITEMPTY,
+		.common.rdclass = rdclass,
+		.common.attributes = DNS_DBATTR_CACHE,
+		.common.references = 1,
+		.references = 1,
+		.buckets_count = buckets_count,
+	};
+
+	dns_rdatasetstats_create(mctx, &ftdb->rrsetstats);
+	for (i = 0; i < (int)ftdb->buckets_count; i++) {
+		isc_queue_init(&ftdb->buckets[i].deadnodes);
+	}
+
+	ftdb->sieves_count = isc_loopmgr_nloops();
+	ftdb->sieves = isc_mem_cget(mctx, ftdb->sieves_count,
+				    sizeof(ftdb->sieves[0]));
+	for (i = 0; i < (int)ftdb->sieves_count; i++) {
+		ISC_SIEVE_INIT(ftdb->sieves[i].sieve);
+		__cds_wfs_init(&ftdb->sieves[i].zombies);
+	}
+
+	/*
+	 * Attach to the mctx.  The database will persist so long as there
+	 * are references to it, and attaching to the mctx ensures that our
+	 * mctx won't disappear out from under us.
+	 */
+	isc_mem_attach(mctx, &ftdb->common.mctx);
+
+	/*
+	 * Make a copy of the origin name.
+	 */
+	dns_name_dup(origin, mctx, &ftdb->common.origin);
+
+	/*
+	 * Make the cds_ft trie: a single variable-length-key trie in its
+	 * own group, with a mutex serialising structural writes.
+	 */
+	isc_mutex_init(&ftdb->wmutex);
+	{
+		struct cds_ft_group_attr *attr = NULL;
+		RUNTIME_CHECK(cds_ft_group_attr_create(&attr) ==
+			      CDS_FT_STATUS_OK);
+		RUNTIME_CHECK(cds_ft_group_attr_set_key_len(
+				      attr, CDS_FT_LEN_VARIABLE) ==
+			      CDS_FT_STATUS_OK);
+		/*
+		 * cds_ft caps keys at FT_MAX_KEY_LEN (256). ftc_key_fromname()
+		 * keeps every valid name within that bound (1 + wire length),
+		 * so the cache uses the full limit.
+		 */
+		RUNTIME_CHECK(cds_ft_group_attr_set_max_key_len(
+				      attr, FTC_KEY_MAXLEN) ==
+			      CDS_FT_STATUS_OK);
+		/*
+		 * Turn the ordered sibling list off: its per-key cells cost
+		 * 32 bytes per cached name and only accelerate cursor-based
+		 * next/prev stepping. Everything the cache needs survives on
+		 * the structural descents: the covering-NSEC predecessor
+		 * (cds_ft_lookup_lt from a key) is a relational seek that
+		 * never used the cells, and the database iterator's
+		 * lookup_ge/next fall back to an O(depth) re-descent per
+		 * step, which only the occasional full cache walk (e.g.
+		 * 'rndc dumpdb') pays. Mutations get faster in the bargain.
+		 */
+		RUNTIME_CHECK(cds_ft_group_attr_set_ordered_list(attr, false) ==
+			      CDS_FT_STATUS_OK);
+		/*
+		 * Every node stores its key inline ('ftcnode.key', written
+		 * before insertion and immutable while the node is in the
+		 * trie), so let the inequality lookups capture their result
+		 * key from the leaf instead of rebuilding it from the trie
+		 * structure.
+		 */
+		RUNTIME_CHECK(
+			cds_ft_group_attr_set_speculative_key_offset(
+				attr, offsetof(ftcnode_t, key) -
+					      offsetof(ftcnode_t, ftnode)) ==
+			CDS_FT_STATUS_OK);
+		RUNTIME_CHECK(cds_ft_group_create(attr, &ftdb->ftgroup) ==
+			      CDS_FT_STATUS_OK);
+		cds_ft_group_attr_destroy(attr);
+	}
+	RUNTIME_CHECK(cds_ft_create(ftdb->ftgroup, NULL, &ftdb->ft) ==
+		      CDS_FT_STATUS_OK);
+
+	/*
+	 * Pin the main loop for the lifetime of the database so the deferred
+	 * teardown in ftcache__destroy() always has a live loop to run on.
+	 */
+	isc_loop_attach(isc_loop_main(), &ftdb->loop);
+
+	ftdb->common.magic = DNS_DB_MAGIC;
+	ftdb->common.impmagic = FTDB_MAGIC;
+
+	*dbp = (dns_db_t *)ftdb;
+
+	return ISC_R_SUCCESS;
+}
+
+/*
+ * Rdataset Iterator Methods
+ */
+
+static void
+rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
+	ftc_rditer_t *iterator = NULL;
+
+	iterator = (ftc_rditer_t *)(*iteratorp);
+
+	ISC_LIST_FOREACH(iterator->rdatasets, rdataset, link) {
+		dns_rdataset_disassociate(rdataset);
+		isc_mem_put(iterator->common.db->mctx, rdataset,
+			    sizeof(*rdataset));
+	}
+
+	dns__db_detachnode(&iterator->common.node DNS__DB_FLARG_PASS);
+	isc_mem_put(iterator->common.db->mctx, iterator, sizeof(*iterator));
+
+	*iteratorp = NULL;
+}
+
+static isc_result_t
+rdatasetiter_first(dns_rdatasetiter_t *it DNS__DB_FLARG) {
+	ftc_rditer_t *iterator = (ftc_rditer_t *)it;
+
+	iterator->current = ISC_LIST_HEAD(iterator->rdatasets);
+
+	if (iterator->current == NULL) {
+		return ISC_R_NOMORE;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+rdatasetiter_next(dns_rdatasetiter_t *it DNS__DB_FLARG) {
+	ftc_rditer_t *iterator = (ftc_rditer_t *)it;
+
+	if (iterator->current == NULL) {
+		return ISC_R_NOMORE;
+	}
+
+	iterator->current = ISC_LIST_NEXT(iterator->current, link);
+
+	if (iterator->current == NULL) {
+		return ISC_R_NOMORE;
+	}
+
+	return ISC_R_SUCCESS;
+}
+
+static void
+rdatasetiter_current(dns_rdatasetiter_t *it,
+		     dns_rdataset_t *rdataset DNS__DB_FLARG) {
+	ftc_rditer_t *iterator = (ftc_rditer_t *)it;
+
+	REQUIRE(iterator->current != NULL);
+
+	dns_rdataset_clone(iterator->current, rdataset);
+}
+
+/*
+ * Database Iterator Methods
+ */
+
+static ftcnode_t *
+ftc_iter_node(struct cds_ft_iter *iter) {
+	struct cds_ft_node *ftn = cds_ft_iter_node(iter);
+	return (ftn == NULL) ? NULL : caa_container_of(ftn, ftcnode_t, ftnode);
+}
+
+/*
+ * Pin the iterator's candidate node through the reactivation handshake:
+ * a candidate that already lost it (see reactivate_node()) is committed
+ * for removal from the trie and must not be pinned -- the iterator
+ * would expose a dead empty node, and resume_iteration() relies on a
+ * held node still being present in the trie when it re-seeks after a
+ * pause. Returns false when the candidate is gone; the caller advances
+ * to the next one.
+ */
+static bool
+reference_iter_node(ftc_dbit_t *ftdbiter DNS__DB_FLARG) {
+	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
+
+	return reactivate_node(ftdb, ftdbiter->node DNS__DB_FLARG_PASS) ==
+	       ISC_R_SUCCESS;
+}
+
+static void
+dereference_iter_node(ftc_dbit_t *ftdbiter DNS__DB_FLARG) {
+	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
+	ftcnode_t *node = ftdbiter->node;
+
+	if (node == NULL) {
+		return;
+	}
+
+	ftcnode_release(ftdb, node DNS__DB_FLARG_PASS);
+
+	ftdbiter->node = NULL;
+}
+
+static void
+resume_iteration(ftc_dbit_t *ftdbiter, bool continuing) {
+	REQUIRE(ftdbiter->paused);
+
+	/*
+	 * If we're being called from dbiterator_next, we may need
+	 * to reinitialize the iterator to the current name. The
+	 * tree could have changed while it was unlocked, which
+	 * would make the iterator traversal inconsistent.
+	 *
+	 * As long as the iterator is holding a reference to
+	 * ftdbiter->node, the node won't be removed from the tree,
+	 * so the lookup should always succeed: reference_iter_node()
+	 * only pins nodes that won the reactivation handshake, and a
+	 * node with a published reference cannot commit to deletion
+	 * (see cleanup_deadnodes() phase 1).
+	 */
+	if (continuing && ftdbiter->node != NULL) {
+		ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
+		ftc_key_t key;
+		size_t keylen = ftc_key_fromname(key, ftdbiter->name,
+						 DNS_DBNAMESPACE_NORMAL);
+		rcu_read_lock();
+		cds_ft_iter_set_key(ftdbiter->iter, key, keylen);
+		RUNTIME_CHECK(cds_ft_lookup_ge(ftdb->ft, ftdbiter->iter) ==
+			      CDS_FT_STATUS_OK);
+		rcu_read_unlock();
+	}
+
+	ftdbiter->paused = false;
+}
+
+static void
+dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG) {
+	ftc_dbit_t *ftdbiter = (ftc_dbit_t *)(*iteratorp);
+	dns_db_t *db = NULL;
+
+	cds_ft_iter_destroy(ftdbiter->iter);
+
+	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
+
+	dns_db_attach(ftdbiter->common.db, &db);
+	dns_db_detach(&ftdbiter->common.db);
+
+	isc_mem_put(db->mctx, ftdbiter, sizeof(*ftdbiter));
+	dns_db_detach(&db);
+
+	*iteratorp = NULL;
+}
+
+static isc_result_t
+dbiterator_first(dns_dbiterator_t *iterator DNS__DB_FLARG) {
+	isc_result_t result;
+	ftc_dbit_t *ftdbiter = (ftc_dbit_t *)iterator;
+
+	if (ftdbiter->result != ISC_R_SUCCESS &&
+	    ftdbiter->result != ISC_R_NOTFOUND &&
+	    ftdbiter->result != DNS_R_PARTIALMATCH &&
+	    ftdbiter->result != ISC_R_NOMORE)
+	{
+		return ftdbiter->result;
+	}
+
+	if (ftdbiter->paused) {
+		resume_iteration(ftdbiter, false);
+	}
+
+	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
+
+	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
+
+	rcu_read_lock();
+	/* NOMORE when the tree is empty. */
+	result = ISC_R_NOMORE;
+	for (int r = cds_ft_lookup_first(ftdb->ft, ftdbiter->iter);
+	     r == CDS_FT_STATUS_OK; r = cds_ft_next(ftdb->ft, ftdbiter->iter))
+	{
+		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
+		if (ftdbiter->node->nspace != DNS_DBNAMESPACE_NORMAL) {
+			/* Crossed out of the normal namespace. */
+			break;
+		}
+		if (!reference_iter_node(ftdbiter DNS__DB_FLARG_PASS)) {
+			/* Lost to a concurrent deletion; skip it. */
+			continue;
+		}
+		ftc_name_fromkey(ftdbiter->name, ftdbiter->node->key,
+				 ftdbiter->node->keylen);
+		result = ISC_R_SUCCESS;
+		break;
+	}
+	if (result != ISC_R_SUCCESS) {
+		ftdbiter->node = NULL;
+	}
+	rcu_read_unlock();
+
+	ftdbiter->result = result;
+
+	if (result != ISC_R_SUCCESS) {
+		ENSURE(!ftdbiter->paused);
+	}
+
+	return result;
+}
+
+static isc_result_t
+dbiterator_last(dns_dbiterator_t *iterator ISC_ATTR_UNUSED DNS__DB_FLARG) {
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+static isc_result_t
+dbiterator_seek(dns_dbiterator_t *iterator,
+		const dns_name_t *name DNS__DB_FLARG) {
+	isc_result_t result;
+	ftc_dbit_t *ftdbiter = (ftc_dbit_t *)iterator;
+
+	if (ftdbiter->result != ISC_R_SUCCESS &&
+	    ftdbiter->result != ISC_R_NOTFOUND &&
+	    ftdbiter->result != DNS_R_PARTIALMATCH &&
+	    ftdbiter->result != ISC_R_NOMORE)
+	{
+		return ftdbiter->result;
+	}
+
+	if (ftdbiter->paused) {
+		resume_iteration(ftdbiter, false);
+	}
+
+	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
+
+	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
+	ftc_key_t key;
+	size_t keylen = ftc_key_fromname(key, name, DNS_DBNAMESPACE_NORMAL);
+
+	rcu_read_lock();
+	cds_ft_iter_set_key(ftdbiter->iter, key, keylen);
+	result = ISC_R_NOMORE;
+	for (int r = cds_ft_lookup_ge(ftdb->ft, ftdbiter->iter);
+	     r == CDS_FT_STATUS_OK; r = cds_ft_next(ftdb->ft, ftdbiter->iter))
+	{
+		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
+		if (ftdbiter->node->nspace != DNS_DBNAMESPACE_NORMAL) {
+			/* Crossed out of the normal namespace. */
+			break;
+		}
+		if (!reference_iter_node(ftdbiter DNS__DB_FLARG_PASS)) {
+			/* Lost to a concurrent deletion; skip it. */
+			continue;
+		}
+		bool exact = (keylen == ftdbiter->node->keylen &&
+			      memcmp(key, ftdbiter->node->key, keylen) == 0);
+		ftc_name_fromkey(ftdbiter->name, ftdbiter->node->key,
+				 ftdbiter->node->keylen);
+		result = exact ? ISC_R_SUCCESS : DNS_R_PARTIALMATCH;
+		break;
+	}
+	if (result == ISC_R_NOMORE) {
+		ftdbiter->node = NULL;
+	}
+	rcu_read_unlock();
+
+	ftdbiter->result = (result == DNS_R_PARTIALMATCH) ? ISC_R_SUCCESS
+							  : result;
+	return result;
+}
+
+static isc_result_t
+dbiterator_seek3(dns_dbiterator_t *iterator ISC_ATTR_UNUSED,
+		 const dns_name_t *name ISC_ATTR_UNUSED DNS__DB_FLARG) {
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+static isc_result_t
+dbiterator_prev(dns_dbiterator_t *iterator ISC_ATTR_UNUSED DNS__DB_FLARG) {
+	return ISC_R_NOTIMPLEMENTED;
+}
+
+static isc_result_t
+dbiterator_next(dns_dbiterator_t *iterator DNS__DB_FLARG) {
+	isc_result_t result;
+	ftc_dbit_t *ftdbiter = (ftc_dbit_t *)iterator;
+
+	REQUIRE(ftdbiter->node != NULL);
+
+	if (ftdbiter->result != ISC_R_SUCCESS) {
+		return ftdbiter->result;
+	}
+
+	if (ftdbiter->paused) {
+		resume_iteration(ftdbiter, true);
+	}
+
+	dereference_iter_node(ftdbiter DNS__DB_FLARG_PASS);
+
+	ftcache_t *ftdb = (ftcache_t *)ftdbiter->common.db;
+
+	rcu_read_lock();
+	result = ISC_R_NOMORE;
+	for (int r = cds_ft_next(ftdb->ft, ftdbiter->iter);
+	     r == CDS_FT_STATUS_OK; r = cds_ft_next(ftdb->ft, ftdbiter->iter))
+	{
+		ftdbiter->node = ftc_iter_node(ftdbiter->iter);
+		if (ftdbiter->node->nspace != DNS_DBNAMESPACE_NORMAL) {
+			/* Crossed out of the normal namespace. */
+			break;
+		}
+		if (!reference_iter_node(ftdbiter DNS__DB_FLARG_PASS)) {
+			/* Lost to a concurrent deletion; skip it. */
+			continue;
+		}
+		ftc_name_fromkey(ftdbiter->name, ftdbiter->node->key,
+				 ftdbiter->node->keylen);
+		result = ISC_R_SUCCESS;
+		break;
+	}
+	if (result != ISC_R_SUCCESS) {
+		ftdbiter->node = NULL;
+	}
+	rcu_read_unlock();
+
+	ftdbiter->result = result;
+	return result;
+}
+
+static isc_result_t
+dbiterator_current(dns_dbiterator_t *iterator, dns_dbnode_t **nodep,
+		   dns_name_t *name DNS__DB_FLARG) {
+	ftcache_t *ftdb = (ftcache_t *)iterator->db;
+	ftc_dbit_t *ftdbiter = (ftc_dbit_t *)iterator;
+	ftcnode_t *node = ftdbiter->node;
+
+	REQUIRE(ftdbiter->result == ISC_R_SUCCESS);
+	REQUIRE(node != NULL);
+
+	if (ftdbiter->paused) {
+		resume_iteration(ftdbiter, false);
+	}
+
+	if (name != NULL) {
+		ftc_name_fromkey(name, node->key, node->keylen);
+	}
+
+	ftcnode_acquire(ftdb, node DNS__DB_FLARG_PASS);
+
+	*nodep = (dns_dbnode_t *)ftdbiter->node;
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+dbiterator_pause(dns_dbiterator_t *iterator) {
+	ftc_dbit_t *ftdbiter = (ftc_dbit_t *)iterator;
+
+	if (ftdbiter->result != ISC_R_SUCCESS &&
+	    ftdbiter->result != ISC_R_NOTFOUND &&
+	    ftdbiter->result != DNS_R_PARTIALMATCH &&
+	    ftdbiter->result != ISC_R_NOMORE)
+	{
+		return ftdbiter->result;
+	}
+
+	if (ftdbiter->paused) {
+		return ISC_R_SUCCESS;
+	}
+
+	ftdbiter->paused = true;
+
+	return ISC_R_SUCCESS;
+}
+
+static isc_result_t
+dbiterator_origin(dns_dbiterator_t *iterator, dns_name_t *name) {
+	ftc_dbit_t *ftdbiter = (ftc_dbit_t *)iterator;
+
+	if (ftdbiter->result != ISC_R_SUCCESS) {
+		return ftdbiter->result;
+	}
+
+	dns_name_copy(dns_rootname, name);
+	return ISC_R_SUCCESS;
+}
+
+static void
+setmaxrrperset(dns_db_t *db, uint32_t value) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	ftdb->maxrrperset = value;
+}
+
+static void
+setmaxtypepername(dns_db_t *db, uint32_t value) {
+	ftcache_t *ftdb = (ftcache_t *)db;
+
+	REQUIRE(VALID_FTDB(ftdb));
+
+	ftdb->maxtypepername = value;
+}
+
+static dns_dbmethods_t ftdb_cachemethods = {
+	.destroy = ftcache_destroy,
+	.findnode = ftcache_findnode,
+	.find = ftcache_find,
+	.createiterator = ftcache_createiterator,
+	.findrdataset = ftcache_findrdataset,
+	.allrdatasets = ftcache_allrdatasets,
+	.addrdataset = ftcache_addrdataset,
+	.deleterdataset = ftcache_deleterdataset,
+	.nodecount = nodecount,
+	.getrrsetstats = getrrsetstats,
+	.setcachestats = setcachestats,
+	.setservestalettl = setservestalettl,
+	.getservestalettl = getservestalettl,
+	.setservestalerefresh = setservestalerefresh,
+	.getservestalerefresh = getservestalerefresh,
+	.setmaxrrperset = setmaxrrperset,
+	.setmaxtypepername = setmaxtypepername,
+};
+
+static void
+ftcnode_destroy(ftcnode_t *qpnode) {
+	dns_slabheader_t *header = NULL, *header_next = NULL;
+	cds_list_for_each_entry_safe(header, header_next, &qpnode->headers,
+				     headers_link)
+	{
+		header_delete(qpnode, header);
+	}
+
+	isc_spinlock_destroy(&qpnode->lock);
+
+	isc_mem_putanddetach(&qpnode->mctx, qpnode,
+			     sizeof(*qpnode) + qpnode->keylen);
+}
+
+#ifdef DNS_DB_NODETRACE
+ISC_REFCOUNT_STATIC_TRACE_IMPL(ftcnode, ftcnode_destroy);
+#else
+ISC_REFCOUNT_STATIC_IMPL(ftcnode, ftcnode_destroy);
+#endif
+
+#ifdef DNS_DB_NODETRACE
+ISC_REFCOUNT_STATIC_TRACE_IMPL(ftcache, ftcache__destroy);
+#else
+ISC_REFCOUNT_STATIC_IMPL(ftcache, ftcache__destroy);
+#endif

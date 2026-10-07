@@ -1,0 +1,6 @@
+# Ignore subproject sources fetched by meson; keep the wraps and the
+# meson overlays we maintain.
+/*
+!/*.wrap
+!/.gitignore
+!/packagefiles
