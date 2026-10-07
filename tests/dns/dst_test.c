@@ -560,8 +560,9 @@ ISC_RUN_TEST_IMPL(private_metadata) {
 	char filename[1024];
 	isc_buffer_t buffer;
 	isc_result_t result;
-	dst_key_t *key = NULL, *copy = NULL;
+	dst_key_t *key = NULL, *copy = NULL, *invalid = NULL;
 
+	/* Fill all private metadata */
 	result = dst_key_fromnamedfile("Ktest.+008+11349",
 				       TESTS_DIR "/testdata/dst", type,
 				       isc_g_mctx, &key);
@@ -574,6 +575,7 @@ ISC_RUN_TEST_IMPL(private_metadata) {
 		dst_key_setnum(key, numerictags[i], 100 + i);
 	}
 
+	/* All private metadata must be read correctly */
 	assert_non_null(mkdtemp(directory));
 	result = dst_key_tofile(key, type, directory);
 	assert_int_equal(result, ISC_R_SUCCESS);
@@ -597,11 +599,30 @@ ISC_RUN_TEST_IMPL(private_metadata) {
 		assert_int_equal(value, 100 + i);
 	}
 
+	/* Make the private key invalid */
 	isc_buffer_init(&buffer, filename, sizeof(filename));
+	result = dst_key_buildfilename(key, DST_TYPE_PRIVATE, directory,
+				       &buffer);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	FILE *fp = fopen(filename, "a");
+	fprintf(fp, "Predecessor: 888\n");
+	fprintf(fp, "Successor: 999\n");
+	fprintf(fp, "Private-key-format: v1.3\n");
+	fprintf(fp, "Algorithm: 8 (RSASHA256)\n");
+	fprintf(fp, "PublicExponent: AQAB\n");
+	fclose(fp);
+
+	result = dst_key_fromnamedfile("Ktest.+008+11349", directory, type,
+				       isc_g_mctx, &invalid);
+	assert_int_equal(result, DST_R_INVALIDPRIVATEKEY);
+
+	/* Clean up files */
+	isc_buffer_clear(&buffer);
 	result = dst_key_buildfilename(key, DST_TYPE_PUBLIC, directory,
 				       &buffer);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_int_equal(unlink(filename), 0);
+
 	isc_buffer_clear(&buffer);
 	result = dst_key_buildfilename(key, DST_TYPE_PRIVATE, directory,
 				       &buffer);
