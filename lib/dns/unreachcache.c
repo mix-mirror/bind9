@@ -120,10 +120,18 @@ dns_unreachcache_destroy(dns_unreachcache_t **ucp) {
 
 	dns_ucentry_t *unreach = NULL;
 	struct cds_lfht_iter iter;
+
+	/*
+	 * A resize may still be running on the hashmap's own worker
+	 * thread, and it reads the entries unlinked here; so walk the
+	 * table as a reader, and free the entries after a grace period.
+	 */
+	rcu_read_lock();
 	cds_lfht_for_each_entry(uc->ht, &iter, unreach, ht_node) {
 		INSIST(!cds_lfht_del(uc->ht, &unreach->ht_node));
-		ucentry_destroy(&unreach->rcu_head);
+		call_rcu(&unreach->rcu_head, ucentry_destroy);
 	}
+	rcu_read_unlock();
 	RUNTIME_CHECK(!cds_lfht_destroy(uc->ht, NULL));
 
 	isc_mutex_destroy(&uc->lru_lock);
