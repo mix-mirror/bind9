@@ -364,5 +364,21 @@ name='multi-signer: inconsistent CDNSKEY'
 err='CDNSKEY RRsets are not consistent'
 testcase 1 $CDS -s -7200 -f sig.cds.cdnskey.2 -f sig.cds.1 -d DS.1 $Z
 
+name='No records with NSEC saying CDS should exist'
+err='CDS should exist \(NSEC\)'
+testcase 1 $CDS -s -7200 -f sig.null.nsec+CDS -d DS.1 $Z
+
+name='No records with NSEC saying CDNSKEY should exist'
+err='CDNSKEY should exist \(NSEC\)'
+testcase 1 $CDS -s -7200 -f sig.null.nsec+CDNSKEY -d DS.1 $Z
+
+name='No records with NSEC3 saying CDS should exist'
+err='CDS should exist \(NSEC3\)'
+testcase 1 $CDS -s -7200 -f sig.null.nsec3+CDS -d DS.1 $Z
+
+name='No records with NSEC3 saying CDNSKEY should exist'
+err='CDNSKEY should exist \(NSEC3\)'
+testcase 1 $CDS -s -7200 -f sig.null.nsec3+CDNSKEY -d DS.1 $Z
+
 echo_i "exit status: $status"
 [ $status -eq 0 ] || exit 1

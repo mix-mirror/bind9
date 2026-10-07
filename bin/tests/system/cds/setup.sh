@@ -116,11 +116,31 @@ EOF
 cat sig.null CDS.1 >brk.unsigned-cds
 cat sig.null CDNSKEY.1 >brk.unsigned-cdnskey
 
+# Add CDS to apex NSEC
+awk '$4 == "NSEC" { print $0, "CDS" ; next } { print }' sig.null >sig.null.nsec+CDS
+# re-sign with the modified NSEC
+$SIGNER >/dev/null -Z nonsecify -P -O full -o $Z -f sig.null.nsec+CDS sig.null.nsec+CDS $keyz $key1 $key2
+
+# Add CDNSKEY to apex NSEC
+awk '$4 == "NSEC" { print $0, "CDNSKEY" ; next } { print }' sig.null >sig.null.nsec+CDNSKEY
+# re-sign with the modified NSEC
+$SIGNER >/dev/null -Z nonsecify -P -O full -o $Z -f sig.null.nsec+CDNSKEY sig.null.nsec+CDNSKEY $keyz $key1 $key2
+
 cat db.null | sign3 null.nsec3
 
 sed -e 's/TATTDJ62PK2FV4AE70DVLE65OT9N06E9/TATTDJ62PK2FV4AE70DVLE65OT9N06E8/g' <sig.null.nsec3 >sig.null.nsec3.no-apex
 # re-sign with the modified NSEC3 owner
 $SIGNER >/dev/null -Z nonsecify -P -O full -o $Z -f sig.null.nsec3.no-apex sig.null.nsec3.no-apex $keyz $key1 $key2
+
+# Add CDS to apex NSEC3
+awk '$4 == "NSEC3" { print $0, "CDS" ; next } { print }' sig.null.nsec3 >sig.null.nsec3+CDS
+# re-sign with the modified NSEC3
+$SIGNER >/dev/null -Z nonsecify -P -O full -o $Z -f sig.null.nsec3+CDS sig.null.nsec3+CDS $keyz $key1 $key2
+
+# Add CDNSKEY to apex NSEC3
+awk '$4 == "NSEC3" { print $0, "CDNSKEY" ; next } { print }' sig.null.nsec3 >sig.null.nsec3+CDNSKEY
+# re-sign with the modified NSEC3
+$SIGNER >/dev/null -Z nonsecify -P -O full -o $Z -f sig.null.nsec3+CDNSKEY sig.null.nsec3+CDNSKEY $keyz $key1 $key2
 
 cat db.null CDS.1 | sign cds.1
 cat db.null CDS.2 | sign cds.2
