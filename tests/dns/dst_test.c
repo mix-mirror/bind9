@@ -639,7 +639,7 @@ ISC_RUN_TEST_IMPL(private_metadata_order) {
 	const char *fields[] = {
 		"Predecessor: 123\nKey: AQID\nBits: AAA=\n",
 		"Key: AQID\nPredecessor: 123\nBits: AAA=\n",
-		"Future: ignored\nKey: AQID\nPredecessor: 123\n"
+		"Future: ignored\nKey: AQID\nPredecessor: 123\n",
 		"Future: ignored\nBits: AAA=\n",
 	};
 	unsigned char secret[] = { 1, 2, 3 };
