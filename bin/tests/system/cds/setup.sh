@@ -114,6 +114,7 @@ sign null <<EOF
 EOF
 
 cat sig.null CDS.1 >brk.unsigned-cds
+cat sig.null CDNSKEY.1 >brk.unsigned-cdnskey
 
 cat db.null | sign3 null.nsec3
 
