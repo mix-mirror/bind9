@@ -730,6 +730,68 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	isc_loopmgr_shutdown();
 }
 
+/*
+ * Regression test for qpcache_findnode() handing out a node that was
+ * deleted between the hashmap lookup and acquiring the node lock.  The
+ * lookup is emulated by holding a raw pointer to the node inside an RCU
+ * read-side section while the node is deleted underneath it.
+ */
+ISC_LOOP_TEST_IMPL(findnode_skips_deleted_node) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	dns_dbnode_t *node = NULL;
+	isc_mem_t *mctx = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	dns_fixedname_t fname;
+	dns_name_t *name = NULL;
+	qpcnode_t *stale = NULL;
+
+	isc_mem_create("test", &mctx);
+
+	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			       &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_test_namefromstring("deleted.example.com.", &fname);
+	name = dns_fixedname_name(&fname);
+
+	servestale_addrdataset(db, name, now, dns_rdatatype_a, "10.53.0.1",
+			       3600, dns_trust_answer);
+
+	rcu_read_lock();
+
+	/* Find the node without referencing it, as findnode does first. */
+	result = getnode((qpcache_t *)db, name, &stale);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	/* Delete the data; releasing the last reference deletes the node. */
+	result = dns_db_findnode(db, name, false, &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_ptr_equal(node, stale);
+	result = dns_db_deleterdataset(db, node, NULL, dns_rdatatype_a, 0);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_db_detachnode(&node);
+
+	assert_true(dns_ht_tree_isdeleted(&stale->htnode));
+	assert_false(reactivate_node((qpcache_t *)db, stale DNS__DB_FILELINE));
+
+	/*
+	 * Still inside the read-side section, so 'stale' can't have been
+	 * freed and its address reused by the new node.
+	 */
+	result = dns_db_findnode(db, name, true, &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	assert_ptr_not_equal(node, stale);
+	dns_db_detachnode(&node);
+
+	rcu_read_unlock();
+
+	dns_db_detach(&db);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
@@ -740,6 +802,8 @@ ISC_TEST_ENTRY_CUSTOM(servestale_fresh_over_stale_cname, setup_managers,
 ISC_TEST_ENTRY_CUSTOM(servestale_fresh_cname_over_stale_type, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(cname_precedence, setup_managers, teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(findnode_skips_deleted_node, setup_managers,
+		      teardown_managers)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

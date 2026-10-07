@@ -416,8 +416,6 @@ static dns_dbmethods_t qpdb_cachemethods;
  * If a routine is going to lock more than one lock in this module, then
  * the locking must be done in the following order:
  *
- *      Tree Lock
- *
  *      Node Lock       (Only one from the set may be locked at one time by
  *                       any caller)
  *
@@ -524,13 +522,16 @@ qpcnode_detach_rcu(struct rcu_head *rcu_head) {
 }
 
 /*
- * tree_lock(write) must be held for a NAMESPACE_NSEC node, or a
- * NAMESPACE_NORMAL node with havensec set (since that also deletes
- * the node's NSEC-namespace companion). It is not required otherwise.
+ * The node lock must be held write-locked. A NAMESPACE_NORMAL node is
+ * unlinked from the hashmap while it's held, which is what lets
+ * reactivate_node() refuse to hand out a node that has been deleted.
  */
 static void
 delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 	isc_result_t result = ISC_R_UNEXPECTED;
+
+	REQUIRE(node->nspace != DNS_DBNAMESPACE_NORMAL ||
+		!dns_ht_tree_isdeleted(&node->htnode));
 
 	if (isc_log_wouldlog(ISC_LOG_DEBUG(DNS_QPCACHE_LOG_STATS_LEVEL))) {
 		char printname[DNS_NAME_FORMATSIZE];
@@ -594,10 +595,10 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 }
 
 /*
- * The caller must specify its currect node and tree lock status.
- * It's okay for neither lock to be held if there are existing external
+ * The caller must specify its current node lock status.
+ * It's okay for the lock not to be held if there are existing external
  * references to the node, but if this is the first external reference,
- * then the caller must be holding at least one lock.
+ * then the caller must be holding the node lock.
  *
  * If incrementing erefs from zero, we also increment the node use counter
  * in the qpcache object.
@@ -623,13 +624,14 @@ qpcnode_erefs_increment(qpcache_t *qpdb, qpcnode_t *node,
 	/*
 	 * this is the first external reference to the node.
 	 *
-	 * we need to hold the node or tree lock (or, for a
-	 * NAMESPACE_NORMAL node, an RCU read-side section, which is
-	 * what protects it against a concurrent delete instead) to
-	 * avoid incrementing the reference count while also deleting
-	 * the node.
+	 * we need to hold the node lock to avoid incrementing the
+	 * reference count while also deleting the node: delete_node()
+	 * runs under the node lock write-locked, and a node found in
+	 * the hashmap must be checked for having been unlinked in the
+	 * meantime (see reactivate_node()).  An RCU read-side section
+	 * only keeps the memory alive, it doesn't stop the deletion.
 	 */
-	INSIST(nlocktype != isc_rwlocktype_none || rcu_read_ongoing());
+	INSIST(nlocktype != isc_rwlocktype_none);
 
 	qpcache_ref(qpdb);
 }
@@ -1924,14 +1926,25 @@ qpcache_destroy(dns_db_t *arg) {
 	qpcache_detach(&qpdb);
 }
 
-static void
+static bool
 reactivate_node(qpcache_t *qpdb, qpcnode_t *node DNS__DB_FLARG) {
 	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
 	isc_rwlock_t *nlock = &qpdb->buckets[node->locknum].lock;
 
 	NODE_RDLOCK(nlock, &nlocktype);
+	/*
+	 * The node may have been unlinked between the hashmap lookup and
+	 * acquiring the node lock; delete_node() unlinks it with the node
+	 * lock write-locked, so it can't happen once we hold it.
+	 */
+	if (dns_ht_tree_isdeleted(&node->htnode)) {
+		NODE_UNLOCK(nlock, &nlocktype);
+		return false;
+	}
 	qpcnode_acquire(qpdb, node, nlocktype DNS__DB_FLARG_PASS);
 	NODE_UNLOCK(nlock, &nlocktype);
+
+	return true;
 }
 
 static qpcnode_t *
@@ -1969,6 +1982,7 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 
 	rcu_read_lock();
 
+again:
 	result = getnode(qpdb, name, &node);
 	if (result != ISC_R_SUCCESS) {
 		if (!create) {
@@ -1995,7 +2009,14 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 		}
 	}
 
-	reactivate_node(qpdb, node DNS__DB_FLARG_PASS);
+	if (!reactivate_node(qpdb, node DNS__DB_FLARG_PASS)) {
+		/*
+		 * The node was unlinked before we could reference it; it is
+		 * no longer in the hashmap, so look the name up again.
+		 */
+		node = NULL;
+		goto again;
+	}
 
 	rcu_read_unlock();
 
@@ -2883,7 +2904,7 @@ reference_iter_node(qpc_dbit_t *qpdbiter DNS__DB_FLARG) {
 		return;
 	}
 
-	reactivate_node(qpdb, node DNS__DB_FLARG_PASS);
+	RUNTIME_CHECK(reactivate_node(qpdb, node DNS__DB_FLARG_PASS));
 }
 
 static void
