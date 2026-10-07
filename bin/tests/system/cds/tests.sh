@@ -174,6 +174,10 @@ name='unsigned CDS'
 err='missing RRSIG CDS records'
 testcase 1 $CDS -f brk.unsigned-cds -d DS.1 $Z
 
+name='unsigned CDNSKEY'
+err='missing RRSIG CDNSKEY records'
+testcase 1 $CDS -f brk.unsigned-cdnskey -d DS.1 $Z
+
 name='multi-signer: unsigned CDS + signed CDS'
 err='missing RRSIG CDS records'
 testcase 1 $CDS -f brk.unsigned-cds -f sig.cds.1 -d DS.1 $Z
