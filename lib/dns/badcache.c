@@ -109,10 +109,18 @@ dns_badcache_destroy(dns_badcache_t **bcp) {
 
 	dns_bcentry_t *bad = NULL;
 	struct cds_lfht_iter iter;
+
+	/*
+	 * A resize may still be running on the hashmap's own worker
+	 * thread, and it reads the entries unlinked here; so walk the
+	 * table as a reader, and free the entries after a grace period.
+	 */
+	rcu_read_lock();
 	cds_lfht_for_each_entry(bc->ht, &iter, bad, ht_node) {
 		INSIST(!cds_lfht_del(bc->ht, &bad->ht_node));
-		bcentry_destroy(&bad->rcu_head);
+		call_rcu(&bad->rcu_head, bcentry_destroy);
 	}
+	rcu_read_unlock();
 	RUNTIME_CHECK(!cds_lfht_destroy(bc->ht, NULL));
 
 	isc_mutex_destroy(&bc->lru_lock);
