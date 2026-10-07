@@ -24,7 +24,7 @@
 /*% default configuration */
 constexpr char common_named_defaultconf[] = "\
 options {\n\
-	answer-cookie true;\n\
+	answer-cookie false;\n\
 	automatic-interface-scan yes;\n\
 #	blackhole {none;};\n\
 	cookie-algorithm siphash24;\n\
@@ -81,7 +81,7 @@ options {\n\
 #	responselog <boolean>;\n\
 #	rrset-order { order cyclic; };\n\
 	secroots-file \"named.secroots\";\n\
-	send-cookie true;\n\
+	send-cookie false;\n\
 	serial-query-rate 20;\n\
 	server-id none;\n\
 	session-keyalg hmac-sha256;\n\
