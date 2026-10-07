@@ -322,7 +322,7 @@ cleanup:
  */
 static void
 findnsec3set(dns_db_t *db, dns_name_t *nsec3name, dns_rdataset_t *rdataset,
-	     dns_rdataset_t *sigrdataset, bool first) {
+	     dns_rdataset_t *sigrdataset) {
 	isc_result_t result;
 	dns_dbiterator_t *dbit = NULL;
 	dns_dbnode_t *node = NULL;
@@ -336,9 +336,7 @@ findnsec3set(dns_db_t *db, dns_name_t *nsec3name, dns_rdataset_t *rdataset,
 			dns_rdata_t rdata = DNS_RDATA_INIT;
 			dns_rdataset_current(rdataset, &rdata);
 			if (is_apex_nsec3(nsec3name, &rdata)) {
-				if (first) {
-					nsec3rdata = rdata;
-				}
+				nsec3rdata = rdata;
 				dns_db_detachnode(&node);
 				goto cleanup;
 			}
@@ -365,14 +363,14 @@ load_child_sets(size_t i) {
 	/*
 	 * Do we need to prove non-existence?
 	 */
-	if (!dns_rdataset_isassociated(&cds_sets[i]) &&
+	if (!dns_rdataset_isassociated(&cds_sets[i]) ||
 	    !dns_rdataset_isassociated(&cdnskey_sets[i]))
 	{
 		dns_name_t *nsec3name = dns_fixedname_initname(&nsec3fixed[i]);
 		findset(child_db, child_node, dns_rdatatype_nsec, &nsec_sets[i],
 			&nsec_sigs[i]);
 		findnsec3set(child_db, nsec3name, &nsec3_sets[i],
-			     &nsec3_sigs[i], i == 0);
+			     &nsec3_sigs[i]);
 	}
 	free_db(&child_db, &child_node, NULL);
 }
@@ -761,9 +759,9 @@ matching_sigs(keyinfo_t *keytbl, dns_name_t *owner, dns_rdataset_t *rdataset,
 		 * Replay attack protection: check against current age limit
 		 *
 		 * Only check CDS, CDNSKEY, NSEC and NSEC3.  DNSKEY needs to
-		 * validate regardless of when it was signed.
 		 */
-		if ((sig.covered == dns_rdatatype_cds ||
+		if (oldestsig != NULL &&
+		    (sig.covered == dns_rdatatype_cds ||
 		     sig.covered == dns_rdatatype_cdnskey ||
 		     sig.covered == dns_rdatatype_nsec ||
 		     sig.covered == dns_rdatatype_nsec3) &&
@@ -1304,6 +1302,7 @@ main(int argc, char *argv[]) {
 	char *endp;
 	size_t nchild_paths = 0;
 	dns_rdata_rrsig_t oldestsig = { 0 };
+	dns_rdata_rrsig_t *oldest;
 
 	orig_argc = argc;
 
@@ -1499,6 +1498,24 @@ main(int argc, char *argv[]) {
 			fatal("missing RRSIG CDS records for %s", namestr);
 		}
 
+		/*
+		 * And for the non-existence proofs as well.
+		 */
+		if (dns_rdataset_isassociated(&nsec_sets[i]) &&
+		    !dns_rdataset_isassociated(&nsec_sigs[i]))
+		{
+			fatal("missing RRSIG NSEC records for %s", namestr);
+		}
+
+		if (dns_rdataset_isassociated(&nsec3_sets[i]) &&
+		    !dns_rdataset_isassociated(&nsec3_sigs[i]))
+		{
+			char namebuf[DNS_NAME_FORMATSIZE];
+			dns_name_format(dns_fixedname_name(&nsec3fixed[i]),
+					namebuf, sizeof(namebuf));
+			fatal("missing RRSIG NSEC3 records for %s", namebuf);
+		}
+
 		vbprintf(1, "which child DNSKEY records match parent DS "
 			    "records?\n");
 		old_key_tbl = match_keyset_dsset(&dnskey_sets[i], &old_ds_set,
@@ -1520,7 +1537,48 @@ main(int argc, char *argv[]) {
 			      namestr);
 		}
 
+		/*
+		 * Get all the current keys for NSEC / NSEC3 validation.
+		 */
 		cur_key_tbl = keytbl(&dnskey_sets[i]);
+
+		/*
+		 * We only need the signing time for NSEC and NSEC3 if we
+		 * don't have both CDS and CDNSKEY sets.
+		 */
+		if (dns_rdataset_isassociated(&cds_sets[i]) &&
+		    dns_rdataset_isassociated(&cdnskey_sets[i]))
+		{
+			oldest = &oldestsig;
+		} else {
+			oldest = NULL;
+		}
+
+		if (dns_rdataset_isassociated(&nsec_sets[i])) {
+			vbprintf(1, "verify NSEC signature(s)\n");
+			if (!signed_loose(matching_sigs(cur_key_tbl, name,
+							&nsec_sets[i],
+							&nsec_sigs[i], oldest)))
+			{
+				fatal("could not validate child NSEC RRset for "
+				      "%s",
+				      namestr);
+			}
+		}
+
+		if (dns_rdataset_isassociated(&nsec3_sets[i])) {
+			dns_name_t *nsec3name =
+				dns_fixedname_name(&nsec3fixed[i]);
+			vbprintf(1, "verify NSEC3 signature(s)\n");
+			if (!signed_loose(matching_sigs(
+				    cur_key_tbl, nsec3name, &nsec3_sets[i],
+				    &nsec3_sigs[i], oldest)))
+			{
+				fatal("could not validate child NSEC3 RRset "
+				      "for %s",
+				      namestr);
+			}
+		}
 
 		if (dns_rdataset_isassociated(&cdnskey_sets[i])) {
 			vbprintf(1, "verify CDNSKEY signature(s)\n");
@@ -1531,6 +1589,25 @@ main(int argc, char *argv[]) {
 				fatal("could not validate child CDNSKEY RRset "
 				      "for %s",
 				      namestr);
+			}
+		} else {
+			vbprintf(1, "%s doesn't have CDNSKEY records\n",
+				 namestr);
+			if (dns_rdataset_isassociated(&nsec_sets[i])) {
+				if (has_type(&nsec_sets[i],
+					     dns_rdatatype_cdnskey))
+				{
+					fatal("CDNSKEY should exist (NSEC)");
+				}
+			} else if (dns_rdataset_isassociated(&nsec3_sets[i])) {
+				if (dns_nsec3_typepresent(
+					    &nsec3rdata, dns_rdatatype_cdnskey))
+				{
+					fatal("CDNSKEY should exist (NSEC3)");
+				}
+			} else {
+				fatal("Unable to prove non-existence of "
+				      "CDNSKEY");
 			}
 		}
 
@@ -1544,30 +1621,21 @@ main(int argc, char *argv[]) {
 				      "%s",
 				      namestr);
 			}
-		}
-
-		if (dns_rdataset_isassociated(&nsec_sets[i])) {
-			vbprintf(1, "verify NSEC signature(s)\n");
-			if (!signed_loose(matching_sigs(
-				    cur_key_tbl, name, &nsec_sets[i],
-				    &nsec_sigs[i], &oldestsig)))
-			{
-				fatal("could not validate child NSEC RRset for "
-				      "%s",
-				      namestr);
-			}
-		}
-		if (dns_rdataset_isassociated(&nsec3_sets[i])) {
-			dns_name_t *nsec3name =
-				dns_fixedname_name(&nsec3fixed[i]);
-			vbprintf(1, "verify NSEC3 signature(s)\n");
-			if (!signed_loose(matching_sigs(
-				    cur_key_tbl, nsec3name, &nsec3_sets[i],
-				    &nsec3_sigs[i], &oldestsig)))
-			{
-				fatal("could not validate child NSEC3 RRset "
-				      "for %s",
-				      namestr);
+		} else {
+			vbprintf(1, "%s doesn't have CDS records\n", namestr);
+			if (dns_rdataset_isassociated(&nsec_sets[i])) {
+				if (has_type(&nsec_sets[i], dns_rdatatype_cds))
+				{
+					fatal("CDS should exist (NSEC)");
+				}
+			} else if (dns_rdataset_isassociated(&nsec3_sets[i])) {
+				if (dns_nsec3_typepresent(&nsec3rdata,
+							  dns_rdatatype_cds))
+				{
+					fatal("CDS should exist (NSEC3)");
+				}
+			} else {
+				fatal("Unable to prove non-existence of CDS");
 			}
 		}
 
@@ -1624,35 +1692,8 @@ main(int argc, char *argv[]) {
 	if (!dns_rdataset_isassociated(&cdnskey_sets[0]) &&
 	    !dns_rdataset_isassociated(&cds_sets[0]))
 	{
-		/*
-		 * There should be a NSEC / NSEC3 record that doesn't have
-		 * bits for CDS and CDNSKEY.
-		 */
 		vbprintf(1, "%s has neither CDS nor CDNSKEY records\n",
 			 namestr);
-
-		if (dns_rdataset_isassociated(&nsec_sets[0])) {
-			if (has_type(&nsec_sets[0], dns_rdatatype_cds)) {
-				fatal("CDS should exist (NSEC)");
-			}
-			if (has_type(&nsec_sets[0], dns_rdatatype_cdnskey)) {
-				fatal("CDNSKEY should exist (NSEC)");
-			}
-		} else if (dns_rdataset_isassociated(&nsec3_sets[0])) {
-			if (dns_nsec3_typepresent(&nsec3rdata,
-						  dns_rdatatype_cds))
-			{
-				fatal("CDS should exist (NSEC3)");
-			}
-			if (dns_nsec3_typepresent(&nsec3rdata,
-						  dns_rdatatype_cdnskey))
-			{
-				fatal("CDNSKEY should exist (NSEC3)");
-			}
-		} else {
-			fatal("Unable to prove non-existence of CDS and "
-			      "CDNSKEY");
-		}
 
 		write_parent_set(ds_path, inplace, nsupdate, &old_ds_set,
 				 &oldestsig);
