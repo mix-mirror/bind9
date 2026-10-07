@@ -138,6 +138,13 @@ struct qpcnode {
 	isc_refcount_t erefs;
 
 	struct cds_list_head headers;
+
+	/*
+	 * Links a NAMESPACE_NORMAL node into the qpcache hashmap, and
+	 * defers releasing the hashmap's reference after it is unlinked.
+	 */
+	dns_htnode_t htnode;
+	struct rcu_head rcu_head;
 };
 
 /*%
@@ -299,17 +306,35 @@ qp_triename(void *uctx ISC_ATTR_UNUSED, char *buf, size_t size) {
 }
 
 /* Hashmap methods, for the NAMESPACE_NORMAL half of the cache. */
+static void
+ht_detach(void *uctx ISC_ATTR_UNUSED, dns_htnode_t *htnode) {
+	qpcnode_t *data = caa_container_of(htnode, qpcnode_t, htnode);
+	qpcnode_detach(&data);
+}
+
 static const dns_name_t *
-ht_name(void *uctx ISC_ATTR_UNUSED, void *pval, uint32_t ival ISC_ATTR_UNUSED) {
-	qpcnode_t *data = pval;
+ht_name(void *uctx ISC_ATTR_UNUSED, dns_htnode_t *htnode) {
+	qpcnode_t *data = caa_container_of(htnode, qpcnode_t, htnode);
 	return &data->name;
 }
 
 static dns_htmethods_t htmethods = {
-	qp_attach,
-	qp_detach,
+	ht_detach,
 	ht_name,
 };
+
+/*
+ * Look up the NAMESPACE_NORMAL node for 'name'. The caller must hold
+ * the RCU read-side lock.
+ */
+static isc_result_t
+getnode(qpcache_t *qpdb, const dns_name_t *name, qpcnode_t **nodep) {
+	dns_htnode_t *htnode = NULL;
+
+	RETERR(dns_ht_tree_getname(&qpdb->tree_normal, name, &htnode));
+	*nodep = caa_container_of(htnode, qpcnode_t, htnode);
+	return ISC_R_SUCCESS;
+}
 
 static void
 rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG);
@@ -492,6 +517,12 @@ qpcache_hit(qpcache_t *qpdb ISC_ATTR_UNUSED, dns_slabheader_t *header) {
  * DB Routines
  */
 
+static void
+qpcnode_detach_rcu(struct rcu_head *rcu_head) {
+	qpcnode_t *node = caa_container_of(rcu_head, qpcnode_t, rcu_head);
+	qpcnode_detach(&node);
+}
+
 /*
  * tree_lock(write) must be held for a NAMESPACE_NSEC node, or a
  * NAMESPACE_NORMAL node with havensec set (since that also deletes
@@ -535,9 +566,16 @@ delete_node(qpcache_t *qpdb, qpcnode_t *node) {
 		}
 
 		rcu_read_lock();
-		result = dns_ht_tree_deletename(&qpdb->tree_normal, &node->name,
-						NULL, NULL);
+		result = dns_ht_tree_delete(&qpdb->tree_normal, &node->htnode);
 		rcu_read_unlock();
+		if (result == ISC_R_SUCCESS) {
+			/*
+			 * Readers may still be looking at the node, so the
+			 * hashmap's reference is released only after a grace
+			 * period.
+			 */
+			call_rcu(&node->rcu_head, qpcnode_detach_rcu);
+		}
 		break;
 	case DNS_DBNAMESPACE_NSEC:
 		dns_qpmulti_write(qpdb->tree_nsec, &qp);
@@ -1253,8 +1291,7 @@ find_coveringnsec(qpc_search_t *search, const dns_name_t *name,
 	 * Lookup the predecessor in the normal namespace.
 	 */
 	node = NULL;
-	CHECK(dns_ht_tree_getname(&search->qpdb->tree_normal, predecessor,
-				  (void **)&node, NULL));
+	CHECK(getnode(search->qpdb, predecessor, &node));
 	dns_name_copy(&node->name, fname);
 
 	nlock = &search->qpdb->buckets[node->locknum].lock;
@@ -1408,8 +1445,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 	/*
 	 * Search down from the root of the tree.
 	 */
-	result = dns_ht_tree_getname(&search.qpdb->tree_normal, name,
-				     (void **)&node, NULL);
+	result = getnode(search.qpdb, name, &node);
 	if (result == ISC_R_SUCCESS && foundname != NULL) {
 		dns_name_copy(&node->name, foundname);
 	}
@@ -1427,9 +1463,7 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 		dns_name_getlabelsequence(name, nlabels - suffixlabels,
 					  suffixlabels, ancestor);
 
-		tresult = dns_ht_tree_getname(&search.qpdb->tree_normal,
-					      ancestor, (void **)&encloser,
-					      NULL);
+		tresult = getnode(search.qpdb, ancestor, &encloser);
 		if (tresult != ISC_R_SUCCESS) {
 			continue;
 		}
@@ -1935,25 +1969,29 @@ qpcache_findnode(dns_db_t *db, const dns_name_t *name, bool create,
 
 	rcu_read_lock();
 
-	result = dns_ht_tree_getname(&qpdb->tree_normal, name, (void **)&node,
-				     NULL);
+	result = getnode(qpdb, name, &node);
 	if (result != ISC_R_SUCCESS) {
 		if (!create) {
 			rcu_read_unlock();
 			return result;
 		}
 
+		/*
+		 * The initial reference to the new node becomes the
+		 * hashmap's reference once it is inserted.
+		 */
 		qpcnode_t *newnode = new_qpcnode(qpdb, name, nspace);
-		result = dns_ht_tree_insert(&qpdb->tree_normal, newnode, 0,
-					    (void **)&node, NULL);
+		dns_htnode_t *existing = NULL;
+		result = dns_ht_tree_insert(&qpdb->tree_normal,
+					    &newnode->htnode, &existing);
 		if (result == ISC_R_EXISTS) {
 			/* Someone else inserted first; use theirs. */
 			qpcnode_unref(newnode);
+			node = caa_container_of(existing, qpcnode_t, htnode);
 			result = ISC_R_SUCCESS;
 		} else {
 			INSIST(result == ISC_R_SUCCESS);
 			node = newnode;
-			qpcnode_unref(newnode);
 		}
 	}
 
@@ -2759,7 +2797,7 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	/*
 	 * Make the qp tries.
 	 */
-	dns_ht_tree_init(mctx, &htmethods, qpdb, &qpdb->tree_normal);
+	dns_ht_tree_init(&htmethods, qpdb, &qpdb->tree_normal);
 	dns_qpmulti_create(mctx, &qpmethods, qpdb, &qpdb->tree_nsec);
 
 	qpdb->common.magic = DNS_DB_MAGIC;

@@ -12,7 +12,6 @@
  */
 
 #include <isc/hash.h>
-#include <isc/mem.h>
 #include <isc/urcu.h>
 #include <isc/util.h>
 
@@ -24,13 +23,10 @@
 #define DNS_HT_TREE_INIT_SIZE (1 << 16)
 #define DNS_HT_TREE_MIN_SIZE  (1 << 10)
 
-typedef struct dns_ht_tree_entry {
-	struct cds_lfht_node ht_node;
-	struct rcu_head rcu_head;
+typedef struct ht_key {
 	dns_ht_tree_t *tree;
-	void *pval;
-	uint32_t ival;
-} dns_ht_tree_entry_t;
+	const dns_name_t *name;
+} ht_key_t;
 
 static uint32_t
 ht_hash(const dns_name_t *name) {
@@ -38,32 +34,19 @@ ht_hash(const dns_name_t *name) {
 }
 
 static int
-ht_match(struct cds_lfht_node *ht_node, const void *key) {
-	const dns_name_t *name = key;
-	dns_ht_tree_entry_t *entry =
-		caa_container_of(ht_node, dns_ht_tree_entry_t, ht_node);
-	const dns_name_t *entry_name = entry->tree->methods->name(
-		entry->tree->uctx, entry->pval, entry->ival);
+ht_match(struct cds_lfht_node *ht_node, const void *key0) {
+	const ht_key_t *key = key0;
+	const dns_name_t *name = key->tree->methods->name(key->tree->uctx,
+							  ht_node);
 
-	return dns_name_equal(entry_name, name);
-}
-
-static void
-entry_destroy(struct rcu_head *rcu_head) {
-	dns_ht_tree_entry_t *entry =
-		caa_container_of(rcu_head, dns_ht_tree_entry_t, rcu_head);
-	dns_ht_tree_t *tree = entry->tree;
-
-	tree->methods->detach(tree->uctx, entry->pval, entry->ival);
-	isc_mem_put(tree->mctx, entry, sizeof(*entry));
+	return dns_name_equal(name, key->name);
 }
 
 void
-dns_ht_tree_init(isc_mem_t *mctx, const dns_htmethods_t *methods, void *uctx,
+dns_ht_tree_init(const dns_htmethods_t *methods, void *uctx,
 		 dns_ht_tree_t *tree) {
 	REQUIRE(tree != NULL);
 	REQUIRE(methods != NULL);
-	REQUIRE(methods->attach != NULL);
 	REQUIRE(methods->detach != NULL);
 	REQUIRE(methods->name != NULL);
 
@@ -71,7 +54,6 @@ dns_ht_tree_init(isc_mem_t *mctx, const dns_htmethods_t *methods, void *uctx,
 		.methods = methods,
 		.uctx = uctx,
 	};
-	isc_mem_attach(mctx, &tree->mctx);
 
 	tree->ht = cds_lfht_new(DNS_HT_TREE_INIT_SIZE, DNS_HT_TREE_MIN_SIZE, 0,
 				CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
@@ -83,68 +65,51 @@ void
 dns_ht_tree_deinit(dns_ht_tree_t *tree) {
 	REQUIRE(tree != NULL);
 
-	dns_ht_tree_entry_t *entry = NULL;
+	struct cds_lfht_node *ht_node = NULL;
 	struct cds_lfht_iter iter;
-	cds_lfht_for_each_entry(tree->ht, &iter, entry, ht_node) {
-		INSIST(cds_lfht_del(tree->ht, &entry->ht_node) == 0);
-		entry_destroy(&entry->rcu_head);
+	cds_lfht_for_each(tree->ht, &iter, ht_node) {
+		INSIST(cds_lfht_del(tree->ht, ht_node) == 0);
+		tree->methods->detach(tree->uctx, ht_node);
 	}
 	RUNTIME_CHECK(cds_lfht_destroy(tree->ht, NULL) == 0);
-
-	isc_mem_detach(&tree->mctx);
 }
 
 isc_result_t
-dns_ht_tree_getname(dns_ht_tree_t *tree, const dns_name_t *name, void **pval_r,
-		    uint32_t *ival_r) {
+dns_ht_tree_getname(dns_ht_tree_t *tree, const dns_name_t *name,
+		    dns_htnode_t **htnodep) {
 	REQUIRE(tree != NULL);
+	REQUIRE(htnodep != NULL && *htnodep == NULL);
 
-	uint32_t hashval = ht_hash(name);
+	ht_key_t key = { .tree = tree, .name = name };
 	struct cds_lfht_iter iter;
 
-	cds_lfht_lookup(tree->ht, hashval, ht_match, name, &iter);
+	cds_lfht_lookup(tree->ht, ht_hash(name), ht_match, &key, &iter);
 	struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
 	if (ht_node == NULL) {
 		return ISC_R_NOTFOUND;
 	}
 
-	dns_ht_tree_entry_t *entry =
-		caa_container_of(ht_node, dns_ht_tree_entry_t, ht_node);
-	SET_IF_NOT_NULL(pval_r, entry->pval);
-	SET_IF_NOT_NULL(ival_r, entry->ival);
+	*htnodep = ht_node;
 	return ISC_R_SUCCESS;
 }
 
 isc_result_t
-dns_ht_tree_insert(dns_ht_tree_t *tree, void *pval, uint32_t ival,
-		   void **pval_r, uint32_t *ival_r) {
+dns_ht_tree_insert(dns_ht_tree_t *tree, dns_htnode_t *htnode,
+		   dns_htnode_t **existingp) {
 	REQUIRE(tree != NULL);
-	REQUIRE(pval != NULL);
+	REQUIRE(htnode != NULL);
 
-	const dns_name_t *name = tree->methods->name(tree->uctx, pval, ival);
-	uint32_t hashval = ht_hash(name);
-
-	dns_ht_tree_entry_t *entry = isc_mem_get(tree->mctx, sizeof(*entry));
-	*entry = (dns_ht_tree_entry_t){
+	ht_key_t key = {
 		.tree = tree,
-		.pval = pval,
-		.ival = ival,
+		.name = tree->methods->name(tree->uctx, htnode),
 	};
-	cds_lfht_node_init(&entry->ht_node);
 
-	tree->methods->attach(tree->uctx, pval, ival);
+	cds_lfht_node_init(htnode);
 
 	struct cds_lfht_node *ht_node = cds_lfht_add_unique(
-		tree->ht, hashval, ht_match, name, &entry->ht_node);
-
-	if (ht_node != &entry->ht_node) {
-		tree->methods->detach(tree->uctx, pval, ival);
-		isc_mem_put(tree->mctx, entry, sizeof(*entry));
-
-		dns_ht_tree_entry_t *existing =
-			caa_container_of(ht_node, dns_ht_tree_entry_t, ht_node);
-		SET_IF_NOT_NULL(pval_r, existing->pval);
-		SET_IF_NOT_NULL(ival_r, existing->ival);
+		tree->ht, ht_hash(key.name), ht_match, &key, htnode);
+	if (ht_node != htnode) {
+		SET_IF_NOT_NULL(existingp, ht_node);
 		return ISC_R_EXISTS;
 	}
 
@@ -152,29 +117,22 @@ dns_ht_tree_insert(dns_ht_tree_t *tree, void *pval, uint32_t ival,
 }
 
 isc_result_t
-dns_ht_tree_deletename(dns_ht_tree_t *tree, const dns_name_t *name,
-		       void **pval_r, uint32_t *ival_r) {
+dns_ht_tree_delete(dns_ht_tree_t *tree, dns_htnode_t *htnode) {
 	REQUIRE(tree != NULL);
+	REQUIRE(htnode != NULL);
 
-	uint32_t hashval = ht_hash(name);
-	struct cds_lfht_iter iter;
-
-	cds_lfht_lookup(tree->ht, hashval, ht_match, name, &iter);
-	struct cds_lfht_node *ht_node = cds_lfht_iter_get_node(&iter);
-	if (ht_node == NULL) {
-		return ISC_R_NOTFOUND;
-	}
-	if (cds_lfht_del(tree->ht, ht_node) != 0) {
-		/* Lost a race with a concurrent deletion of this entry. */
+	if (cds_lfht_del(tree->ht, htnode) != 0) {
 		return ISC_R_NOTFOUND;
 	}
 
-	dns_ht_tree_entry_t *entry =
-		caa_container_of(ht_node, dns_ht_tree_entry_t, ht_node);
-	SET_IF_NOT_NULL(pval_r, entry->pval);
-	SET_IF_NOT_NULL(ival_r, entry->ival);
-	call_rcu(&entry->rcu_head, entry_destroy);
 	return ISC_R_SUCCESS;
+}
+
+bool
+dns_ht_tree_isdeleted(dns_htnode_t *htnode) {
+	REQUIRE(htnode != NULL);
+
+	return cds_lfht_is_node_deleted(htnode);
 }
 
 size_t
