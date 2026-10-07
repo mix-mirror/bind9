@@ -2743,18 +2743,11 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	NODE_WRLOCK(nlock, &nlocktype);
 
 	/*
-	 * Add to the auxiliary tree if we're adding an NSEC record, or
-	 * a DNAME record that find needs to see above the names below it.
+	 * Add to the auxiliary NSEC tree if we're adding an NSEC record.
 	 */
 	if (rdataset->type == dns_rdatatype_nsec && !qpnode->havensec) {
 		add_auxnode(qpdb, qpnode, name, DNS_DBNAMESPACE_NSEC);
 		qpnode->havensec = true;
-	}
-	if (rdataset->type == dns_rdatatype_dname &&
-	    !rdataset->attributes.negative && !qpnode->havedname)
-	{
-		add_auxnode(qpdb, qpnode, name, DNS_DBNAMESPACE_DNAME);
-		qpnode->havedname = true;
 	}
 
 	result = add(qpdb, qpnode, newheader, options, addedrdataset, now,
@@ -2764,6 +2757,17 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_STATCOUNT);
 		update_rrsetstats(qpdb->rrsetstats, newheader->typepair,
 				  newheader->attributes, true);
+
+		/*
+		 * Every lookup below a DNAME checks its auxiliary node, so
+		 * add one only for a DNAME the cache has actually stored.
+		 */
+		if (rdataset->type == dns_rdatatype_dname &&
+		    !rdataset->attributes.negative && !qpnode->havedname)
+		{
+			add_auxnode(qpdb, qpnode, name, DNS_DBNAMESPACE_DNAME);
+			qpnode->havedname = true;
+		}
 	} else {
 		dns_slabheader_detach(&newheader);
 	}

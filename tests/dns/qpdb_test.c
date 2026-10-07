@@ -968,6 +968,77 @@ ISC_LOOP_TEST_IMPL(teardown_releases_nodes_with_data) {
 	isc_loopmgr_shutdown();
 }
 
+/*
+ * A DNAME that the cache refuses to store doesn't get an auxiliary node,
+ * which every lookup below it would otherwise have to check.
+ */
+ISC_LOOP_TEST_IMPL(rejected_dname_has_no_auxnode) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	dns_dbnode_t *node = NULL;
+	isc_mem_t *mctx = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	dns_fixedname_t fname;
+	dns_name_t *name = NULL;
+	dns_rdatalist_t rdatalist;
+	dns_rdataset_t rdataset;
+	dns_rdata_t rdata = DNS_RDATA_INIT;
+	unsigned char rdatabuf[1024];
+
+	isc_mem_create("test", &mctx);
+
+	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			       &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_test_namefromstring("example.com.", &fname);
+	name = dns_fixedname_name(&fname);
+
+	result = dns_db_findnode(db, name, true, &node);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	/* A secure NXDOMAIN blocks less trusted data at the name. */
+	dns_rdatalist_init(&rdatalist);
+	rdatalist.rdclass = dns_rdataclass_in;
+	rdatalist.type = dns_rdatatype_any;
+	rdatalist.ttl = 3600;
+	dns_rdataset_init(&rdataset);
+	dns_rdatalist_tordataset(&rdatalist, &rdataset);
+	rdataset.trust = dns_trust_secure;
+	rdataset.attributes.negative = true;
+	rdataset.attributes.nxdomain = true;
+
+	result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0, NULL);
+	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_rdataset_disassociate(&rdataset);
+	assert_int_equal(dns_db_nodecount(db), 1);
+
+	result = dns_test_rdatafromstring(
+		&rdata, dns_rdataclass_in, dns_rdatatype_dname, rdatabuf,
+		sizeof(rdatabuf), "target.example.net.", false);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	dns_rdatalist_init(&rdatalist);
+	rdatalist.rdclass = dns_rdataclass_in;
+	rdatalist.type = dns_rdatatype_dname;
+	rdatalist.ttl = 3600;
+	ISC_LIST_APPEND(rdatalist.rdata, &rdata, link);
+	dns_rdataset_init(&rdataset);
+	dns_rdatalist_tordataset(&rdatalist, &rdataset);
+	rdataset.trust = dns_trust_answer;
+
+	result = dns_db_addrdataset(db, node, NULL, now, &rdataset, 0, NULL);
+	assert_int_equal(result, DNS_R_UNCHANGED);
+	dns_rdataset_disassociate(&rdataset);
+	assert_int_equal(dns_db_nodecount(db), 1);
+
+	dns_db_detachnode(&node);
+	dns_db_detach(&db);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
@@ -985,6 +1056,8 @@ ISC_TEST_ENTRY_CUSTOM(nodecount_tracks_inserts_and_deletes, setup_managers,
 ISC_TEST_ENTRY_CUSTOM(dname_ancestor_blocks_coveringnsec, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(teardown_releases_nodes_with_data, setup_managers,
+		      teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(rejected_dname_has_no_auxnode, setup_managers,
 		      teardown_managers)
 ISC_TEST_LIST_END
 
