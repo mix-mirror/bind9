@@ -848,6 +848,86 @@ ISC_LOOP_TEST_IMPL(nodecount_tracks_inserts_and_deletes) {
 	isc_loopmgr_shutdown();
 }
 
+static isc_result_t
+coveringnsec_find(dns_db_t *db, const char *namestr, isc_stdtime_t now) {
+	isc_result_t result;
+	dns_fixedname_t fname, ffound;
+	dns_name_t *name = NULL, *foundname = NULL;
+	dns_rdataset_t rdataset;
+
+	dns_test_namefromstring(namestr, &fname);
+	name = dns_fixedname_name(&fname);
+	foundname = dns_fixedname_initname(&ffound);
+	dns_rdataset_init(&rdataset);
+
+	result = dns_db_find(db, name, NULL, dns_rdatatype_a,
+			     DNS_DBFIND_COVERINGNSEC, now, foundname, &rdataset,
+			     NULL);
+	if (dns_rdataset_isassociated(&rdataset)) {
+		dns_rdataset_disassociate(&rdataset);
+	}
+
+	return result;
+}
+
+static void
+dname_addrdataset(dns_db_t *db, const char *namestr, isc_stdtime_t now) {
+	dns_fixedname_t fname;
+
+	dns_test_namefromstring(namestr, &fname);
+	servestale_addrdataset(db, dns_fixedname_name(&fname), now,
+			       dns_rdatatype_dname, "target.example.net.", 3600,
+			       dns_trust_answer);
+}
+
+/*
+ * A cached DNAME stops a covering NSEC from being used for the names
+ * below it, but not for its siblings.
+ */
+ISC_LOOP_TEST_IMPL(dname_ancestor_blocks_coveringnsec) {
+	isc_result_t result;
+	dns_db_t *db = NULL;
+	isc_mem_t *mctx = NULL;
+	isc_stdtime_t now = isc_stdtime_now();
+	dns_fixedname_t fname;
+
+	isc_mem_create("test", &mctx);
+
+	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
+			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
+			       &db);
+	assert_int_equal(result, ISC_R_SUCCESS);
+
+	/* A secure NSEC covering everything between a. and z.example.com. */
+	dns_test_namefromstring("a.example.com.", &fname);
+	servestale_addrdataset(db, dns_fixedname_name(&fname), now,
+			       dns_rdatatype_nsec, "z.example.com. A NSEC",
+			       3600, dns_trust_secure);
+
+	assert_int_equal(coveringnsec_find(db, "m.example.com.", now),
+			 DNS_R_COVERINGNSEC);
+	assert_int_equal(coveringnsec_find(db, "x.q.example.com.", now),
+			 DNS_R_COVERINGNSEC);
+
+	/* A DNAME only affects the names below it. */
+	dname_addrdataset(db, "q.example.com.", now);
+	assert_int_equal(coveringnsec_find(db, "m.example.com.", now),
+			 DNS_R_COVERINGNSEC);
+	assert_int_equal(coveringnsec_find(db, "x.q.example.com.", now),
+			 ISC_R_NOTFOUND);
+
+	/* ...and covers every level below it. */
+	dname_addrdataset(db, "example.com.", now);
+	assert_int_equal(coveringnsec_find(db, "m.example.com.", now),
+			 ISC_R_NOTFOUND);
+	assert_int_equal(coveringnsec_find(db, "y.x.q.example.com.", now),
+			 ISC_R_NOTFOUND);
+
+	dns_db_detach(&db);
+	isc_mem_detach(&mctx);
+	isc_loopmgr_shutdown();
+}
+
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY_CUSTOM(overmempurge_bigrdata, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(overmempurge_longname, setup_managers, teardown_managers)
@@ -861,6 +941,8 @@ ISC_TEST_ENTRY_CUSTOM(cname_precedence, setup_managers, teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(findnode_skips_deleted_node, setup_managers,
 		      teardown_managers)
 ISC_TEST_ENTRY_CUSTOM(nodecount_tracks_inserts_and_deletes, setup_managers,
+		      teardown_managers)
+ISC_TEST_ENTRY_CUSTOM(dname_ancestor_blocks_coveringnsec, setup_managers,
 		      teardown_managers)
 ISC_TEST_LIST_END
 

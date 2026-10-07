@@ -235,12 +235,13 @@ struct dns_dbonupdatelistener {
 /*%
  * Used in QP keys to indicate whether a node is in a special namespace
  * such as NSEC or NSEC3. These values will be mapped to characters at
- * the beginning of the key, converting them to '0', '1', and '2'.
+ * the beginning of the key, converting them to '0', '1', '2' and '3'.
  */
 typedef enum {
 	DNS_DBNAMESPACE_NORMAL = 0, /* regular namespace */
 	DNS_DBNAMESPACE_NSEC = 1,   /* nsec namespace */
 	DNS_DBNAMESPACE_NSEC3 = 2,  /* nsec3 namespace */
+	DNS_DBNAMESPACE_DNAME = 3,  /* dname namespace (cache only) */
 } dns_namespace_t;
 
 /*@{*/
