@@ -220,6 +220,15 @@ name='mangle RRSIG CDS by KSK'
 err='could not validate child CDS RRset'
 testcase 1 $CDS -v1 -s -7200 -f brk.rrsig.cds.ksk -d DS.1 $Z
 
+name='mangle RRSIG CDNSKEY by ZSK'
+err='found RRSIG by key'
+out=DS.1
+testcase 0 $CDS -v1 -a1 -a2 -s -7200 -f brk.rrsig.cdnskey.zsk -d DS.1 $Z
+
+name='mangle RRSIG CDNSKEY by KSK'
+err='could not validate child CDNSKEY RRset'
+testcase 1 $CDS -v1 -s -7200 -f brk.rrsig.cdnskey.ksk -d DS.1 $Z
+
 name='mangle CDS 1'
 err='could not validate child DNSKEY RRset with new DS records'
 testcase 1 $CDS -a1 -a2 -s -7200 -f sig.cds-mangled -d DS.1 $Z

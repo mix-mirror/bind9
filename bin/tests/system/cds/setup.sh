@@ -132,6 +132,11 @@ cat db.null CDNSKEY.2 | sign cdnskey.2
 cat db.null CDS.2 CDNSKEY.2 | sign cds.cdnskey.2
 cat db.null CDS.1 CDNSKEY.2 | sign cds1.cdnskey2
 
+$mangle '\s+IN\s+RRSIG\s+CDNSKEY .* '$idz' '$Z'\. ' \
+  <sig.cdnskey.1 >brk.rrsig.cdnskey.zsk
+$mangle '\s+IN\s+RRSIG\s+CDNSKEY .* '$id1' '$Z'\. ' \
+  <sig.cdnskey.1 >brk.rrsig.cdnskey.ksk
+
 cat db.null CDS.2-1 | sign cds.2.sha1
 cat db.null CDS.2-1 CDNSKEY.2 | sign cds.cdnskey.2.sha1
 
