@@ -118,12 +118,6 @@ dns_rdatasetmethods_t dns_rdataslab_proof_rdatasetmethods = {
 	.getownercase = NULL,
 };
 
-/*% Note: the "const void *" are just to make qsort happy.  */
-static int
-compare_rdata(const void *p1, const void *p2) {
-	return dns_rdata_compare(p1, p2);
-}
-
 static unsigned char *
 newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	uint16_t nitems, size_t size, const char *func, const char *file,
@@ -160,46 +154,18 @@ static isc_result_t
 makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	 uint32_t maxrrperset, const char *func, const char *file,
 	 const unsigned int line) {
-	/*
-	 * Use &removed as a sentinel pointer for duplicate
-	 * rdata as rdata.data == NULL is valid.
-	 */
-	static unsigned char removed;
-	dns_rdata_t *rdata = NULL;
-	unsigned char *rawbuf = NULL;
+	REQUIRE(rdataset->methods != &dns_rdataslab_rdatasetmethods);
+
 	unsigned int headerlen = sizeof(dns_slabheader_t);
 	uint32_t buflen = headerlen;
 	isc_result_t result;
-	unsigned int nitems;
-	unsigned int nalloc;
-	unsigned int length;
-	size_t i;
-	size_t rdatasize;
-
-	/*
-	 * If the source rdataset is also a slab, we don't need
-	 * to do anything special, just copy the whole slab to a
-	 * new buffer.
-	 */
-	if (rdataset->methods == &dns_rdataslab_rdatasetmethods) {
-		dns_slabheader_t *header = rdataset_getheader(rdataset);
-		buflen = dns_rdataslab_size(header);
-
-		rawbuf = newslab(rdataset, mctx, region, header->nitems, buflen,
-				 func, file, line);
-
-		INSIST(headerlen <= buflen);
-		memmove(rawbuf, (unsigned char *)header + headerlen,
-			buflen - headerlen);
-		return ISC_R_SUCCESS;
-	}
+	unsigned int nitems = dns_rdataset_count(rdataset);
 
 	/*
 	 * If there are no rdata then we just need to allocate a header
 	 * with a zero record count.  Only a negative cache entry (e.g.
 	 * an uncacheable NODATA proof) may be empty.
 	 */
-	nitems = dns_rdataset_count(rdataset);
 	if (nitems == 0) {
 		if (!rdataset->attributes.negative) {
 			return ISC_R_FAILURE;
@@ -218,90 +184,6 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 	}
 
 	/*
-	 * Remember the original number of items.
-	 */
-	nalloc = nitems;
-
-	RUNTIME_CHECK(!ckd_mul(&rdatasize, nalloc, sizeof(rdata[0])));
-	rdata = isc_mem_get(mctx, rdatasize);
-
-	/*
-	 * Save all of the rdata members into an array.
-	 */
-	result = dns_rdataset_first(rdataset);
-	if (result != ISC_R_SUCCESS && result != ISC_R_NOMORE) {
-		goto free_rdatas;
-	}
-	for (i = 0; i < nalloc && result == ISC_R_SUCCESS; i++) {
-		INSIST(result == ISC_R_SUCCESS);
-		dns_rdata_init(&rdata[i]);
-		dns_rdataset_current(rdataset, &rdata[i]);
-		INSIST(rdata[i].data != &removed);
-		result = dns_rdataset_next(rdataset);
-	}
-	if (i != nalloc || result != ISC_R_NOMORE) {
-		/*
-		 * Somehow we iterated over fewer rdatas than
-		 * dns_rdataset_count() said there were or there
-		 * were more items than dns_rdataset_count said
-		 * there were.
-		 */
-		result = ISC_R_FAILURE;
-		goto free_rdatas;
-	}
-
-	/*
-	 * Put into DNSSEC order.
-	 */
-	if (nalloc > 1U) {
-		qsort(rdata, nalloc, sizeof(rdata[0]), compare_rdata);
-	}
-
-	/*
-	 * Remove duplicates and compute the total storage required.
-	 *
-	 * If an rdata is not a duplicate, accumulate the storage size
-	 * required for the rdata.  We do not store the class, type, etc,
-	 * just the rdata, so our overhead is 2 bytes for the number of
-	 * records, and 2 bytes for the length of each rdata, plus the
-	 * rdata itself.
-	 */
-	for (i = 1; i < nalloc; i++) {
-		if (compare_rdata(&rdata[i - 1], &rdata[i]) == 0) {
-			rdata[i - 1].data = &removed;
-			nitems--;
-		} else {
-			buflen += 2 + rdata[i - 1].length;
-			/*
-			 * Provide space to store the per RR meta data.
-			 */
-			if (rdataset->type == dns_rdatatype_rrsig) {
-				buflen++;
-			}
-			if (buflen - headerlen > DNS_RDATA_MAXLENGTH) {
-				result = ISC_R_NOSPACE;
-				goto free_rdatas;
-			}
-		}
-	}
-
-	/*
-	 * Don't forget the last item!
-	 */
-	buflen += 2 + rdata[i - 1].length;
-
-	/*
-	 * Provide space to store the per RR meta data.
-	 */
-	if (rdataset->type == dns_rdatatype_rrsig) {
-		buflen++;
-	}
-	if (buflen - headerlen > DNS_RDATA_MAXLENGTH) {
-		result = ISC_R_NOSPACE;
-		goto free_rdatas;
-	}
-
-	/*
 	 * Ensure that singleton types are actually singletons.  The check
 	 * doesn't apply to a negative cache entry: it stores ncache-encoded
 	 * records rather than RRs of 'rdataset->type'.
@@ -313,47 +195,60 @@ makeslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		 * We have a singleton type, but there's more than one
 		 * RR in the rdataset.
 		 */
-		result = DNS_R_SINGLETON;
-		goto free_rdatas;
+		return DNS_R_SINGLETON;
 	}
 
-	/*
-	 * Allocate the memory, set up a buffer, start copying in
-	 * data.
-	 */
-	rawbuf = newslab(rdataset, mctx, region, nitems, buflen, func, file,
-			 line);
+	unsigned char *rawbuf = newslab(rdataset, mctx, region, nitems,
+					headerlen + DNS_RDATA_MAXLENGTH, func,
+					file, line);
 
-	for (i = 0; i < nalloc; i++) {
-		if (rdata[i].data == &removed) {
-			continue;
-		}
-		length = rdata[i].length;
+	size_t i = 0;
+	size_t remaining = region->length - headerlen;
+	DNS_RDATASET_FOREACH(rdataset) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		i++;
+
+		dns_rdataset_current(rdataset, &rdata);
+
+		size_t length = rdata.length;
 		if (rdataset->type == dns_rdatatype_rrsig) {
 			length++;
 		}
 		INSIST(length <= 0xffff);
 
+		if (length + sizeof(uint16_t) > remaining) {
+			result = ISC_R_NOSPACE;
+			goto free_rdatas;
+		}
+
 		put_uint16(rawbuf, length);
 
-		/*
-		 * Store the per RR meta data.
-		 */
 		if (rdataset->type == dns_rdatatype_rrsig) {
-			*rawbuf++ = (rdata[i].flags & DNS_RDATA_OFFLINE)
+			*rawbuf++ = (rdata.flags & DNS_RDATA_OFFLINE)
 					    ? DNS_RDATASLAB_OFFLINE
 					    : 0;
 		}
-		if (rdata[i].length != 0) {
-			memmove(rawbuf, rdata[i].data, rdata[i].length);
-		}
-		rawbuf += rdata[i].length;
-	}
 
-	result = ISC_R_SUCCESS;
+		if (rdata.length != 0) {
+			memmove(rawbuf, rdata.data, rdata.length);
+			rawbuf += rdata.length;
+		}
+		buflen += length + sizeof(uint16_t);
+		remaining -= length + sizeof(uint16_t);
+	}
+	INSIST(i == nitems);
+	region->base = isc_mem_reget(mctx, region->base, region->length,
+				     buflen);
+	region->length = buflen;
+
+	return ISC_R_SUCCESS;
 
 free_rdatas:
-	isc_mem_put(mctx, rdata, rdatasize);
+	if (region->length != 0) {
+		dns_slabheader_t *header = (dns_slabheader_t *)region->base;
+		isc_mem_putanddetach(&header->mctx, header,
+				     headerlen + DNS_RDATA_MAXLENGTH);
+	}
 	return result;
 }
 

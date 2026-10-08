@@ -358,7 +358,6 @@ newrdatalist(dns_message_t *msg) {
 	rdatalist = ISC_LIST_HEAD(msg->freerdatalist);
 	if (rdatalist != NULL) {
 		ISC_LIST_UNLINK(msg->freerdatalist, rdatalist, link);
-		dns_rdatalist_init(rdatalist);
 		goto out;
 	}
 
