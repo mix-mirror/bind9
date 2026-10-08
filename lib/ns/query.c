@@ -2540,17 +2540,17 @@ cleanup_after_fetch(dns_fetchresponse_t *resp, const char *ctracestr,
 
 static void
 prefetch_done(void *arg) {
-	cleanup_after_fetch(arg, "prefetch_done", RECTYPE_PREFETCH);
+	cleanup_after_fetch(arg, __func__, RECTYPE_PREFETCH);
 }
 
 static void
 rpzfetch_done(void *arg) {
-	cleanup_after_fetch(arg, "rpzfetch_done", RECTYPE_RPZ);
+	cleanup_after_fetch(arg, __func__, RECTYPE_RPZ);
 }
 
 static void
 stale_refresh_done(void *arg) {
-	cleanup_after_fetch(arg, "stale_refresh_done", RECTYPE_STALE_REFRESH);
+	cleanup_after_fetch(arg, __func__, RECTYPE_STALE_REFRESH);
 }
 
 /*

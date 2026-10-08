@@ -852,14 +852,14 @@ fetch_callback_ds(void *arg) {
 			bool crossed = false;
 			if (is_insecure_referral(val, resp->foundname,
 						 &val->frdataset, eresult,
-						 "fetch_callback_ds", &crossed))
+						 __func__, &crossed))
 			{
 				/*
 				 * Failed to find a DS while trying to prove
 				 * insecurity. If this is a zone cut, that
 				 * means we're insecure.
 				 */
-				result = markanswer(val, "fetch_callback_ds");
+				result = markanswer(val, __func__);
 				break;
 			}
 			if (crossed) {
@@ -953,8 +953,7 @@ validator_callback_dnskey(void *arg) {
 		expire_rdatasets(val);
 		result = create_fetch(val, dns_name(&val->siginfo->signer),
 				      dns_rdatatype_dnskey, NULL, NULL,
-				      fetch_callback_dnskey,
-				      "validator_callback_dnskey");
+				      fetch_callback_dnskey, __func__);
 		if (result == ISC_R_SUCCESS) {
 			result = DNS_R_WAIT;
 		}
@@ -1011,13 +1010,12 @@ validator_callback_ds(void *arg) {
 			{
 				insecure = is_insecure_referral(
 					val, name, &val->frdataset,
-					DNS_R_NCACHENXRRSET,
-					"validator_callback_ds", &crossed);
+					DNS_R_NCACHENXRRSET, __func__,
+					&crossed);
 			}
 
 			if (insecure) {
-				result = markanswer(val,
-						    "validator_callback_ds");
+				result = markanswer(val, __func__);
 			} else if (crossed) {
 				/*
 				 * The NSEC/NSEC3 signer sits above a known
@@ -1046,7 +1044,7 @@ validator_callback_ds(void *arg) {
 	default:
 		expire_rdatasets(val);
 		result = create_ds_fetch(val, val->name, fetch_callback_ds,
-					 "validator_callback_ds");
+					 __func__);
 		if (result == ISC_R_SUCCESS) {
 			result = DNS_R_WAIT;
 		}
@@ -1581,7 +1579,7 @@ seek_dnskey(dns_validator_t *val) {
 			RETERR(create_validator(
 				val, &siginfo->signer, dns_rdatatype_dnskey,
 				&val->frdataset, &val->fsigrdataset,
-				validator_callback_dnskey, "seek_dnskey"));
+				validator_callback_dnskey, __func__));
 			return DNS_R_WAIT;
 		} else if (val->frdataset.trust < dns_trust_secure) {
 			/*
@@ -1619,7 +1617,7 @@ seek_dnskey(dns_validator_t *val) {
 		 */
 		RETERR(create_fetch(val, dns_name(&siginfo->signer),
 				    dns_rdatatype_dnskey, NULL, NULL,
-				    fetch_callback_dnskey, "seek_dnskey"));
+				    fetch_callback_dnskey, __func__));
 		return DNS_R_WAIT;
 
 	case DNS_R_NCACHENXDOMAIN:
@@ -2399,7 +2397,7 @@ get_dsset(dns_validator_t *val, dns_linkedname_t *tname, isc_result_t *resp) {
 			result = create_validator(
 				val, tname, dns_rdatatype_ds, &val->frdataset,
 				&val->fsigrdataset, validator_callback_ds,
-				"get_dsset");
+				__func__);
 			*resp = DNS_R_WAIT;
 			if (result != ISC_R_SUCCESS) {
 				*resp = result;
@@ -2413,7 +2411,7 @@ get_dsset(dns_validator_t *val, dns_linkedname_t *tname, isc_result_t *resp) {
 		 * We don't have the DS.  Find it.
 		 */
 		result = create_ds_fetch(val, tname, fetch_callback_ds,
-					 "validate_dnskey");
+					 __func__);
 		*resp = DNS_R_WAIT;
 		if (result != ISC_R_SUCCESS) {
 			*resp = result;
@@ -3291,7 +3289,7 @@ validate_neg_rrset(dns_validator_t *val, dns_linkedname_t *name,
 	val->nxset = rdataset;
 	RETERR(create_validator(val, name, rdataset->type, rdataset,
 				sigrdataset, validator_callback_nsec,
-				"validate_neg_rrset"));
+				__func__));
 	val->authcount++;
 	return DNS_R_WAIT;
 }
@@ -3705,7 +3703,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 						val, dns_name(tname),
 						dns_rdatatype_dnskey, NULL,
 						NULL, fetch_callback_dnskey,
-						"seek_ds");
+						__func__);
 					if (result != ISC_R_SUCCESS) {
 						*resp = result;
 					}
@@ -3737,7 +3735,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 		 */
 		result = create_validator(val, tname, dns_rdatatype_ds,
 					  &val->frdataset, &val->fsigrdataset,
-					  validator_callback_ds, "seek_ds");
+					  validator_callback_ds, __func__);
 		*resp = DNS_R_WAIT;
 		if (result != ISC_R_SUCCESS) {
 			*resp = result;
@@ -3751,7 +3749,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 		 */
 		*resp = DNS_R_WAIT;
 		result = create_ds_fetch(val, tname, fetch_callback_ds,
-					 "seek_ds");
+					 __func__);
 		if (result != ISC_R_SUCCESS) {
 			*resp = result;
 		}
@@ -3772,7 +3770,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 			result = create_validator(
 				val, tname, dns_rdatatype_ds, &val->frdataset,
 				&val->fsigrdataset, validator_callback_ds,
-				"seek_ds");
+				__func__);
 			*resp = DNS_R_WAIT;
 			if (result != ISC_R_SUCCESS) {
 				*resp = result;
@@ -3814,7 +3812,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 			bool crossed = false;
 			if (is_insecure_referral(val, dns_name(tname),
 						 &val->frdataset, result,
-						 "seek_ds", &crossed))
+						 __func__, &crossed))
 			{
 				*resp = markanswer(val, "seek_ds (3)");
 				return ISC_R_COMPLETE;
@@ -3858,7 +3856,7 @@ seek_ds(dns_validator_t *val, isc_result_t *resp) {
 			result = create_validator(
 				val, tname, dns_rdatatype_ds, &val->frdataset,
 				&val->fsigrdataset, validator_callback_ds,
-				"seek_ds");
+				__func__);
 			if (result != ISC_R_SUCCESS) {
 				*resp = result;
 			}
@@ -4007,7 +4005,7 @@ proveunsecure(dns_validator_t *val, bool have_ds, bool have_dnskey,
 						val, fname,
 						dns_rdatatype_dnskey, NULL,
 						NULL, fetch_callback_dnskey,
-						"seek_ds");
+						__func__);
 					if (result == ISC_R_SUCCESS) {
 						result = DNS_R_WAIT;
 					}

@@ -7315,7 +7315,7 @@ resume_dslookup(void *arg) {
 
 		fctx->ns_ttl = fctx->delegset->expires - fctx->now;
 		fctx->ns_ttl_ok = true;
-		log_ns_ttl(fctx, "resume_dslookup");
+		log_ns_ttl(fctx, __func__);
 
 		fcount_decr(fctx);
 		dns_name_copy(fctx->nsname, fctx->domain);
@@ -9139,7 +9139,7 @@ rctx_answer_none(respctx_t *rctx) {
 		return rctx->result;
 	}
 
-	log_ns_ttl(fctx, "rctx_answer_none");
+	log_ns_ttl(fctx, __func__);
 
 	if (rctx->ns_rdataset != NULL &&
 	    dns_name_equal(fctx->domain, rctx->ns_name) &&

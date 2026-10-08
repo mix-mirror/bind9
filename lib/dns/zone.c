@@ -3871,7 +3871,7 @@ sync_keyzone(dns_zone_t *zone, dns_db_t *db) {
 		/* Write changes to journal file. */
 		CHECK(update_soa_serial(zone, db, ver, &diff, zone->mctx,
 					zone->updatemethod));
-		CHECK(zone_journal(zone, &diff, NULL, "sync_keyzone"));
+		CHECK(zone_journal(zone, &diff, NULL, __func__));
 
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_LOADED);
 		zone_needdump(zone, 30);
@@ -6104,7 +6104,7 @@ zone_resigninc(dns_zone_t *zone) {
 	}
 
 	/* Write changes to journal file. */
-	CHECK(zone_journal(zone, zonediff.diff, NULL, "zone_resigninc"));
+	CHECK(zone_journal(zone, zonediff.diff, NULL, __func__));
 
 	/* Everything has succeeded. Commit the changes. */
 	dns_db_closeversion(db, &version, true);
@@ -7786,7 +7786,7 @@ skip_removals:
 	}
 
 	/* Write changes to journal file. */
-	CHECK(zone_journal(zone, zonediff.diff, NULL, "zone_nsec3chain"));
+	CHECK(zone_journal(zone, zonediff.diff, NULL, __func__));
 
 	LOCK_ZONE(zone);
 	zone_needdump(zone, DNS_DUMP_DELAY);
@@ -8558,7 +8558,7 @@ zone_sign(dns_zone_t *zone) {
 	/*
 	 * Write changes to journal file.
 	 */
-	CHECK(zone_journal(zone, zonediff.diff, NULL, "zone_sign"));
+	CHECK(zone_journal(zone, zonediff.diff, NULL, __func__));
 
 pauseall:
 	/*
@@ -9592,7 +9592,7 @@ done:
 		/* Write changes to journal file. */
 		CHECK(update_soa_serial(zone, kfetch->db, ver, &diff, mctx,
 					zone->updatemethod));
-		CHECK(zone_journal(zone, &diff, NULL, "keyfetch_done"));
+		CHECK(zone_journal(zone, &diff, NULL, __func__));
 		commit = true;
 
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_LOADED);
@@ -9796,7 +9796,7 @@ zone_refreshkeys(dns_zone_t *zone) {
 	if (!ISC_LIST_EMPTY(diff.tuples)) {
 		CHECK(update_soa_serial(zone, db, ver, &diff, zone->mctx,
 					zone->updatemethod));
-		CHECK(zone_journal(zone, &diff, NULL, "zone_refreshkeys"));
+		CHECK(zone_journal(zone, &diff, NULL, __func__));
 		commit = true;
 		DNS_ZONE_SETFLAG(zone, DNS_ZONEFLG_LOADED);
 		zone_needdump(zone, 30);
@@ -19055,7 +19055,7 @@ zone_rekey(dns_zone_t *zone) {
 			CHECK(add_chains(zone, db, ver, &diff));
 			CHECK(sign_apex(zone, db, ver, now, &diff, &zonediff));
 			CHECK(zone_journal(zone, zonediff.diff, NULL,
-					   "zone_rekey"));
+					   __func__));
 			commit = true;
 		}
 	}

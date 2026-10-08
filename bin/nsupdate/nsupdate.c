@@ -2527,8 +2527,8 @@ update_completed(void *arg) {
 
 	result = dns_request_getresult(request);
 	if (result != ISC_R_SUCCESS) {
-		if (!next_primary("update_completed",
-				  &primary_servers[primary_inuse], result))
+		if (!next_primary(__func__, &primary_servers[primary_inuse],
+				  result))
 		{
 			seenerror = true;
 			goto done;
@@ -2718,7 +2718,7 @@ recvsoa(void *arg) {
 	}
 
 	if (eresult != ISC_R_SUCCESS) {
-		next_server("recvsoa", addr, eresult);
+		next_server(__func__, addr, eresult);
 		ddebug("Destroying request [%p]", request);
 		dns_request_destroy(&request);
 		dns_message_renderreset(soaquery);
@@ -2776,7 +2776,7 @@ recvsoa(void *arg) {
 	check_result(result, "dns_request_getresponse");
 
 	if (rcvmsg->rcode == dns_rcode_refused) {
-		next_server("recvsoa", addr, DNS_R_REFUSED);
+		next_server(__func__, addr, DNS_R_REFUSED);
 		dns_message_detach(&rcvmsg);
 		dns_request_destroy(&request);
 		dns_message_renderreset(soaquery);
@@ -3243,7 +3243,7 @@ recvgss(void *arg) {
 	if (eresult != ISC_R_SUCCESS) {
 		ddebug("Destroying request [%p]", request);
 		dns_request_destroy(&request);
-		if (!next_primary("recvgss", addr, eresult)) {
+		if (!next_primary(__func__, addr, eresult)) {
 			dns_message_detach(&tsigquery);
 			failed_gssrequest();
 		} else {
