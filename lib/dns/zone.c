@@ -14596,7 +14596,7 @@ inline_sync_finalize(dns_zone_t *zone, uint32_t newserial, uint32_t desired) {
 
 	CHECK(dns_journal_open(iss->raw->mctx, iss->raw->journal,
 			       DNS_JOURNAL_WRITE, &rjournal));
-	CHECK(zone_journal(zone, &iss->diff, &end, "inline_sync"));
+	CHECK(zone_journal(zone, &iss->diff, &end, __func__));
 
 	dns_journal_set_sourceserial(rjournal, end);
 	dns_journal_commit(rjournal);
@@ -19894,7 +19894,7 @@ zone_process_keydone(dns_zone_t *zone,
 			CHECK(result);
 		}
 
-		CHECK(zone_journal(zone, &diff, NULL, "keydone"));
+		CHECK(zone_journal(zone, &diff, NULL, __func__));
 		commit = true;
 
 		LOCK_ZONE(zone);
@@ -20204,7 +20204,7 @@ rss_post(dns_zone_t *zone, nsec3param_t *np) {
 		if (result != ISC_R_NOTFOUND) {
 			CHECK(result);
 		}
-		CHECK(zone_journal(zone, &diff, NULL, "setnsec3param"));
+		CHECK(zone_journal(zone, &diff, NULL, __func__));
 		commit = true;
 	}
 
@@ -20622,7 +20622,7 @@ zone_process_setserial(dns_zone_t *zone,
 	}
 
 	/* Write changes to journal file. */
-	CHECK(zone_journal(zone, &diff, NULL, "setserial"));
+	CHECK(zone_journal(zone, &diff, NULL, __func__));
 	commit = true;
 
 	LOCK_ZONE(zone);

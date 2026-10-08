@@ -2634,7 +2634,7 @@ ns__client_setup(ns_client_t *client, ns_clientmgr_t *mgr, bool new) {
 static void
 clientmgr_destroy_cb(void *arg) {
 	ns_clientmgr_t *manager = (ns_clientmgr_t *)arg;
-	MTRACE("clientmgr_destroy");
+	MTRACE(__func__);
 
 	manager->magic = 0;
 

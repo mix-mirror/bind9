@@ -5135,7 +5135,7 @@ fctx__create(dns_resolver_t *res, isc_loop_t *loop, const dns_name_t *name,
 		}
 	}
 
-	log_ns_ttl(fctx, "fctx_create");
+	log_ns_ttl(fctx, __func__);
 
 	if (!dns_name_issubdomain(fctx->name, fctx->domain)) {
 		dns_name_format(fctx->domain, buf, sizeof(buf));
@@ -8702,7 +8702,7 @@ rctx_answer_positive(respctx_t *rctx) {
 	 */
 	rctx_authority_positive(rctx);
 
-	log_ns_ttl(fctx, "rctx_answer");
+	log_ns_ttl(fctx, __func__);
 
 	if (rctx->ns_rdataset != NULL &&
 	    dns_name_equal(fctx->domain, rctx->ns_name) &&
