@@ -194,9 +194,12 @@ $CHECKCONF deprecated.conf >checkconf.out$n.1 2>&1 || ret=1
 grep "option 'max-zone-ttl' is deprecated" <checkconf.out$n.1 >/dev/null || ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
-# set -i to ignore deprecate warnings
-$CHECKCONF -i deprecated.conf >checkconf.out$n.2 2>&1
-grep '^.+$' <checkconf.out$n.2 >/dev/null && ret=1
+
+n=$((n + 1))
+echo_i "checking named-checkconf -i ignores deprecate warnings ($n)"
+ret=0
+$CHECKCONF -i deprecated.conf >checkconf.out$n 2>&1
+grep -q . checkconf.out$n && ret=1
 if [ $ret -ne 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
