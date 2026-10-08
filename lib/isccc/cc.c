@@ -50,7 +50,7 @@
 #include <isccc/util.h>
 
 #define MAX_TAGS     256
-#define DUP_LIFETIME 900
+#define DUP_LIFETIME 300 /* Capped to the controlconf.c:CLOCKSKEW value. */
 #ifndef ISCCC_MAXDEPTH
 #define ISCCC_MAXDEPTH \
 	10 /* Big enough for rndc which just sends a string each way. */
