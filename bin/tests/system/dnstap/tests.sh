@@ -123,12 +123,14 @@ ret=0
 $DIG $DIGOPTS @10.53.0.5 a.example >dig.out || ret=1
 
 # send an UPDATE to ns2
-$NSUPDATE <<-EOF
+$NSUPDATE <<-EOF || ret=1
 server 10.53.0.2 ${PORT}
 zone example
 update add b.example 3600 in a 10.10.10.10
 send
 EOF
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
 
 # XXX: file output should be flushed once a second according
 # to the libfstrm source, but it doesn't seem to happen until
