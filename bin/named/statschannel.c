@@ -1995,6 +1995,22 @@ generatexml(named_server_t *server, uint32_t flags, int *buflen,
 
 		TRY0(xmlTextWriterEndElement(writer)); /* resstat */
 
+		/*
+		 * The cache memory context is shared by all views, so its
+		 * usage is reported once here rather than per view.
+		 */
+		TRY0(xmlTextWriterStartElement(writer, ISC_XMLCHAR "counters"));
+		TRY0(xmlTextWriterWriteAttribute(writer, ISC_XMLCHAR "type",
+						 ISC_XMLCHAR "cachestats"));
+		TRY0(xmlTextWriterStartElement(writer, ISC_XMLCHAR "counter"));
+		TRY0(xmlTextWriterWriteAttribute(writer, ISC_XMLCHAR "name",
+						 ISC_XMLCHAR "CacheMemInUse"));
+		TRY0(xmlTextWriterWriteFormatString(
+			writer, "%" PRIu64,
+			(uint64_t)isc_mem_inuse(dns_cache_mctx)));
+		TRY0(xmlTextWriterEndElement(writer)); /* counter */
+		TRY0(xmlTextWriterEndElement(writer)); /* cachestats */
+
 #ifdef HAVE_DNSTAP
 		if (server->dtenv != NULL) {
 			isc_stats_t *dnstapstats = NULL;
@@ -3155,6 +3171,25 @@ generatejson(named_server_t *server, size_t *msglen, const char **msg,
 			json_object_put(counters);
 		}
 
+		/*
+		 * The cache memory context is shared by all views, so its
+		 * usage is reported once here rather than per view.
+		 */
+		counters = json_object_new_object();
+		CHECKMEM(counters);
+		{
+			json_object *meminuse = json_object_new_int64(
+				isc_mem_inuse(dns_cache_mctx));
+			if (meminuse == NULL) {
+				json_object_put(counters);
+				result = ISC_R_NOMEMORY;
+				goto cleanup;
+			}
+			json_object_object_add(counters, "CacheMemInUse",
+					       meminuse);
+		}
+		json_object_object_add(bindstats, "cachestats", counters);
+
 #ifdef HAVE_DNSTAP
 		/* dnstap stat counters */
 		if (named_g_server->dtenv != NULL) {
@@ -4219,6 +4254,14 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 				 resstats_index, resstat_values, 0);
 		isc_stats_detach(&istats);
 	}
+
+	/*
+	 * The cache memory context is shared by all views, so its usage
+	 * is reported once rather than per view.
+	 */
+	fprintf(fp, "++ Cache Memory Statistics ++\n");
+	fprintf(fp, "%20" PRIu64 " %s\n",
+		(uint64_t)isc_mem_inuse(dns_cache_mctx), "cache memory in use");
 
 	fprintf(fp, "++ Cache Statistics ++\n");
 	ISC_LIST_FOREACH(server->viewlist, view, link) {

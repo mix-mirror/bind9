@@ -383,7 +383,7 @@ dns_db_load(dns_db_t *db, const char *filename, dns_masterformat_t format,
 	RETERR(dns_db_beginload(db, &callbacks));
 	result = dns_master_loadfile(filename, &db->origin, &db->origin,
 				     db->rdclass, options, 0, &callbacks, NULL,
-				     NULL, db->mctx, format, 0);
+				     NULL, isc_g_mctx, format, 0);
 	eresult = dns_db_endload(db, &callbacks);
 	/*
 	 * We always call dns_db_endload(), but we only want to return its
@@ -951,11 +951,11 @@ dns_db_updatenotify_register(dns_db_t *db, dns_dbupdate_callback_t fn,
 	dns_dbonupdatelistener_t key = { .onupdate = fn,
 					 .onupdate_arg = fn_arg };
 	uint32_t hash = isc_hash32(&key, sizeof(key), true);
-	dns_dbonupdatelistener_t *listener = isc_mem_get(db->mctx,
+	dns_dbonupdatelistener_t *listener = isc_mem_get(isc_g_mctx,
 							 sizeof(*listener));
 	*listener = key;
 
-	isc_mem_attach(db->mctx, &listener->mctx);
+	isc_mem_attach(isc_g_mctx, &listener->mctx);
 
 	rcu_read_lock();
 	struct cds_lfht *update_listeners =

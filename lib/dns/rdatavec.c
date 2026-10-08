@@ -135,7 +135,6 @@ newvec(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		.trust = rdataset->trust,
 		.ttl = rdataset->ttl,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.mctx = isc_mem_ref(mctx),
 	};
 
 	region->base = (unsigned char *)header;
@@ -368,7 +367,6 @@ dns_rdatavec_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
 			.trust = rdataset->trust,
 			.ttl = rdataset->ttl,
 			.references = atomic_load_acquire(&new->references),
-			.mctx = new->mctx,
 		};
 	}
 
@@ -605,7 +603,6 @@ dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
 	}
 	*as_header = (dns_vecheader_t){
 		.typepair = nheader->typepair,
-		.mctx = isc_mem_ref(mctx),
 		.serial = nheader->serial,
 		.ttl = nheader->ttl,
 		.resign = nheader->resign,
@@ -777,7 +774,6 @@ dns_rdatavec_subtract(dns_vecheader_t *oheader, dns_vecheader_t *sheader,
 	uint16_t attrs = RESIGN(oheader) ? DNS_VECHEADERATTR_RESIGN : 0;
 	*as_header = (dns_vecheader_t){
 		.typepair = oheader->typepair,
-		.mctx = isc_mem_ref(mctx),
 		.serial = oheader->serial,
 		.ttl = oheader->ttl,
 		.resign = oheader->resign,
@@ -845,7 +841,6 @@ dns_vecheader_new(isc_mem_t *mctx) {
 	h = isc_mem_get(mctx, sizeof(*h));
 	*h = (dns_vecheader_t){
 		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.mctx = isc_mem_ref(mctx),
 	};
 	return h;
 }
@@ -1044,7 +1039,7 @@ vecheader_destroy(dns_vecheader_t *header) {
 	unsigned int size = EXISTS(header) ? dns_rdatavec_size(header)
 					   : sizeof(*header);
 
-	isc_mem_putanddetach(&header->mctx, header, size);
+	isc_mem_put(isc_g_mctx, header, size);
 }
 
 /*

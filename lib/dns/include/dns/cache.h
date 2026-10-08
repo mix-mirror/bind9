@@ -74,6 +74,8 @@ ISC_REFCOUNT_TRACE_DECL(dns_cache);
 ISC_REFCOUNT_DECL(dns_cache);
 #endif
 
+extern isc_mem_t *dns_cache_mctx;
+
 isc_result_t
 dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,
 		 isc_mem_t *mctx, dns_cache_t **cachep);
@@ -276,3 +278,8 @@ dns_cache_renderjson(dns_cache_t *cache, void *cstats0);
  * Render cache statistics and status in JSON
  */
 #endif /* HAVE_JSON_C */
+
+void
+dns__cache_initialize(void);
+void
+dns__cache_shutdown(void);

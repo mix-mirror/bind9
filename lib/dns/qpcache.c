@@ -41,6 +41,7 @@
 #include <isc/urcu.h>
 #include <isc/util.h>
 
+#include <dns/cache.h>
 #include <dns/callbacks.h>
 #include <dns/db.h>
 #include <dns/dbiterator.h>
@@ -466,7 +467,7 @@ qpcache_miss(qpcache_t *qpdb, dns_slabheader_t *newheader,
 	     isc_rwlocktype_t *tlocktypep DNS__DB_FLARG) {
 	uint32_t idx = HEADERNODE(newheader)->locknum;
 
-	if (isc_mem_isovermem(qpdb->common.mctx)) {
+	if (isc_mem_isovermem(dns_cache_mctx)) {
 		/*
 		 * Maximum estimated size of the data being added: The size
 		 * of the rdataset, plus a new QP database node and nodename,
@@ -1880,7 +1881,7 @@ qpcache__destroy(qpcache_t *qpdb) {
 		      __func__, buf);
 
 	if (dns_name_dynamic(&qpdb->common.origin)) {
-		dns_name_free(&qpdb->common.origin, qpdb->common.mctx);
+		dns_name_free(&qpdb->common.origin, dns_cache_mctx);
 	}
 	for (i = 0; i < qpdb->buckets_count; i++) {
 		NODE_DESTROYLOCK(&qpdb->buckets[i].lock);
@@ -1905,9 +1906,9 @@ qpcache__destroy(qpcache_t *qpdb) {
 	qpdb->common.magic = 0;
 	qpdb->common.impmagic = 0;
 
-	isc_mem_putanddetach(&qpdb->common.mctx, qpdb,
-			     sizeof(*qpdb) + qpdb->buckets_count *
-						     sizeof(qpdb->buckets[0]));
+	isc_mem_put(dns_cache_mctx, qpdb,
+		    sizeof(*qpdb) +
+			    qpdb->buckets_count * sizeof(qpdb->buckets[0]));
 }
 
 static void
@@ -1978,7 +1979,7 @@ reactivate_node(qpcache_t *qpdb, qpcnode_t *node,
 
 static qpcnode_t *
 new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
-	qpcnode_t *newdata = isc_mem_get(qpdb->common.mctx, sizeof(*newdata));
+	qpcnode_t *newdata = isc_mem_get(dns_cache_mctx, sizeof(*newdata));
 	*newdata = (qpcnode_t){
 		.headers = CDS_LIST_HEAD_INIT(newdata->headers),
 		.methods = &qpcnode_methods,
@@ -1989,8 +1990,7 @@ new_qpcnode(qpcache_t *qpdb, const dns_name_t *name, dns_namespace_t nspace) {
 		.locknum = isc_random_uniform(qpdb->buckets_count),
 	};
 
-	isc_mem_attach(qpdb->common.mctx, &newdata->mctx);
-	dns_name_dup(name, newdata->mctx, &newdata->name);
+	dns_name_dup(name, dns_cache_mctx, &newdata->name);
 
 #ifdef DNS_DB_NODETRACE
 	fprintf(stderr, "new_qpcnode:%s:%s:%d:%p->references = 1\n", __func__,
@@ -2047,7 +2047,7 @@ qpcache_createiterator(dns_db_t *db, unsigned int options ISC_ATTR_UNUSED,
 
 	REQUIRE(VALID_QPDB(qpdb));
 
-	qpdbiter = isc_mem_get(qpdb->common.mctx, sizeof(*qpdbiter));
+	qpdbiter = isc_mem_get(dns_cache_mctx, sizeof(*qpdbiter));
 	*qpdbiter = (qpc_dbit_t){
 		.common.methods = &dbiterator_methods,
 		.common.magic = DNS_DBITERATOR_MAGIC,
@@ -2097,7 +2097,7 @@ qpcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 	REQUIRE(VALID_QPDB(qpdb));
 	REQUIRE(version == NULL);
 
-	iterator = isc_mem_get(qpdb->common.mctx, sizeof(*iterator));
+	iterator = isc_mem_get(dns_cache_mctx, sizeof(*iterator));
 	*iterator = (qpc_rditer_t){
 		.common.magic = DNS_RDATASETITER_MAGIC,
 		.common.methods = &rdatasetiter_methods,
@@ -2118,7 +2118,7 @@ qpcache_allrdatasets(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		    iterator_active(qpdb, iterator, header))
 		{
 			dns_rdataset_t *rdataset =
-				isc_mem_get(qpnode->mctx, sizeof(*rdataset));
+				isc_mem_get(dns_cache_mctx, sizeof(*rdataset));
 			dns_rdataset_init(rdataset);
 
 			bindrdataset(qpdb, qpnode, header, iterator->common.now,
@@ -2639,7 +2639,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	result = dns_rdataslab_fromrdataset(rdataset, qpnode->mctx, &region,
+	result = dns_rdataslab_fromrdataset(rdataset, dns_cache_mctx, &region,
 					    qpdb->maxrrperset);
 	if (result != ISC_R_SUCCESS) {
 		if (result == DNS_R_TOOMANYRECORDS) {
@@ -2678,7 +2678,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		DNS_SLABHEADER_SETATTR(newheader, DNS_SLABHEADERATTR_OPTOUT);
 	}
 	if (rdataset->attributes.noqname) {
-		CHECK(addnoqname(newheader->mctx, newheader, qpdb->maxrrperset,
+		CHECK(addnoqname(dns_cache_mctx, newheader, qpdb->maxrrperset,
 				 rdataset));
 	}
 
@@ -2807,7 +2807,7 @@ nodecount(dns_db_t *db) {
 }
 
 isc_result_t
-dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
+dns__qpcache_create(isc_mem_t *_mctx ISC_ATTR_UNUSED, const dns_name_t *origin,
 		    dns_dbtype_t type, dns_rdataclass_t rdclass,
 		    unsigned int argc, char *argv[],
 		    void *driverarg ISC_ATTR_UNUSED, dns_db_t **dbp) {
@@ -2822,7 +2822,7 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	REQUIRE(argc == 0);
 	REQUIRE(argv == NULL);
 
-	qpdb = isc_mem_get(mctx,
+	qpdb = isc_mem_get(dns_cache_mctx,
 			   sizeof(*qpdb) + nloops * sizeof(qpdb->buckets[0]));
 	*qpdb = (qpcache_t){
 		.common.methods = &qpdb_cachemethods,
@@ -2839,7 +2839,7 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 
 	qpdb->buckets_count = isc_loopmgr_nloops();
 
-	dns_rdatasetstats_create(mctx, &qpdb->rrsetstats);
+	dns_rdatasetstats_create(dns_cache_mctx, &qpdb->rrsetstats);
 	for (i = 0; i < (int)qpdb->buckets_count; i++) {
 		ISC_SIEVE_INIT(qpdb->buckets[i].sieve);
 
@@ -2849,21 +2849,14 @@ dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *origin,
 	}
 
 	/*
-	 * Attach to the mctx.  The database will persist so long as there
-	 * are references to it, and attaching to the mctx ensures that our
-	 * mctx won't disappear out from under us.
-	 */
-	isc_mem_attach(mctx, &qpdb->common.mctx);
-
-	/*
 	 * Make a copy of the origin name.
 	 */
-	dns_name_dup(origin, mctx, &qpdb->common.origin);
+	dns_name_dup(origin, dns_cache_mctx, &qpdb->common.origin);
 
 	/*
 	 * Make the qp trie.
 	 */
-	dns_qp_create(mctx, &qpmethods, qpdb, &qpdb->tree);
+	dns_qp_create(dns_cache_mctx, &qpmethods, qpdb, &qpdb->tree);
 
 	qpdb->common.magic = DNS_DB_MAGIC;
 	qpdb->common.impmagic = QPDB_MAGIC;
@@ -2885,12 +2878,11 @@ rdatasetiter_destroy(dns_rdatasetiter_t **iteratorp DNS__DB_FLARG) {
 
 	ISC_LIST_FOREACH(iterator->rdatasets, rdataset, link) {
 		dns_rdataset_disassociate(rdataset);
-		isc_mem_put(iterator->common.db->mctx, rdataset,
-			    sizeof(*rdataset));
+		isc_mem_put(dns_cache_mctx, rdataset, sizeof(*rdataset));
 	}
 
 	dns__db_detachnode(&iterator->common.node DNS__DB_FLARG_PASS);
-	isc_mem_put(iterator->common.db->mctx, iterator, sizeof(*iterator));
+	isc_mem_put(dns_cache_mctx, iterator, sizeof(*iterator));
 
 	*iteratorp = NULL;
 }
@@ -3023,7 +3015,7 @@ dbiterator_destroy(dns_dbiterator_t **iteratorp DNS__DB_FLARG) {
 	dns_db_attach(qpdbiter->common.db, &db);
 	dns_db_detach(&qpdbiter->common.db);
 
-	isc_mem_put(db->mctx, qpdbiter, sizeof(*qpdbiter));
+	isc_mem_put(dns_cache_mctx, qpdbiter, sizeof(*qpdbiter));
 	dns_db_detach(&db);
 
 	*iteratorp = NULL;
@@ -3277,8 +3269,8 @@ qpcnode_destroy(qpcnode_t *qpnode) {
 		header_delete(qpnode, header);
 	}
 
-	dns_name_free(&qpnode->name, qpnode->mctx);
-	isc_mem_putanddetach(&qpnode->mctx, qpnode, sizeof(qpcnode_t));
+	dns_name_free(&qpnode->name, dns_cache_mctx);
+	isc_mem_put(dns_cache_mctx, qpnode, sizeof(qpcnode_t));
 }
 
 #ifdef DNS_DB_NODETRACE

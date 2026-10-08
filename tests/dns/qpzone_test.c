@@ -185,7 +185,6 @@ ownercase_test_one(const char *str1, const char *str2) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)&qpdb_s;
 	*qpdb = (qpzonedb_t){
 		.common.methods = &qpdb_zonemethods,
-		.common.mctx = isc_g_mctx,
 	};
 	dns_vecheader_t header = { 0 };
 	dns_rdataset_t rdataset = {
@@ -351,7 +350,6 @@ ISC_RUN_TEST_IMPL(setownercase) {
 	qpzonedb_t *qpdb = (qpzonedb_t *)&qpdb_s;
 	*qpdb = (qpzonedb_t){
 		.common.methods = &qpdb_zonemethods,
-		.common.mctx = isc_g_mctx,
 	};
 	dns_vecheader_t header = { 0 };
 	dns_rdataset_t rdataset = {

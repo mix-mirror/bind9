@@ -89,6 +89,8 @@
  *** TYPES
  ***/
 
+extern isc_mem_t *dns_adb_mctx;
+
 typedef struct dns_adbname dns_adbname_t;
 
 typedef enum {
@@ -751,3 +753,8 @@ dns_adb_dumpquota(dns_adb_t *adb, isc_buffer_t *buf);
  * Requires:
  * \li 'adb' is valid.
  */
+
+void
+dns__adb_initialize(void);
+void
+dns__adb_shutdown(void);

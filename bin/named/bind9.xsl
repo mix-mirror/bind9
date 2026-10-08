@@ -568,6 +568,27 @@
             </table>
           </xsl:if>
         </xsl:for-each>
+        <xsl:if test="server/counters[@type=&quot;cachestats&quot;]/counter">
+          <h2>Cache Memory Statistics</h2>
+          <table class="counters">
+            <xsl:for-each select="server/counters[@type=&quot;cachestats&quot;]/counter">
+              <xsl:variable name="css-class-cachemem">
+                <xsl:choose>
+                  <xsl:when test="position() mod 2 = 0">even</xsl:when>
+                  <xsl:otherwise>odd</xsl:otherwise>
+                </xsl:choose>
+              </xsl:variable>
+              <tr class="{$css-class-cachemem}">
+                <th>
+                  <xsl:value-of select="@name"/>
+                </th>
+                <td>
+                  <xsl:value-of select="."/>
+                </td>
+              </tr>
+            </xsl:for-each>
+          </table>
+        </xsl:if>
         <xsl:for-each select="views/view">
           <xsl:if test="counters[@type=&quot;cachestats&quot;]/counter[.&gt;0]">
             <h3>Cache Statistics for View <xsl:value-of select="@name"/></h3>

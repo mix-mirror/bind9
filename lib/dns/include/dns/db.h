@@ -190,8 +190,7 @@ typedef isc_result_t (*dns_dbupdate_callback_t)(dns_db_t *db, void *fn_arg);
 	unsigned int	      magic;   \
 	uint16_t	      locknum; \
 	dns_dbnode_methods_t *methods; \
-	isc_mem_t	     *mctx;    \
-	dns_name_t	      name;
+	dns_name_t	      name
 
 struct dns_dbnode {
 	DBNODE_FIELDS;
@@ -214,7 +213,6 @@ struct dns_db {
 	dns_rdataclass_t rdclass;
 	dns_name_t	 origin;
 	dns_ttl_t	 serve_stale_ttl; /* for cache DB's only */
-	isc_mem_t	*mctx;
 	isc_refcount_t	 references;
 	struct cds_lfht *update_listeners;
 };

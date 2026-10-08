@@ -76,8 +76,6 @@ struct dns_slabheader {
 
 	isc_refcount_t references;
 
-	isc_mem_t *mctx;
-
 	/*%
 	 * Locked by the owning node's lock.
 	 */

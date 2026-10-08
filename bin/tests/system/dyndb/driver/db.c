@@ -82,9 +82,8 @@ destroy(dns_db_t *db) {
 	REQUIRE(VALID_SAMPLEDB(sampledb));
 
 	dns_db_detach(&sampledb->db);
-	dns_name_free(&sampledb->common.origin, sampledb->common.mctx);
-	isc_mem_putanddetach(&sampledb->common.mctx, sampledb,
-			     sizeof(*sampledb));
+	dns_name_free(&sampledb->common.origin, isc_g_mctx);
+	isc_mem_put(isc_g_mctx, sampledb, sizeof(*sampledb));
 }
 
 static void
@@ -502,9 +501,9 @@ cleanup:
  * @param[in] driverarg Driver-specific parameter from dns_db_register().
  */
 isc_result_t
-create_db(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
-	  dns_rdataclass_t rdclass, unsigned int argc, char *argv[],
-	  void *driverarg, dns_db_t **dbp) {
+create_db(isc_mem_t *_mctx ISC_ATTR_UNUSED, const dns_name_t *origin,
+	  dns_dbtype_t type, dns_rdataclass_t rdclass, unsigned int argc,
+	  char *argv[], void *driverarg, dns_db_t **dbp) {
 	sampledb_t *sampledb = NULL;
 	isc_result_t result;
 	dns_dbversion_t *version = NULL;
@@ -521,7 +520,7 @@ create_db(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 
 	a_addr.s_addr = 0x0100007fU;
 
-	sampledb = isc_mem_get(mctx, sizeof(*sampledb));
+	sampledb = isc_mem_get(isc_g_mctx, sizeof(*sampledb));
 	*sampledb = (sampledb_t){
 		.common.magic = DNS_DB_MAGIC,
 		.common.impmagic = SAMPLEDB_MAGIC,
@@ -529,10 +528,9 @@ create_db(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 		.common.rdclass = rdclass,
 	};
 
-	isc_mem_attach(mctx, &sampledb->common.mctx);
 	dns_name_init(&sampledb->common.origin);
 
-	dns_name_dup(origin, mctx, &sampledb->common.origin);
+	dns_name_dup(origin, isc_g_mctx, &sampledb->common.origin);
 
 	isc_refcount_init(&sampledb->common.references, 1);
 
@@ -540,7 +538,7 @@ create_db(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 	sampledb->inst = driverarg;
 
 	/* Create internal instance of DB implementation from BIND. */
-	CHECK(dns_db_create(mctx, ZONEDB_DEFAULT, origin, dns_dbtype_zone,
+	CHECK(dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, origin, dns_dbtype_zone,
 			    dns_rdataclass_in, 0, NULL, &sampledb->db));
 
 	/* Create fake SOA, NS, and A records to make database loadable. */
@@ -556,11 +554,10 @@ create_db(isc_mem_t *mctx, const dns_name_t *origin, dns_dbtype_t type,
 
 cleanup:
 	if (dns_name_dynamic(&sampledb->common.origin)) {
-		dns_name_free(&sampledb->common.origin, mctx);
+		dns_name_free(&sampledb->common.origin, isc_g_mctx);
 	}
 
-	isc_mem_putanddetach(&sampledb->common.mctx, sampledb,
-			     sizeof(*sampledb));
+	isc_mem_put(isc_g_mctx, sampledb, sizeof(*sampledb));
 
 	return result;
 }

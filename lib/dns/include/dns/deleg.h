@@ -88,7 +88,6 @@ struct dns_deleg {
  */
 struct dns_delegset {
 	unsigned int   magic;
-	isc_mem_t     *mctx;
 	isc_refcount_t references;
 
 	dns_deleglist_t delegs;
@@ -106,6 +105,8 @@ ISC_REFCOUNT_DECL(dns_delegset);
 	ISC_MAGIC_VALID(delegset, DNS_DELEGSET_MAGIC)
 
 typedef struct dns_delegdb dns_delegdb_t;
+
+extern isc_mem_t *dns_deleg_mctx;
 
 /*
  * Allocate and initialize the delegation database. `db` is attached to the
@@ -292,3 +293,8 @@ void
 dns_delegdb_rootns_cleanup(dns_rdatacallbacks_t *callbacks);
 
 ISC_REFCOUNT_DECL(dns_delegdb);
+
+void
+dns__deleg_initialize(void);
+void
+dns__deleg_shutdown(void);

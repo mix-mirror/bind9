@@ -16,6 +16,10 @@
 #include <isc/once.h>
 #include <isc/refcount.h>
 
+#include <dns/adb.h>
+#include <dns/cache.h>
+#include <dns/deleg.h>
+
 #include "acl_p.h"
 #include "db_p.h"
 #include "dlz_p.h"
@@ -54,6 +58,9 @@ dns__lib_initialize(void) {
 	dns__qp_initialize();
 	dns__qpzone_initialize();
 	dns__zone_keymgmt_initialize();
+	dns__cache_initialize();
+	dns__adb_initialize();
+	dns__deleg_initialize();
 }
 
 void
@@ -62,6 +69,9 @@ dns__lib_shutdown(void) {
 		return;
 	}
 
+	dns__deleg_shutdown();
+	dns__adb_shutdown();
+	dns__cache_shutdown();
 	dns__zone_keymgmt_shutdown();
 	dns__qpzone_shutdown();
 	dns__qp_shutdown();

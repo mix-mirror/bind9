@@ -26,6 +26,7 @@
 #include <isc/lib.h>
 #include <isc/util.h>
 
+#include <dns/cache.h>
 #include <dns/lib.h>
 #include <dns/rdatalist.h>
 #include <dns/rdataset.h>
@@ -633,11 +634,10 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
-	isc_mem_t *mctx = NULL;
+	/* The cache database allocates from the shared cache context. */
+	isc_mem_t *mctx = dns_cache_mctx;
 	isc_stdtime_t now = isc_stdtime_now();
 	size_t i = 0;
-
-	isc_mem_create("test", &mctx);
 
 	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
 			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
@@ -675,7 +675,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	}
 
 	dns_db_detach(&db);
-	isc_mem_detach(&mctx);
+	isc_mem_clearwater(mctx);
 	isc_loopmgr_shutdown();
 }
 
@@ -685,11 +685,10 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	size_t lowater = maxcache - (maxcache >> 2); /* ditto */
 	isc_result_t result;
 	dns_db_t *db = NULL;
-	isc_mem_t *mctx = NULL;
+	/* The cache database allocates from the shared cache context. */
+	isc_mem_t *mctx = dns_cache_mctx;
 	isc_stdtime_t now = isc_stdtime_now();
 	size_t i = 0;
-
-	isc_mem_create("test", &mctx);
 
 	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
 			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
@@ -726,7 +725,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	}
 
 	dns_db_detach(&db);
-	isc_mem_detach(&mctx);
+	isc_mem_clearwater(mctx);
 	isc_loopmgr_shutdown();
 }
 

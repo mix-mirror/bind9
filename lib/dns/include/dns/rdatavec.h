@@ -86,11 +86,6 @@ struct dns_vecheader {
 	isc_refcount_t references;
 
 	/*%
-	 * Memory context for this header.
-	 */
-	isc_mem_t *mctx;
-
-	/*%
 	 * Locked by the owning node's lock.
 	 */
 	uint32_t  serial;

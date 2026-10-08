@@ -63,7 +63,7 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 	result = dns_master_loadbuffer(&buf, &db->origin, &db->origin,
 				       db->rdclass, DNS_MASTER_ZONE, &callbacks,
-				       db->mctx);
+				       isc_g_mctx);
 	if (debug) {
 		fprintf(stderr, "loadbuffer: %s\n", isc_result_totext(result));
 	}

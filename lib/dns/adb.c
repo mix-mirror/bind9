@@ -100,8 +100,6 @@ struct dns_adb {
 	uint32_t nloops;
 
 	isc_mutex_t lock;
-	isc_mem_t *mctx;
-	isc_mem_t *hmctx;
 	dns_view_t *view;
 	dns_resolver_t *res;
 
@@ -277,6 +275,8 @@ ISC_REFCOUNT_TRACE_DECL(dns_adbentry);
 #else
 ISC_REFCOUNT_DECL(dns_adbentry);
 #endif
+
+isc_mem_t *dns_adb_mctx = NULL;
 
 /*
  * ADB settings that can be tweaked with named -T option
@@ -876,7 +876,7 @@ static dns_adbname_t *
 new_adbname(dns_adb_t *adb, const dns_name_t *dnsname, unsigned int type) {
 	dns_adbname_t *name = NULL;
 
-	name = isc_mem_get(adb->mctx, sizeof(*name));
+	name = isc_mem_get(dns_adb_mctx, sizeof(*name));
 	*name = (dns_adbname_t){
 		.adb = dns_adb_ref(adb),
 		.expire_v4 = INT_MAX,
@@ -932,7 +932,7 @@ destroy_adbname_rcu(struct rcu_head *rcu_head) {
 	isc_mutex_destroy(&adbname->lock);
 	isc_loop_detach(&adbname->loop);
 
-	isc_mem_put(adb->mctx, adbname, sizeof(*adbname));
+	isc_mem_put(dns_adb_mctx, adbname, sizeof(*adbname));
 
 	dec_adbstats(adb, dns_adbstats_namescnt);
 
@@ -945,8 +945,8 @@ destroy_adbname(dns_adbname_t *adbname) {
 }
 
 static dns_adbnamehook_t *
-new_adbnamehook(dns_adb_t *adb) {
-	dns_adbnamehook_t *nh = isc_mem_get(adb->mctx, sizeof(*nh));
+new_adbnamehook(dns_adb_t *adb ISC_ATTR_UNUSED) {
+	dns_adbnamehook_t *nh = isc_mem_get(dns_adb_mctx, sizeof(*nh));
 	*nh = (dns_adbnamehook_t){
 		.name_link = ISC_LINK_INITIALIZER,
 		.entry_link = ISC_LINK_INITIALIZER,
@@ -957,7 +957,7 @@ new_adbnamehook(dns_adb_t *adb) {
 }
 
 static void
-free_adbnamehook(dns_adb_t *adb, dns_adbnamehook_t **namehook) {
+free_adbnamehook(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbnamehook_t **namehook) {
 	dns_adbnamehook_t *nh = NULL;
 
 	REQUIRE(namehook != NULL && DNS_ADBNAMEHOOK_VALID(*namehook));
@@ -971,14 +971,14 @@ free_adbnamehook(dns_adb_t *adb, dns_adbnamehook_t **namehook) {
 
 	nh->magic = 0;
 
-	isc_mem_put(adb->mctx, nh, sizeof(*nh));
+	isc_mem_put(dns_adb_mctx, nh, sizeof(*nh));
 }
 
 static dns_adbentry_t *
 new_adbentry(dns_adb_t *adb, const isc_sockaddr_t *addr, isc_stdtime_t now) {
 	dns_adbentry_t *entry = NULL;
 
-	entry = isc_mem_get(adb->mctx, sizeof(*entry));
+	entry = isc_mem_get(dns_adb_mctx, sizeof(*entry));
 	*entry = (dns_adbentry_t){
 		.srtt = isc_random_uniform(0x1f) + 1,
 		.sockaddr = *addr,
@@ -1022,13 +1022,14 @@ destroy_adbentry_rcu(struct rcu_head *rcu_head) {
 	INSIST(active == 0);
 
 	if (adbentry->cookie != NULL) {
-		isc_mem_put(adb->mctx, adbentry->cookie, adbentry->cookielen);
+		isc_mem_put(dns_adb_mctx, adbentry->cookie,
+			    adbentry->cookielen);
 	}
 
 	isc_mutex_destroy(&adbentry->lock);
 	isc_loop_detach(&adbentry->loop);
 
-	isc_mem_put(adb->mctx, adbentry, sizeof(*adbentry));
+	isc_mem_put(dns_adb_mctx, adbentry, sizeof(*adbentry));
 
 	dec_adbstats(adb, dns_adbstats_entriescnt);
 
@@ -1050,7 +1051,7 @@ static dns_adbfind_t *
 new_adbfind(dns_adb_t *adb, in_port_t port) {
 	dns_adbfind_t *find = NULL;
 
-	find = isc_mem_get(adb->hmctx, sizeof(*find));
+	find = isc_mem_get(isc_g_mctx, sizeof(*find));
 	*find = (dns_adbfind_t){
 		.port = port,
 		.result_v4 = ISC_R_UNEXPECTED,
@@ -1089,15 +1090,15 @@ free_adbfind(dns_adbfind_t **findp) {
 
 	isc_mutex_destroy(&find->lock);
 
-	isc_mem_put(adb->hmctx, find, sizeof(*find));
+	isc_mem_put(isc_g_mctx, find, sizeof(*find));
 	dns_adb_detach(&adb);
 }
 
 static dns_adbfetch_t *
-new_adbfetch(dns_adb_t *adb) {
+new_adbfetch(dns_adb_t *adb ISC_ATTR_UNUSED) {
 	dns_adbfetch_t *fetch = NULL;
 
-	fetch = isc_mem_get(adb->hmctx, sizeof(*fetch));
+	fetch = isc_mem_get(isc_g_mctx, sizeof(*fetch));
 	*fetch = (dns_adbfetch_t){
 		.magic = DNS_ADBFETCH_MAGIC,
 	};
@@ -1107,7 +1108,7 @@ new_adbfetch(dns_adb_t *adb) {
 }
 
 static void
-free_adbfetch(dns_adb_t *adb, dns_adbfetch_t **fetchp) {
+free_adbfetch(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbfetch_t **fetchp) {
 	dns_adbfetch_t *fetch = NULL;
 
 	REQUIRE(fetchp != NULL && DNS_ADBFETCH_VALID(*fetchp));
@@ -1119,7 +1120,7 @@ free_adbfetch(dns_adb_t *adb, dns_adbfetch_t **fetchp) {
 
 	dns_rdataset_cleanup(&fetch->rdataset);
 
-	isc_mem_put(adb->hmctx, fetch, sizeof(*fetch));
+	isc_mem_put(isc_g_mctx, fetch, sizeof(*fetch));
 }
 
 /*
@@ -1127,10 +1128,11 @@ free_adbfetch(dns_adb_t *adb, dns_adbfetch_t **fetchp) {
  * The entry must be locked, and its reference count must be incremented.
  */
 static dns_adbaddrinfo_t *
-new_adbaddrinfo(dns_adb_t *adb, dns_adbentry_t *entry, in_port_t port) {
+new_adbaddrinfo(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbentry_t *entry,
+		in_port_t port) {
 	dns_adbaddrinfo_t *ai = NULL;
 
-	ai = isc_mem_get(adb->hmctx, sizeof(*ai));
+	ai = isc_mem_get(isc_g_mctx, sizeof(*ai));
 	*ai = (dns_adbaddrinfo_t){
 		.srtt = atomic_load(&entry->srtt),
 		.flags = atomic_load(&entry->flags),
@@ -1146,7 +1148,7 @@ new_adbaddrinfo(dns_adb_t *adb, dns_adbentry_t *entry, in_port_t port) {
 }
 
 static void
-free_adbaddrinfo(dns_adb_t *adb, dns_adbaddrinfo_t **ainfo) {
+free_adbaddrinfo(dns_adb_t *adb ISC_ATTR_UNUSED, dns_adbaddrinfo_t **ainfo) {
 	dns_adbaddrinfo_t *ai = NULL;
 
 	REQUIRE(ainfo != NULL && DNS_ADBADDRINFO_VALID(*ainfo));
@@ -1163,7 +1165,7 @@ free_adbaddrinfo(dns_adb_t *adb, dns_adbaddrinfo_t **ainfo) {
 	}
 	dns_adbentry_detach(&ai->entry);
 
-	isc_mem_put(adb->hmctx, ai, sizeof(*ai));
+	isc_mem_put(isc_g_mctx, ai, sizeof(*ai));
 }
 
 static int
@@ -1202,7 +1204,7 @@ get_attached_and_locked_name(dns_adb_t *adb, const dns_name_t *name,
 		.type = type,
 	};
 	uint32_t hashval = hash_adbname(&key);
-	if (isc_mem_isovermem(adb->mctx)) {
+	if (isc_mem_isovermem(dns_adb_mctx)) {
 		purge_names_overmem(adb, 2 * sizeof(*adbname));
 	}
 
@@ -1284,7 +1286,7 @@ get_attached_and_locked_entry(dns_adb_t *adb, isc_stdtime_t now,
 	dns_adbentry_t *adbentry = NULL;
 	uint32_t hashval = isc_sockaddr_hash(addr, true);
 
-	if (isc_mem_isovermem(adb->mctx)) {
+	if (isc_mem_isovermem(dns_adb_mctx)) {
 		purge_entries_overmem(adb, 2 * sizeof(*adbentry));
 	}
 
@@ -1617,16 +1619,14 @@ dns_adb_destroy(dns_adb_t *adb) {
 	RUNTIME_CHECK(!cds_lfht_destroy(adb->entries_ht, NULL));
 	adb->entries_ht = NULL;
 
-	isc_mem_cput(adb->hmctx, adb->lru, adb->nloops, sizeof(adb->lru[0]));
-
-	isc_mem_detach(&adb->hmctx);
+	isc_mem_cput(isc_g_mctx, adb->lru, adb->nloops, sizeof(adb->lru[0]));
 
 	isc_mutex_destroy(&adb->lock);
 
 	isc_stats_detach(&adb->stats);
 	dns_resolver_detach(&adb->res);
 	dns_view_weakdetach(&adb->view);
-	isc_mem_putanddetach(&adb->mctx, adb, sizeof(dns_adb_t));
+	isc_mem_put(dns_adb_mctx, adb, sizeof(dns_adb_t));
 }
 
 #if DNS_ADB_TRACE
@@ -1640,13 +1640,13 @@ ISC_REFCOUNT_IMPL(dns_adb, dns_adb_destroy);
  */
 
 void
-dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
-	REQUIRE(mem != NULL);
+dns_adb_create(isc_mem_t *mctx ISC_ATTR_UNUSED, dns_view_t *view,
+	       dns_adb_t **adbp) {
 	REQUIRE(view != NULL);
 	REQUIRE(adbp != NULL && *adbp == NULL);
 
 	uint32_t nloops = isc_loopmgr_nloops();
-	dns_adb_t *adb = isc_mem_get(mem, sizeof(dns_adb_t));
+	dns_adb_t *adb = isc_mem_get(dns_adb_mctx, sizeof(dns_adb_t));
 	*adb = (dns_adb_t){
 		.references = 1,
 		.nloops = nloops,
@@ -1663,9 +1663,6 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
 #endif
 	dns_view_weakattach(view, &adb->view);
 	dns_resolver_attach(view->resolver, &adb->res);
-	isc_mem_attach(mem, &adb->mctx);
-
-	isc_mem_create("ADB_dynamic", &adb->hmctx);
 
 	adb->names_ht = cds_lfht_new(ADB_HASH_SIZE, ADB_HASH_SIZE, 0,
 				     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING,
@@ -1677,7 +1674,7 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
 			     CDS_LFHT_AUTO_RESIZE | CDS_LFHT_ACCOUNTING, NULL);
 	INSIST(adb->entries_ht != NULL);
 
-	adb->lru = isc_mem_cget(adb->hmctx, adb->nloops, sizeof(adb->lru[0]));
+	adb->lru = isc_mem_cget(isc_g_mctx, adb->nloops, sizeof(adb->lru[0]));
 
 	for (size_t i = 0; i < adb->nloops; i++) {
 		ISC_SIEVE_INIT(adb->lru[i].names);
@@ -1686,7 +1683,7 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **adbp) {
 
 	isc_mutex_init(&adb->lock);
 
-	isc_stats_create(adb->mctx, &adb->stats, dns_adbstats_max);
+	isc_stats_create(dns_adb_mctx, &adb->stats, dns_adbstats_max);
 
 	set_adbstat(adb, 0, dns_adbstats_nnames);
 	set_adbstat(adb, 0, dns_adbstats_nentries);
@@ -1718,7 +1715,7 @@ dns_adb_shutdown(dns_adb_t *adb) {
 
 	DP(DEF_LEVEL, "shutting down ADB %p", adb);
 
-	isc_mem_clearwater(adb->mctx);
+	isc_mem_clearwater(dns_adb_mctx);
 
 	/*
 	 * dns_adb_shutdown() can get called from call_rcu thread, so we need to
@@ -3213,12 +3210,12 @@ dns_adb_setcookie(dns_adb_t *adb, dns_adbaddrinfo_t *addr,
 	if (entry->cookie != NULL &&
 	    (cookie == NULL || len != entry->cookielen))
 	{
-		isc_mem_put(adb->mctx, entry->cookie, entry->cookielen);
+		isc_mem_put(dns_adb_mctx, entry->cookie, entry->cookielen);
 		entry->cookielen = 0;
 	}
 
 	if (entry->cookie == NULL && cookie != NULL && len != 0U) {
-		entry->cookie = isc_mem_get(adb->mctx, len);
+		entry->cookie = isc_mem_get(dns_adb_mctx, len);
 		entry->cookielen = (uint16_t)len;
 	}
 
@@ -3413,9 +3410,9 @@ dns_adb_setadbsize(dns_adb_t *adb, size_t size) {
 	lowater = size - (size >> 2); /* Approximately 3/4ths. */
 
 	if (size == 0U || hiwater == 0U || lowater == 0U) {
-		isc_mem_clearwater(adb->mctx);
+		isc_mem_clearwater(dns_adb_mctx);
 	} else {
-		isc_mem_setwater(adb->mctx, hiwater, lowater);
+		isc_mem_setwater(dns_adb_mctx, hiwater, lowater);
 	}
 }
 
@@ -3491,4 +3488,14 @@ dns_adb_getstats(dns_adb_t *adb) {
 	REQUIRE(DNS_ADB_VALID(adb));
 
 	return adb->stats;
+}
+
+void
+dns__adb_initialize(void) {
+	isc_mem_create("ADB", &dns_adb_mctx);
+}
+
+void
+dns__adb_shutdown(void) {
+	isc_mem_detach(&dns_adb_mctx);
 }

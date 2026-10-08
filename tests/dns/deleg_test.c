@@ -666,13 +666,14 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
 				&deleg);
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), 500, 2000);
+	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx), 500, 2500);
 
 	for (size_t i = 0; i < NENTRIES; i++) {
 		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	}
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(NENTRIES),
+	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
+			    ENTRIES_MEM(NENTRIES),
 			    ENTRIES_MEM(NENTRIES) + 100000);
 
 	writedb(db, "stuff.", 10, &delegset, true);
@@ -695,7 +696,8 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	 * with DB mem context) overmem conditions will be detected, and the
 	 * expired node will be removed
 	 */
-	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(2 * NENTRIES),
+	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
+			    ENTRIES_MEM(2 * NENTRIES),
 			    ENTRIES_MEM(2 * NENTRIES) + 100000);
 	writedb(db, "bar.", 30, &delegset, true);
 	deleg = NULL;
@@ -708,7 +710,8 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	 */
 	rcu_barrier();
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(NENTRIES),
+	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
+			    ENTRIES_MEM(NENTRIES),
 			    ENTRIES_MEM(NENTRIES) + 100000);
 
 	/*
@@ -729,7 +732,8 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	for (size_t i = 0; i < NENTRIES; i++) {
 		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	}
-	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(2 * NENTRIES),
+	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
+			    ENTRIES_MEM(2 * NENTRIES),
 			    ENTRIES_MEM(2 * NENTRIES) + 100000);
 	writedb(db, "baz.", 30, &delegset, true);
 	deleg = NULL;
@@ -740,7 +744,8 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	 */
 	rcu_barrier();
 
-	assert_int_in_range(isc_mem_inuse(db->mctx), ENTRIES_MEM(2 * NENTRIES),
+	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
+			    ENTRIES_MEM(2 * NENTRIES),
 			    ENTRIES_MEM(2 * NENTRIES) + 100000);
 
 	/*

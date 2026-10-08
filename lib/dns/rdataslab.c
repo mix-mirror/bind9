@@ -26,6 +26,7 @@
 #include <isc/urcu.h>
 #include <isc/util.h>
 
+#include <dns/cache.h>
 #include <dns/db.h>
 #include <dns/rdata.h>
 #include <dns/rdataset.h>
@@ -135,7 +136,6 @@ newslab(dns_rdataset_t *rdataset, isc_mem_t *mctx, isc_region_t *region,
 		.trust = rdataset->trust,
 		.nitems = nitems,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
-		.mctx = isc_mem_ref(mctx),
 		.lrulink = ISC_LINK_INITIALIZER,
 	};
 
@@ -533,10 +533,10 @@ slabheader_destroy(dns_slabheader_t *header) {
 	unsigned int size = dns_rdataslab_size(header);
 
 	if (header->noqname != NULL) {
-		dns_slabheader_freeproof(header->mctx, &header->noqname);
+		dns_slabheader_freeproof(dns_cache_mctx, &header->noqname);
 	}
 
-	isc_mem_putanddetach(&header->mctx, header, size);
+	isc_mem_put(dns_cache_mctx, header, size);
 }
 
 void
