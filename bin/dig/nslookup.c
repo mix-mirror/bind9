@@ -202,7 +202,7 @@ printsection(dig_query_t *query, dns_message_t *msg, bool headers,
 	UNUSED(query);
 	UNUSED(headers);
 
-	debug("printsection()");
+	debug_func();
 
 	MSG_SECTION_FOREACH(msg, section, name) {
 		ISC_LIST_FOREACH(name->list, rdataset, link) {
@@ -247,7 +247,7 @@ detailsection(dig_query_t *query, dns_message_t *msg, bool headers,
 
 	UNUSED(query);
 
-	debug("detailsection()");
+	debug_func();
 
 	if (headers) {
 		switch (section) {
@@ -349,7 +349,7 @@ printmessage(dig_query_t *query, const isc_buffer_t *msgbuf, dns_message_t *msg,
 	/* I've we've gotten this far, we've reached a server. */
 	query_error = 0;
 
-	debug("printmessage()");
+	debug_func();
 
 	if (!default_lookups || query->lookup->rdtype == dns_rdatatype_a) {
 		char servtext[ISC_SOCKADDR_FORMATSIZE];
@@ -669,7 +669,7 @@ addlookup(char *opt) {
 	dns_rdataclass_t rdclass;
 	char store[MXNAME];
 
-	debug("addlookup()");
+	debug_func();
 
 	a_noanswer = false;
 

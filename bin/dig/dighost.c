@@ -460,7 +460,7 @@ make_server(const char *servname, const char *userarg) {
  */
 static void
 get_server_list(irs_resconf_t *resconf) {
-	debug("get_server_list()");
+	debug_func();
 
 	isc_sockaddrlist_t *servers = irs_resconf_getnameservers(resconf);
 	ISC_LIST_FOREACH(*servers, sa, link) {
@@ -498,7 +498,7 @@ get_server_list(irs_resconf_t *resconf) {
 
 void
 flush_server_list(void) {
-	debug("flush_server_list()");
+	debug_func();
 	ISC_LIST_FOREACH(server_list, s, link) {
 		ISC_LIST_DEQUEUE(server_list, s, link);
 		isc_mem_free(isc_g_mctx, s);
@@ -545,7 +545,7 @@ set_nameserver(char *opt) {
  */
 void
 clone_server_list(dig_serverlist_t src, dig_serverlist_t *dest) {
-	debug("clone_server_list()");
+	debug_func();
 	ISC_LIST_FOREACH(src, srv, link) {
 		dig_server_t *newsrv = make_server(srv->servername,
 						   srv->userarg);
@@ -572,7 +572,7 @@ make_empty_lookup(void) {
 	}
 #endif /* HAVE_LIBIDN2 */
 
-	debug("make_empty_lookup()");
+	debug_func();
 
 	INSIST(!free_now);
 
@@ -662,7 +662,7 @@ dig_lookup_t *
 clone_lookup(dig_lookup_t *lookold, bool servers) {
 	dig_lookup_t *looknew;
 
-	debug("clone_lookup()");
+	debug_func();
 
 	INSIST(!free_now);
 
@@ -828,7 +828,7 @@ dig_lookup_t *
 requeue_lookup(dig_lookup_t *lookold, bool servers) {
 	dig_lookup_t *looknew = NULL;
 
-	debug("requeue_lookup()");
+	debug_func();
 
 	lookup_counter++;
 	if (lookup_counter > LOOKUP_LIMIT) {
@@ -855,7 +855,7 @@ setup_text_key(void) {
 	unsigned int secretsize;
 	unsigned char *secretstore;
 
-	debug("setup_text_key()");
+	debug_func();
 	isc_buffer_allocate(isc_g_mctx, &namebuf, MXNAME);
 	isc_buffer_putstr(namebuf, keynametext);
 	secretsize = (unsigned int)strlen(keysecret) * 3 / 4;
@@ -1123,7 +1123,7 @@ setup_file_key(void) {
 	isc_result_t result;
 	dst_key_t *dstkey = NULL;
 
-	debug("setup_file_key()");
+	debug_func();
 
 	if (sig0key != NULL) {
 		dst_key_free(&sig0key);
@@ -1199,7 +1199,7 @@ clear_searchlist(void) {
 
 static void
 create_search_list(irs_resconf_t *resconf) {
-	debug("create_search_list()");
+	debug_func();
 	clear_searchlist();
 
 	irs_resconf_searchlist_t *list = irs_resconf_getsearchlist(resconf);
@@ -1231,7 +1231,7 @@ setup_system(bool ipv4only, bool ipv6only) {
 	irs_resconf_t *resconf = NULL;
 	isc_result_t result;
 
-	debug("setup_system()");
+	debug_func();
 
 	if (ipv4only) {
 		if (have_ipv4) {
@@ -1319,7 +1319,7 @@ setup_libs(int argc, char **argv) {
 	isc_result_t result;
 	isc_logconfig_t *logconfig = NULL;
 
-	debug("setup_libs()");
+	debug_func();
 
 	isc_commandline_init(argc, argv);
 
@@ -1445,7 +1445,7 @@ add_question(dns_message_t *message, dns_linkedname_t *name,
 	     dns_rdataclass_t rdclass, dns_rdatatype_t rdtype) {
 	dns_rdataset_t *rdataset;
 
-	debug("add_question()");
+	debug_func();
 	rdataset = NULL;
 	dns_message_gettemprdataset(message, &rdataset);
 	dns_rdataset_makequestion(rdataset, rdclass, rdtype);
@@ -1462,7 +1462,7 @@ add_question(dns_message_t *message, dns_linkedname_t *name,
  */
 static void
 check_if_done(void) {
-	debug("check_if_done()");
+	debug_func();
 	debug("list %s", ISC_LIST_EMPTY(lookup_list) ? "empty" : "full");
 
 	ISC_LIST_FOREACH(lookup_list, lookup, link) {
@@ -1696,7 +1696,7 @@ _query_detach(dig_query_t **queryp, const char *file, unsigned int line) {
  */
 void
 start_lookup(void) {
-	debug("start_lookup()");
+	debug_func();
 
 	if (cancel_now) {
 		return;
@@ -1742,7 +1742,7 @@ clear_current_lookup(void) {
 
 	INSIST(!free_now);
 
-	debug("clear_current_lookup()");
+	debug_func();
 
 	if (lookup == NULL) {
 		debug("current_lookup is already detached");
@@ -1949,7 +1949,7 @@ next_origin(dig_lookup_t *oldlookup) {
 
 	INSIST(!free_now);
 
-	debug("next_origin()");
+	debug_func();
 	debug("following up %s", oldlookup->textname);
 
 	if (!usesearch) {
@@ -2007,7 +2007,7 @@ insert_soa(dig_lookup_t *lookup) {
 	dns_rdataset_t *rdataset = NULL;
 	dns_linkedname_t *soaname = NULL;
 
-	debug("insert_soa()");
+	debug_func();
 	soa.serial = lookup->ixfr_serial;
 	soa.refresh = 0;
 	soa.retry = 0;
@@ -3091,7 +3091,7 @@ udp_ready(isc_nmhandle_t *handle, isc_result_t eresult, void *arg) {
 	REQUIRE(DIG_VALID_QUERY(query));
 	REQUIRE(query->handle == NULL);
 
-	debug("udp_ready()");
+	debug_func();
 
 	query->started = true;
 
@@ -3338,7 +3338,7 @@ force_next(dig_query_t *query) {
 
 	REQUIRE(DIG_VALID_QUERY(query));
 
-	debug("force_next()");
+	debug_func();
 
 	INSIST(!free_now);
 
@@ -3403,7 +3403,7 @@ launch_next_query(dig_query_t *query) {
 	REQUIRE(DIG_VALID_QUERY(query));
 	INSIST(!free_now);
 
-	debug("launch_next_query()");
+	debug_func();
 
 	lookup_attach(query->lookup, &l);
 
@@ -3501,7 +3501,7 @@ tcp_connected(isc_nmhandle_t *handle, isc_result_t eresult, void *arg) {
 	REQUIRE(DIG_VALID_QUERY(query));
 	REQUIRE(query->handle == NULL);
 
-	debug("tcp_connected()");
+	debug_func();
 
 	query->started = true;
 
@@ -3642,7 +3642,7 @@ check_for_more_data(dig_lookup_t *lookup, dig_query_t *query,
 		axfr = query->ixfr_axfr;
 	}
 
-	debug("check_for_more_data()");
+	debug_func();
 
 	/*
 	 * By the time we're in this routine, we know we're doing
@@ -4580,7 +4580,7 @@ do_lookup(dig_lookup_t *lookup) {
 
 	REQUIRE(lookup != NULL);
 
-	debug("do_lookup()");
+	debug_func();
 	lookup->pending = true;
 	query = ISC_LIST_HEAD(lookup->q);
 	if (query != NULL) {
@@ -4616,7 +4616,7 @@ run_loop(void *arg) {
  */
 void
 cancel_all(void) {
-	debug("cancel_all()");
+	debug_func();
 
 	if (free_now) {
 		return;
@@ -4669,7 +4669,7 @@ cleanup_openssl_refs(void) {
  */
 void
 destroy_libs(void) {
-	debug("destroy_libs()");
+	debug_func();
 
 	isc_refcount_destroy(&recvcount);
 	isc_refcount_destroy(&sendcount);

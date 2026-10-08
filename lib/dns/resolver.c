@@ -3270,7 +3270,7 @@ add_bad(fetchctx_t *fctx, dns_message_t *rmessage, dns_adbaddrinfo_t *addrinfo,
 		return;
 	}
 
-	FCTXTRACE("add_bad");
+	FCTXTRACE(__func__);
 
 	sa = isc_mem_get(fctx->mctx, sizeof(*sa));
 	*sa = *address;
@@ -4533,7 +4533,7 @@ resume_qmin(void *arg) {
 
 	REQUIRE(fctx->tid == isc_tid());
 
-	FCTXTRACE("resume_qmin");
+	FCTXTRACE(__func__);
 
 	fname = dns_fixedname_initname(&ffixed);
 	dcname = dns_fixedname_initname(&dcfixed);
@@ -6038,7 +6038,7 @@ findnoqname(fetchctx_t *fctx, dns_message_t *message, dns_linkedname_t *name,
 	dns_linkedname_t *noqname = NULL;
 	dns_rdatatype_t type = rdataset->type;
 
-	FCTXTRACE("findnoqname");
+	FCTXTRACE(__func__);
 
 	if (dns_rdatatype_issig(rdataset->type) || sigrdataset == NULL) {
 		return;
@@ -6331,7 +6331,7 @@ rctx_cachename(respctx_t *rctx, dns_message_t *message,
 	dns_rdataset_t *sigrdataset = NULL;
 	dns_dbnode_t *node = NULL;
 
-	FCTXTRACE("rctx_cachename");
+	FCTXTRACE(__func__);
 
 	/*
 	 * The appropriate bucket lock must be held.
@@ -6439,7 +6439,7 @@ rctx_cachemessage(respctx_t *rctx) {
 	resquery_t *query = rctx->query;
 	dns_message_t *message = query->rmessage;
 
-	FCTXTRACE("rctx_cachemessage");
+	FCTXTRACE(__func__);
 
 	LOCK(&fctx->lock);
 
@@ -6566,7 +6566,7 @@ rctx_ncache(respctx_t *rctx) {
 	dns_dbnode_t *node = NULL;
 	dns_rdataset_t *added = NULL;
 
-	FCTXTRACE("rctx_ncache");
+	FCTXTRACE(__func__);
 
 	if (!WANTNCACHE(fctx)) {
 		goto done;
@@ -6864,7 +6864,7 @@ cache_delegns(fetchctx_t *fctx, const dns_name_t *name, dns_rdataset_t *nsset,
 	size_t max_servers = fctx->res->view->max_delegation_servers;
 	isc_result_t result;
 
-	FCTXTRACE("cache_delegns");
+	FCTXTRACE(__func__);
 
 	dns_delegset_allocset(delegdb, &delegset);
 
@@ -7270,7 +7270,7 @@ resume_dslookup(void *arg) {
 
 	REQUIRE(fctx->tid == isc_tid());
 
-	FCTXTRACE("resume_dslookup");
+	FCTXTRACE(__func__);
 
 	if (resp->node != NULL) {
 		dns_db_detachnode(&resp->node);
@@ -7293,7 +7293,7 @@ resume_dslookup(void *arg) {
 	fetch = fctx->nsfetch;
 	fctx->nsfetch = NULL;
 
-	FTRACE("resume_dslookup");
+	FTRACE(__func__);
 
 	switch (result) {
 	case ISC_R_SUCCESS:
@@ -8639,7 +8639,7 @@ rctx_answer_positive(respctx_t *rctx) {
 	isc_result_t result;
 	fetchctx_t *fctx = rctx->fctx;
 
-	FCTXTRACE("rctx_answer_positive");
+	FCTXTRACE(__func__);
 
 	rctx_answer_init(rctx);
 	rctx_answer_scan(rctx);
@@ -9116,7 +9116,7 @@ rctx_answer_none(respctx_t *rctx) {
 	isc_result_t result;
 	fetchctx_t *fctx = rctx->fctx;
 
-	FCTXTRACE("rctx_answer_none");
+	FCTXTRACE(__func__);
 
 	rctx_answer_init(rctx);
 
@@ -9977,7 +9977,7 @@ rctx_badserver(respctx_t *rctx, isc_result_t result) {
 	char code[64];
 	dns_rcode_t rcode = rctx->query->rmessage->rcode;
 
-	QTRACE("rctx_badserver");
+	QTRACE(__func__);
 
 	if (rcode == dns_rcode_noerror || rcode == dns_rcode_yxdomain ||
 	    rcode == dns_rcode_nxdomain)
@@ -10357,7 +10357,7 @@ dns_resolver_prime(dns_resolver_t *res) {
 	REQUIRE(VALID_RESOLVER(res));
 	REQUIRE(res->frozen);
 
-	RTRACE("dns_resolver_prime");
+	RTRACE(__func__);
 
 	if (!atomic_load_acquire(&res->exiting)) {
 		want_priming = atomic_compare_exchange_strong_acq_rel(

@@ -300,6 +300,7 @@ cleanup_openssl_refs(void);
 
 void
 debug(const char *format, ...) ISC_FORMAT_PRINTF(1, 2);
+#define debug_func() debug("%s()", __func__)
 
 void
 check_result(isc_result_t result, const char *msg);

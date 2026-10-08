@@ -203,6 +203,9 @@ debug(const char *format, ...) ISC_FORMAT_PRINTF(1, 2);
 static void
 ddebug(const char *format, ...) ISC_FORMAT_PRINTF(1, 2);
 
+#define debug_func()  debug("%s()", __func__)
+#define ddebug_func() ddebug("%s()", __func__)
+
 #if HAVE_GSSAPI
 static dns_fixedname_t fkname;
 static isc_sockaddr_t *kserver = NULL;
@@ -358,7 +361,7 @@ nsu_strsep(char **stringp, const char *delim) {
 
 static void
 reset_system(void) {
-	ddebug("reset_system()");
+	ddebug_func();
 	/* If the update message is still around, destroy it */
 	if (updatemsg != NULL) {
 		dns_message_reset(updatemsg, DNS_MESSAGE_INTENTRENDER);
@@ -747,7 +750,7 @@ static void
 shutdown_program(void *arg) {
 	UNUSED(arg);
 
-	ddebug("shutdown_program()");
+	ddebug_func();
 
 	shuttingdown = true;
 	maybeshutdown();
@@ -798,7 +801,7 @@ setup_system(void *arg ISC_ATTR_UNUSED) {
 	dns_fixedname_t ftls;
 	dns_name_t *tlsname = dns_fixedname_initname(&ftls);
 
-	ddebug("setup_system()");
+	ddebug_func();
 
 	logconfig = isc_logconfig_get();
 	isc_log_createandusechannel(logconfig, "debug", ISC_LOG_TOFILEDESC,
@@ -1080,7 +1083,7 @@ parse_args(int argc, char **argv) {
 	isc_result_t result;
 	bool force_interactive = false;
 
-	debug("parse_args");
+	debug_func();
 	while ((ch = isc_commandline_parse(argc, argv, PARSE_ARGS_FMT)) != -1) {
 		switch (ch) {
 		case '4':
@@ -1371,7 +1374,7 @@ make_prereq(char *cmdline, bool ispositive, bool isrrset) {
 	dns_rdata_t *rdata = NULL;
 	uint16_t retval;
 
-	ddebug("make_prereq()");
+	ddebug_func();
 
 	/*
 	 * Read the owner name
@@ -1470,7 +1473,7 @@ evaluate_prereq(char *cmdline) {
 	char *word;
 	bool ispositive, isrrset;
 
-	ddebug("evaluate_prereq()");
+	ddebug_func();
 	word = nsu_strsep(&cmdline, " \t\r\n");
 	if (word == NULL || *word == 0) {
 		fprintf(stderr, "could not read operation code\n");
@@ -1887,7 +1890,7 @@ update_addordelete(char *cmdline, bool isdelete) {
 	isc_textregion_t region;
 	uint16_t retval;
 
-	ddebug("update_addordelete()");
+	ddebug_func();
 
 	/*
 	 * Read the owner name.
@@ -2094,7 +2097,7 @@ evaluate_update(char *cmdline) {
 	char *word;
 	bool isdelete;
 
-	ddebug("evaluate_update()");
+	ddebug_func();
 	word = nsu_strsep(&cmdline, " \t\r\n");
 	if (word == NULL || *word == 0) {
 		fprintf(stderr, "could not read operation code\n");
@@ -2117,7 +2120,7 @@ static uint16_t
 evaluate_checknames(char *cmdline) {
 	char *word;
 
-	ddebug("evaluate_checknames()");
+	ddebug_func();
 	word = nsu_strsep(&cmdline, " \t\r\n");
 	if (word == NULL || *word == 0) {
 		fprintf(stderr, "could not read check-names directive\n");
@@ -2143,7 +2146,7 @@ static uint16_t
 evaluate_checksvcb(char *cmdline) {
 	char *word;
 
-	ddebug("evaluate_checksvcb()");
+	ddebug_func();
 	word = nsu_strsep(&cmdline, " \t\r\n");
 	if (word == NULL || *word == 0) {
 		fprintf(stderr, "could not read check-svcb directive\n");
@@ -2204,7 +2207,7 @@ show_message(FILE *stream, dns_message_t *msg, const char *description) {
 	isc_buffer_t *buf = NULL;
 	int bufsz;
 
-	ddebug("show_message()");
+	ddebug_func();
 
 	setzone(userzone);
 
@@ -2237,7 +2240,7 @@ static uint16_t
 do_next_command(char *cmdline) {
 	char *word;
 
-	ddebug("do_next_command()");
+	ddebug_func();
 	word = nsu_strsep(&cmdline, " \t\r\n");
 
 	if (word == NULL || *word == 0) {
@@ -2449,7 +2452,7 @@ static bool
 user_interaction(void) {
 	uint16_t result = STATUS_MORE;
 
-	ddebug("user_interaction()");
+	ddebug_func();
 	while ((result == STATUS_MORE) || (result == STATUS_SYNTAX)) {
 		result = get_next_command();
 		if (!interactive && result == STATUS_SYNTAX) {
@@ -2464,7 +2467,7 @@ user_interaction(void) {
 
 static void
 done_update(void) {
-	ddebug("done_update()");
+	ddebug_func();
 
 	isc_async_current(getinput, NULL);
 }
@@ -2515,7 +2518,7 @@ update_completed(void *arg) {
 	dns_request_t *request = (dns_request_t *)arg;
 	isc_result_t result;
 
-	ddebug("update_completed()");
+	ddebug_func();
 
 	requests--;
 
@@ -2622,7 +2625,7 @@ send_update(dns_name_t *zone, isc_sockaddr_t *primary) {
 	dns_transport_t *req_transport = NULL;
 	isc_tlsctx_cache_t *req_tls_ctx_cache = NULL;
 
-	ddebug("send_update()");
+	ddebug_func();
 
 	setzone(zone);
 
@@ -2705,7 +2708,7 @@ recvsoa(void *arg) {
 	dns_name_t tname;
 	unsigned int nlabels;
 
-	ddebug("recvsoa()");
+	ddebug_func();
 
 	requests--;
 
@@ -3082,7 +3085,7 @@ start_gssrequest(dns_name_t *primary) {
 	char mykeystr[DNS_NAME_FORMATSIZE];
 	char *err_message = NULL;
 
-	debug("start_gssrequest");
+	debug_func();
 	usevc = true;
 
 	if (gssring != NULL) {
@@ -3186,7 +3189,7 @@ send_gssrequest(isc_sockaddr_t *destaddr, dns_message_t *msg,
 		req_tls_ctx_cache = tls_ctx_cache;
 	}
 
-	debug("send_gssrequest");
+	debug_func();
 	REQUIRE(destaddr != NULL);
 
 	reqinfo = isc_mem_get(isc_g_mctx, sizeof(nsu_gssinfo_t));
@@ -3228,7 +3231,7 @@ recvgss(void *arg) {
 	dns_fixedname_t fname;
 	char *err_message = NULL;
 
-	ddebug("recvgss()");
+	ddebug_func();
 
 	requests--;
 
@@ -3347,7 +3350,7 @@ start_update(void) {
 	dns_request_t *request = NULL;
 	dns_message_t *soaquery = NULL;
 
-	ddebug("start_update()");
+	ddebug_func();
 
 	LOCK(&answer_lock);
 	if (answer != NULL) {
@@ -3434,7 +3437,7 @@ start_update(void) {
 
 static void
 cleanup(void) {
-	ddebug("cleanup()");
+	ddebug_func();
 
 	if (tls_ctx_cache != NULL) {
 		isc_tlsctx_cache_detach(&tls_ctx_cache);

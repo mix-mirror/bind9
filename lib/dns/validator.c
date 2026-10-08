@@ -4264,7 +4264,7 @@ dns_validator_send(dns_validator_t *val) {
 
 static void
 validator_cancel_finish(dns_validator_t *validator) {
-	validator_log(validator, ISC_LOG_DEBUG(3), "validator_cancel_finish");
+	validator_log(validator, ISC_LOG_DEBUG(3), "%s", __func__);
 
 	if (CANCELING(validator) && !CANCELED(validator)) {
 		if (validator->fetch != NULL) {
@@ -4286,7 +4286,7 @@ dns_validator_cancel(dns_validator_t *validator) {
 	REQUIRE(VALID_VALIDATOR(validator));
 	REQUIRE(validator->tid == isc_tid());
 
-	validator_log(validator, ISC_LOG_DEBUG(3), "dns_validator_cancel");
+	validator_log(validator, ISC_LOG_DEBUG(3), "%s", __func__);
 
 	atomic_store(&validator->canceling, true);
 
@@ -4362,7 +4362,7 @@ dns_validator_shutdown(dns_validator_t *val) {
 	REQUIRE(COMPLETE(val));
 	REQUIRE(val->tid == isc_tid());
 
-	validator_log(val, ISC_LOG_DEBUG(4), "dns_validator_shutdown");
+	validator_log(val, ISC_LOG_DEBUG(4), "%s", __func__);
 
 	/*
 	 * The validation is now complete and the owner is no longer interested

@@ -3065,7 +3065,7 @@ parse_args(bool is_batchfile, bool config_only, int argc, char **argv) {
 	 * anywhere, except for cloning into new lookups
 	 */
 
-	debug("parse_args()");
+	debug_func();
 	if (!is_batchfile) {
 		debug("making new lookup");
 		default_lookup = make_empty_lookup();
@@ -3449,7 +3449,7 @@ dig_setup(int argc, char **argv) {
 	ISC_LIST_INIT(server_list);
 	ISC_LIST_INIT(search_list);
 
-	debug("dig_setup()");
+	debug_func();
 
 	/* setup dighost callbacks */
 	dighost_printmessage = printmessage;
@@ -3468,7 +3468,7 @@ dig_setup(int argc, char **argv) {
 
 void
 dig_query_setup(bool is_batchfile, bool config_only, int argc, char **argv) {
-	debug("dig_query_setup");
+	debug_func();
 
 	parse_args(is_batchfile, config_only, argc, argv);
 	if (keyfile[0] != 0) {
@@ -3484,7 +3484,7 @@ dig_query_setup(bool is_batchfile, bool config_only, int argc, char **argv) {
 
 void
 dig_startup(void) {
-	debug("dig_startup()");
+	debug_func();
 
 	isc_loopmgr_setup(run_loop, NULL);
 	isc_loopmgr_run();

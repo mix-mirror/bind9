@@ -3038,7 +3038,7 @@ isc_result_t
 ns_client_newnamebuf(ns_client_t *client) {
 	isc_buffer_t *dbuf = NULL;
 
-	CTRACE("ns_client_newnamebuf");
+	CTRACE(__func__);
 
 	isc_buffer_allocate(client->manager->mctx, &dbuf, 1024);
 	ISC_LIST_APPEND(client->query.namebufs, dbuf, link);
@@ -3054,7 +3054,7 @@ ns_client_newname(ns_client_t *client, isc_buffer_t *dbuf, isc_buffer_t *nbuf) {
 
 	REQUIRE(!client->query.namebufused);
 
-	CTRACE("ns_client_newname");
+	CTRACE(__func__);
 
 	dns_message_gettempname(client->message, &name_links);
 	isc_buffer_availableregion(dbuf, &r);
@@ -3072,7 +3072,7 @@ ns_client_getnamebuf(ns_client_t *client) {
 	isc_buffer_t *dbuf;
 	isc_region_t r;
 
-	CTRACE("ns_client_getnamebuf");
+	CTRACE(__func__);
 
 	/*%
 	 * Return a name buffer with space for a maximal name, allocating
@@ -3100,7 +3100,7 @@ ns_client_keepname(ns_client_t *client, dns_linkedname_t *name,
 		   isc_buffer_t *dbuf) {
 	isc_region_t r;
 
-	CTRACE("ns_client_keepname");
+	CTRACE(__func__);
 
 	/*%
 	 * 'name' is using space in 'dbuf', but 'dbuf' has not yet been
@@ -3122,7 +3122,7 @@ ns_client_releasename(ns_client_t *client, dns_linkedname_t **namep) {
 	 * rights on the buffer.
 	 */
 
-	CTRACE("ns_client_releasename");
+	CTRACE(__func__);
 	client->query.namebufused = false;
 	dns_message_puttempname(client->message, namep);
 	CTRACE("ns_client_releasename: done");
