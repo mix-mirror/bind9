@@ -710,25 +710,6 @@ resign_hash(dns_vecheader_t *header) {
 }
 
 /*%
- * Find an element in the heap/hashmap by header and node.
- * Returns ISC_R_SUCCESS if found, ISC_R_NOTFOUND if not found.
- * If found, *found_elem will point to the element.
- * Assumes heap lock is already held.
- */
-static isc_result_t
-resign_lookup(qpz_heap_t *heap, dns_vecheader_t *header, qpznode_t *node,
-	      qpz_resign_t **found_elem) {
-	qpz_resign_t search_elem = {
-		.header = header,
-		.node = node,
-	};
-	uint32_t hashval = resign_hash(header);
-
-	return isc_hashmap_find(heap->hashmap, hashval, resign_match,
-				&search_elem, (void **)found_elem);
-}
-
-/*%
  * Add an element to the heap/hashmap.
  * Assumes heap lock is already held.
  */
@@ -1214,6 +1195,17 @@ bindrdataset(qpzonedb_t *qpdb, dns_vecheader_t *header,
 		rdataset->resign = header->resign;
 	} else {
 		rdataset->resign = 0;
+	}
+}
+
+/* Calculate signing metadata before the new header is exposed to readers. */
+static void
+set_header_signingtime(qpzonedb_t *qpdb, dns_vecheader_t *header) {
+	header->resign = dns_rdatavec_minresign(header, qpdb->common.rdclass);
+	if (header->resign != 0) {
+		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_RESIGN);
+	} else {
+		DNS_VECHEADER_CLRATTR(header, DNS_VECHEADERATTR_RESIGN);
 	}
 }
 
@@ -2031,6 +2023,10 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			}
 		}
 
+		if ((options & DNS_DBADD_RESIGN) != 0) {
+			set_header_signingtime(qpdb, newheader);
+		}
+
 		INSIST(version->serial >= header->serial);
 		INSIST(foundtop->typepair == newheader->typepair);
 
@@ -2059,11 +2055,14 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			UNLOCK(&qpdb->heap->lock);
 			dns_vecheader_unref(header);
 		} else {
-			if (RESIGN(newheader)) {
+			if (RESIGN(newheader) || RESIGN(header)) {
 				isc_result_t unregister_result;
 
 				LOCK(&qpdb->heap->lock);
-				resign_register(qpdb->heap, node, newheader);
+				if (RESIGN(newheader)) {
+					resign_register(qpdb->heap, node,
+							newheader);
+				}
 				unregister_result = resign_unregister(
 					qpdb->heap, node, header);
 				UNLOCK(&qpdb->heap->lock);
@@ -2094,6 +2093,10 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 		if (!EXISTS(newheader)) {
 			dns_vecheader_unref(newheader);
 			return DNS_R_UNCHANGED;
+		}
+
+		if ((options & DNS_DBADD_RESIGN) != 0) {
+			set_header_signingtime(qpdb, newheader);
 		}
 
 		if (RESIGN(newheader)) {
@@ -2478,71 +2481,6 @@ getsize(dns_db_t *db, dns_dbversion_t *dbversion, uint64_t *records,
 	RWUNLOCK(&qpdb->lock, isc_rwlocktype_read);
 
 	return result;
-}
-
-static isc_result_t
-setsigningtime(dns_db_t *db, dns_dbnode_t *dbnode, dns_rdataset_t *rdataset,
-	       isc_stdtime_t resign) {
-	qpzonedb_t *qpdb = (qpzonedb_t *)db;
-	qpznode_t *node = (qpznode_t *)dbnode;
-	dns_vecheader_t *header = NULL;
-	isc_rwlocktype_t nlocktype = isc_rwlocktype_none;
-	isc_rwlock_t *nlock = NULL;
-
-	REQUIRE(VALID_QPZONE(qpdb));
-	REQUIRE(rdataset != NULL);
-	REQUIRE(rdataset->methods == &dns_rdatavec_rdatasetmethods);
-
-	header = dns_vecheader_getheader(rdataset);
-
-	nlock = qpzone_get_lock(node);
-	NODE_WRLOCK(nlock, &nlocktype);
-
-	/*
-	 * Check if element is in the heap using hashmap lookup.
-	 */
-	qpz_resign_t *found_elem = NULL;
-	isc_result_t find_result;
-
-	LOCK(&qpdb->heap->lock);
-	find_result = resign_lookup(qpdb->heap, header, node, &found_elem);
-
-	if (find_result == ISC_R_SUCCESS) {
-		/* Element is in heap */
-		INSIST(RESIGN(header));
-		if (resign == 0) {
-			(void)resign_unregister(qpdb->heap, node, header);
-		} else {
-			int64_t old_resign = header->resign;
-			int64_t new_resign = dns_time64_from32(resign);
-
-			header->resign = new_resign;
-
-			if (resign_sooner_values(new_resign, header->typepair,
-						 old_resign, header->typepair))
-			{
-				isc_heap_increased(qpdb->heap->heap,
-						   found_elem->heap_index);
-			} else if (resign_sooner_values(
-					   old_resign, header->typepair,
-					   new_resign, header->typepair))
-			{
-				isc_heap_decreased(qpdb->heap->heap,
-						   found_elem->heap_index);
-			}
-			/* No heap adjustment needed if neither direction
-			 * indicates sooner */
-		}
-	} else if (resign != 0) {
-		/* Element not in heap, add it */
-		header->resign = dns_time64_from32(resign);
-		DNS_VECHEADER_SETATTR(header, DNS_VECHEADERATTR_RESIGN);
-
-		resign_register(qpdb->heap, node, header);
-	}
-	UNLOCK(&qpdb->heap->lock);
-	NODE_UNLOCK(nlock, &nlocktype);
-	return ISC_R_SUCCESS;
 }
 
 static isc_result_t
@@ -5159,6 +5097,11 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 				DNS_VECHEADER_SETATTR(newheader,
 						      DNS_VECHEADERATTR_RESIGN);
 				newheader->resign = header->resign;
+			}
+			if ((options & DNS_DBSUB_RESIGN) != 0) {
+				set_header_signingtime(qpdb, newheader);
+			}
+			if (RESIGN(newheader)) {
 				LOCK(&qpdb->heap->lock);
 				resign_register(qpdb->heap, node, newheader);
 				UNLOCK(&qpdb->heap->lock);
@@ -5615,12 +5558,12 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 		       dns_name_t *name, dns_rdataset_t *rds, dns_diffop_t op) {
 	isc_result_t result;
 	unsigned int options;
-	dns_rdataset_t ardataset;
 	qpznode_t *node = NULL;
 	dns_qp_t *nsec = NULL;
 	bool is_nsec3;
-
-	dns_rdataset_init(&ardataset);
+	bool is_resign = rds->type == dns_rdatatype_rrsig &&
+			 (op == DNS_DIFFOP_ADDRESIGN ||
+			  op == DNS_DIFFOP_DELRESIGN);
 
 	is_nsec3 = (rds->type == dns_rdatatype_nsec3 ||
 		    rds->covers == dns_rdatatype_nsec3);
@@ -5641,41 +5584,31 @@ qpzone_update_rdataset(qpzonedb_t *qpdb, qpz_version_t *version, dns_qp_t *qp,
 		 */
 		options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 			  DNS_DBADD_EXACTTTL;
+		options |= is_resign ? DNS_DBADD_RESIGN : 0;
 		if (!node->havensec && rds->type == dns_rdatatype_nsec) {
 			nsec = qp;
 		}
 		result = qpzone_addrdataset_inner(
 			qpdb, node, (dns_dbversion_t *)version, rds, options,
-			&ardataset, nsec DNS__DB_FLARG_PASS);
+			NULL, nsec DNS__DB_FLARG_PASS);
 		break;
 	case DNS_DIFFOP_DEL:
 	case DNS_DIFFOP_DELRESIGN:
-		options = DNS_DBSUB_EXACT | DNS_DBSUB_WANTOLD;
+		options = DNS_DBSUB_EXACT;
+		options |= is_resign ? DNS_DBSUB_RESIGN : 0;
 		result = qpzone_subtractrdataset(
 			(dns_db_t *)qpdb, (dns_dbnode_t *)node,
 			(dns_dbversion_t *)version, rds, options,
-			&ardataset DNS__DB_FLARG_PASS);
+			NULL DNS__DB_FLARG_PASS);
 		break;
 	default:
 		UNREACHABLE();
-	}
-
-	bool is_resign = rds->type == dns_rdatatype_rrsig &&
-			 (op == DNS_DIFFOP_DELRESIGN ||
-			  op == DNS_DIFFOP_ADDRESIGN);
-
-	if (result == ISC_R_SUCCESS && is_resign) {
-		isc_stdtime_t resign;
-		resign = dns_rdataset_minresign(&ardataset);
-		dns_db_setsigningtime((dns_db_t *)qpdb, (dns_dbnode_t *)node,
-				      &ardataset, resign);
 	}
 
 failure:
 	if (node != NULL) {
 		dns_db_detachnode((dns_dbnode_t **)&node);
 	}
-	dns_rdataset_cleanup(&ardataset);
 	return result;
 }
 
@@ -5788,7 +5721,6 @@ static dns_dbmethods_t qpdb_zonemethods = {
 	.getoriginnode = getoriginnode,
 	.getnsec3parameters = getnsec3parameters,
 	.findnsec3node = qpzone_findnsec3node,
-	.setsigningtime = setsigningtime,
 	.getsigningtime = getsigningtime,
 	.getsize = getsize,
 	.setgluecachestats = setgluecachestats,

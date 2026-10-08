@@ -138,9 +138,6 @@ typedef struct dns_db_methods {
 	isc_result_t (*findnsec3node)(dns_db_t *db, const dns_name_t *name,
 				      bool		   create,
 				      dns_dbnode_t **nodep DNS__DB_FLARG);
-	isc_result_t (*setsigningtime)(dns_db_t *db, dns_dbnode_t *node,
-				       dns_rdataset_t *rdataset,
-				       isc_stdtime_t   resign);
 	isc_result_t (*getsigningtime)(dns_db_t *db, isc_stdtime_t *resign,
 				       dns_name_t     *name,
 				       dns_typepair_t *typepair);
@@ -304,6 +301,8 @@ enum {
 #define DNS_DBADD_EXACTTTL 0x08
 #define DNS_DBADD_PREFETCH 0x10
 #define DNS_DBADD_EQUALOK  0x20
+/* Recalculate the resulting RRSIG RRset's signing time (zone databases). */
+#define DNS_DBADD_RESIGN 0x40
 /*@}*/
 
 /*%
@@ -311,6 +310,8 @@ enum {
  */
 #define DNS_DBSUB_EXACT	  0x01
 #define DNS_DBSUB_WANTOLD 0x02
+/* Recalculate the remaining RRSIG RRset's signing time. */
+#define DNS_DBSUB_RESIGN 0x04
 
 /*@{*/
 /*%
@@ -1579,21 +1580,6 @@ dns__db_findnsec3node(dns_db_t *db, const dns_name_t *name, bool create,
  *
  * \li	Other results are possible, depending upon the database
  *	implementation used.
- */
-
-isc_result_t
-dns_db_setsigningtime(dns_db_t *db, dns_dbnode_t *node,
-		      dns_rdataset_t *rdataset, isc_stdtime_t resign);
-/*%<
- * Sets the re-signing time associated with 'rdataset' to 'resign'.
- *
- * Requires:
- * \li	'db' is a valid zone database.
- * \li	'rdataset' is or is to be associated with 'db'.
- *
- * Returns:
- * \li	#ISC_R_SUCCESS
- * \li	#ISC_R_NOTIMPLEMENTED - Not supported by this DB implementation.
  */
 
 isc_result_t

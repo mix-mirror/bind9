@@ -30,8 +30,10 @@
 #include <dns/db.h>
 #include <dns/rdata.h>
 #include <dns/rdataset.h>
+#include <dns/rdatastruct.h>
 #include <dns/rdatavec.h>
 #include <dns/stats.h>
+#include <dns/time.h>
 
 #include "rdatavec_p.h"
 
@@ -925,6 +927,35 @@ vecheader_current(rdatavec_iter_t *iter, dns_rdata_t *rdata) {
 	r.base = raw;
 	dns_rdata_fromregion(rdata, iter->iter_rdclass, iter->iter_type, &r);
 	rdata->flags |= flags;
+}
+
+int64_t
+dns_rdatavec_minresign(dns_vecheader_t *header, dns_rdataclass_t rdclass) {
+	rdatavec_iter_t iter;
+	int64_t when = 0;
+	isc_result_t result;
+
+	REQUIRE(EXISTS(header));
+	REQUIRE(DNS_TYPEPAIR_TYPE(header->typepair) == dns_rdatatype_rrsig);
+
+	result = vecheader_first(&iter, header, rdclass);
+	INSIST(result == ISC_R_SUCCESS);
+	while (result == ISC_R_SUCCESS) {
+		dns_rdata_t rdata = DNS_RDATA_INIT;
+		dns_rdata_rrsig_t sig;
+
+		vecheader_current(&iter, &rdata);
+		if ((rdata.flags & DNS_RDATA_OFFLINE) == 0) {
+			(void)dns_rdata_tostruct(&rdata, &sig);
+			int64_t expire = dns_time64_from32(sig.timeexpire);
+			if (when == 0 || expire < when) {
+				when = expire;
+			}
+		}
+		result = vecheader_next(&iter);
+	}
+	INSIST(result == ISC_R_NOMORE);
+	return when;
 }
 
 /* Fixed RRSet helper macros */

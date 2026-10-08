@@ -203,6 +203,16 @@ dns_rdatavec_count(dns_vecheader_t *header);
  *\li	The number of records in the vec.
  */
 
+int64_t
+dns_rdatavec_minresign(dns_vecheader_t *header, dns_rdataclass_t rdclass);
+/*%<
+ * Return the earliest online RRSIG expiration time as a 64-bit timestamp,
+ * or zero if all signatures are offline.
+ *
+ * Requires:
+ *\li	'header' contains a nonempty RRSIG rdatavec of class 'rdclass'.
+ */
+
 isc_result_t
 dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
 		   isc_mem_t *mctx, dns_rdataclass_t rdclass,

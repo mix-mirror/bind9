@@ -347,12 +347,18 @@ update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 	case DNS_DIFFOP_ADDRESIGN:
 		options = DNS_DBADD_MERGE | DNS_DBADD_EXACT |
 			  DNS_DBADD_EXACTTTL;
+		if (is_resign) {
+			options |= DNS_DBADD_RESIGN;
+		}
 		CHECK(dns_db_addrdataset(db, node, ver, 0, rds, options,
 					 &ardataset));
 		break;
 	case DNS_DIFFOP_DEL:
 	case DNS_DIFFOP_DELRESIGN:
 		options = DNS_DBSUB_EXACT | DNS_DBSUB_WANTOLD;
+		if (is_resign) {
+			options |= DNS_DBSUB_RESIGN;
+		}
 		result = dns_db_subtractrdataset(db, node, ver, rds, options,
 						 &ardataset);
 		switch (result) {
@@ -369,12 +375,6 @@ update_rdataset(dns_db_t *db, dns_dbversion_t *ver, dns_name_t *name,
 		break;
 	default:
 		UNREACHABLE();
-	}
-
-	if (is_resign) {
-		isc_stdtime_t resign;
-		resign = dns_rdataset_minresign(&ardataset);
-		dns_db_setsigningtime(db, node, &ardataset, resign);
 	}
 
 cleanup:
