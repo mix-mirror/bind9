@@ -10,7 +10,6 @@
 # information regarding copyright ownership.
 
 import dns.rcode
-import dns.rdata
 import dns.rdataclass
 import dns.rdatatype
 import dns.rrset
@@ -36,31 +35,14 @@ def soa() -> dns.rrset.RRset:
     )
 
 
-def sig_rdata(covers: dns.rdatatype.RdataType) -> dns.rdata.Rdata:
-    """
-    dnspython cannot parse the legacy SIG (24) type from text; parse the
-    text as RRSIG (46), which shares its wire format, and re-wrap as SIG.
-
-    The re-wrapped rdata must stay generic: dnspython 2.9.0 parses SIG
-    wire into a typed rdata and dns.rdataset.add() then refuses to add
-    SIG/RRSIGs with differing covered types to one rdataset
-    (DifferingCovers).  Per RFC 3755, SIG has no covered-type
-    semantics, and a generic rdata carries the same wire bytes without
-    the check.
-    """
+def sig(covers: dns.rdatatype.RdataType) -> dns.rrset.RRset:
     covered = dns.rdatatype.to_text(covers)
-    text = f"{covered} 6 2 600 20260331170000 20260318160000 21831 . 0000"
-    rrsig = dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.RRSIG, text)
-    wire = rrsig.to_digestable()
-    return dns.rdata.GenericRdata(dns.rdataclass.IN, dns.rdatatype.SIG, wire)
-
-
-def sig() -> dns.rrset.RRset:
-    return dns.rrset.from_rdata(
+    return dns.rrset.from_text(
         HOST,
         600,
-        sig_rdata(dns.rdatatype.A),
-        sig_rdata(dns.rdatatype.MX),
+        dns.rdataclass.IN,
+        dns.rdatatype.SIG,
+        f"{covered} 6 2 600 20260331170000 20260318160000 21831 . 0000",
     )
 
 
@@ -82,7 +64,10 @@ class SigAxfrHandler(AxfrHandler):
     zone_contents = [
         rrset(ZONE, dns.rdatatype.NS, NS_NAME),
         rrset(NS_NAME, dns.rdatatype.A, "10.53.0.11"),
-        sig(),
+        # dnspython refuses to keep SIGs covering different types in one
+        # RRset; on the wire they are separate RRs anyway.
+        sig(dns.rdatatype.A),
+        sig(dns.rdatatype.MX),
     ]
     final_soa = soa()
 
