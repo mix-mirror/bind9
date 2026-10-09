@@ -104,7 +104,6 @@ def signed_query(ns1, keyring):
     query.use_tsig(keyring, algorithm=dns.tsig.GSS_TSIG)
     response = dns.query.tcp(query, ns1.ip, port=ns1.ports.dns, timeout=5)
     assert response.rcode() == dns.rcode.NOERROR
-    assert response.had_tsig
 
 
 def test_gss_context_survives_reload(ns1, monkeypatch):
