@@ -63,19 +63,6 @@ pytestmark = pytest.mark.extra_artifacts(
 )
 
 
-def _make_sig_rdata(text):
-    """
-    Create a SIG rdata from text.
-
-    dnspython has no native text parser for the legacy SIG type (24),
-    but the wire format is identical to RRSIG (46).  Parse as RRSIG,
-    then re-wrap as SIG via the wire representation.
-    """
-    rrsig = dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.RRSIG, text)
-    wire = rrsig.to_digestable()
-    return dns.rdata.from_wire(dns.rdataclass.IN, dns.rdatatype.SIG, wire, 0, len(wire))
-
-
 def _make_nxt_rdata():
     """
     Create a minimal NXT rdata.
@@ -107,7 +94,11 @@ def test_tcp_self_sig_record(ns6):
     )
     assert response.rcode() == dns.rcode.NOERROR
 
-    sig = _make_sig_rdata("A 6 0 86400 20260331170000 20260318160000 21831 . 0000")
+    sig = dns.rdata.from_text(
+        dns.rdataclass.IN,
+        dns.rdatatype.SIG,
+        "A 6 0 86400 20260331170000 20260318160000 21831 . 0000",
+    )
     rds = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.SIG)
     rds.update_ttl(600)
     rds.add(sig)
@@ -275,7 +266,11 @@ def test_prereq_sig_record(ns1):
 
     # Now require a SIG record at the same node — this triggers the
     # dns_db_findrdataset() call with type=SIG and covers=A.
-    sig = _make_sig_rdata("A 6 0 86400 20260331170000 20260318160000 21831 . 0000")
+    sig = dns.rdata.from_text(
+        dns.rdataclass.IN,
+        dns.rdatatype.SIG,
+        "A 6 0 86400 20260331170000 20260318160000 21831 . 0000",
+    )
     rds = dns.rdataset.Rdataset(dns.rdataclass.IN, dns.rdatatype.SIG)
     rds.update_ttl(0)
     rds.add(sig)
