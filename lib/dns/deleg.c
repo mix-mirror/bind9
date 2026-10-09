@@ -1087,7 +1087,11 @@ qplru_shutdown_rcu(struct rcu_head *rcu_head) {
 		delegdb_node_detach(&node);
 	}
 
-	dns_qpmulti_destroy(&qplru->nodes);
+	/*
+	 * The qplru is unreachable and this callback runs after an RCU grace
+	 * period, so the QP-trie no longer needs a second deferred teardown.
+	 */
+	dns__qpmulti_destroy_after_grace_period(&qplru->nodes);
 
 	qplru_detach(&qplru);
 }

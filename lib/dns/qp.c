@@ -1588,13 +1588,7 @@ ISC_REFCOUNT_STATIC_IMPL(dns_qpmulti, qpmulti_free_mem)
 #endif
 
 static void
-qpmulti_destroy_guts_cb(struct rcu_head *arg) {
-	qp_rcuctx_t *rcuctx = caa_container_of(arg, qp_rcuctx_t, rcu_head);
-	REQUIRE(QPRCU_VALID(rcuctx));
-	/* only nonzero for reclaim_chunks_cb() */
-	REQUIRE(rcuctx->count == 0);
-
-	dns_qpmulti_t *multi = rcuctx->multi;
+qpmulti_destroy_guts(dns_qpmulti_t *multi) {
 	REQUIRE(QPMULTI_VALID(multi));
 
 	/* reassure thread sanitizer */
@@ -1608,34 +1602,58 @@ qpmulti_destroy_guts_cb(struct rcu_head *arg) {
 	UNLOCK(&multi->mutex);
 
 	dns_qpmulti_detach(&multi);
+}
+
+static void
+qpmulti_destroy_guts_cb(struct rcu_head *arg) {
+	qp_rcuctx_t *rcuctx = caa_container_of(arg, qp_rcuctx_t, rcu_head);
+	REQUIRE(QPRCU_VALID(rcuctx));
+	/* only nonzero for reclaim_chunks_cb() */
+	REQUIRE(rcuctx->count == 0);
+
+	dns_qpmulti_t *multi = rcuctx->multi;
+	rcuctx->multi = NULL;
+	qpmulti_destroy_guts(multi);
+
 	isc_mem_putanddetach(&rcuctx->mctx, rcuctx,
 			     STRUCT_FLEX_SIZE(rcuctx, chunk, rcuctx->count));
 }
 
-void
-dns_qpmulti_destroy(dns_qpmulti_t **qpmp) {
-	dns_qp_t *qp = NULL;
-	dns_qpmulti_t *multi = NULL;
-	qp_rcuctx_t *rcuctx = NULL;
-
+static dns_qpmulti_t *
+qpmulti_destroy_prepare(dns_qpmulti_t **qpmp) {
 	REQUIRE(qpmp != NULL);
 	REQUIRE(QPMULTI_VALID(*qpmp));
 
-	multi = *qpmp;
-	qp = &multi->writer;
+	dns_qpmulti_t *multi = *qpmp;
+	dns_qp_t *qp = &multi->writer;
 	*qpmp = NULL;
 
 	REQUIRE(QP_VALID(qp));
 	REQUIRE(multi->rollback == NULL);
 	REQUIRE(ISC_LIST_EMPTY(multi->snapshots));
 
-	rcuctx = isc_mem_get(qp->mctx, STRUCT_FLEX_SIZE(rcuctx, chunk, 0));
+	return multi;
+}
+
+void
+dns_qpmulti_destroy(dns_qpmulti_t **qpmp) {
+	dns_qpmulti_t *multi = qpmulti_destroy_prepare(qpmp);
+	dns_qp_t *qp = &multi->writer;
+	qp_rcuctx_t *rcuctx = isc_mem_get(qp->mctx,
+					  STRUCT_FLEX_SIZE(rcuctx, chunk, 0));
 	*rcuctx = (qp_rcuctx_t){
 		.magic = QPRCU_MAGIC,
 		.multi = multi,
 	};
 	isc_mem_attach(qp->mctx, &rcuctx->mctx);
 	call_rcu(&rcuctx->rcu_head, qpmulti_destroy_guts_cb);
+}
+
+void
+dns__qpmulti_destroy_after_grace_period(dns_qpmulti_t **qpmp) {
+	dns_qpmulti_t *multi = qpmulti_destroy_prepare(qpmp);
+
+	qpmulti_destroy_guts(multi);
 }
 
 /***********************************************************************

@@ -1033,6 +1033,49 @@ roothintsloadfailtests(ISC_ATTR_UNUSED void *arg) {
 	shutdowntest(&db);
 }
 
+static void
+teardowntests(ISC_ATTR_UNUSED void *arg) {
+	dns_delegdb_t *db = NULL;
+	dns_deleg_t *deleg = NULL;
+	dns_delegset_t *delegset = NULL;
+	qplru_t *qplru = NULL;
+
+	/* Finish teardown left by earlier test cases. */
+	rcu_barrier();
+
+	dns_delegdb_create(&db);
+	assert_non_null(db);
+
+	dns_delegset_allocset(db, &delegset);
+	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_NS_GLUES, &deleg);
+	addipdeleg(AF_INET, "192.0.2.1", delegset, deleg);
+	writedb(db, ".", 300, &delegset, true);
+
+	/*
+	 * Reproduce the part of delegdb_destroy() before its call_rcu(), then
+	 * explicitly complete the grace period and invoke the callback.
+	 */
+	db->magic = 0;
+	qplru = rcu_xchg_pointer(&db->qplru, NULL);
+	isc_mem_put(dns_deleg_mctx, db, sizeof(*db));
+	db = NULL;
+	synchronize_rcu();
+
+	/*
+	 * A read-side critical section prevents a nested QP callback from
+	 * running.  qplru_shutdown_rcu() must nevertheless finish freeing the
+	 * delegation before the global memory context is detached.
+	 */
+	rcu_read_lock();
+	qplru_shutdown_rcu(&qplru->rcu_head);
+	dns__deleg_shutdown();
+	rcu_read_unlock();
+
+	rcu_barrier();
+	dns__deleg_initialize();
+	shutdownloop(NULL);
+}
+
 ISC_RUN_TEST_IMPL(dns_deleg_basictests) { rundelegtest(basictests); }
 ISC_RUN_TEST_IMPL(dns_deleg_ttltests) { rundelegtest(ttltests); }
 ISC_RUN_TEST_IMPL(dns_deleg_noexacttests) { rundelegtest(noexacttests); }
@@ -1044,6 +1087,7 @@ ISC_RUN_TEST_IMPL(dns_deleg_roothintsload) { rundelegtest(roothintsloadtests); }
 ISC_RUN_TEST_IMPL(dns_deleg_roothintsloadfail) {
 	rundelegtest(roothintsloadfailtests);
 }
+ISC_RUN_TEST_IMPL(dns_deleg_teardown) { rundelegtest(teardowntests); }
 
 ISC_TEST_LIST_START
 ISC_TEST_ENTRY(dns_deleg_basictests)
@@ -1055,6 +1099,7 @@ ISC_TEST_ENTRY(dns_deleg_longnametests)
 ISC_TEST_ENTRY(dns_deleg_roothints)
 ISC_TEST_ENTRY(dns_deleg_roothintsload)
 ISC_TEST_ENTRY(dns_deleg_roothintsloadfail)
+ISC_TEST_ENTRY(dns_deleg_teardown)
 ISC_TEST_LIST_END
 
 ISC_TEST_MAIN

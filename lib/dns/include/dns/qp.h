@@ -396,6 +396,18 @@ dns_qpmulti_destroy(dns_qpmulti_t **qpmp);
  */
 
 void
+dns__qpmulti_destroy_after_grace_period(dns_qpmulti_t **qpmp);
+/*%<
+ * Destroy a multi-threaded qp-trie synchronously.
+ *
+ * Requires:
+ * \li  the qp-trie is no longer reachable by new readers
+ * \li  an RCU grace period covering all previous readers has completed
+ * \li  there are no write or update transactions in progress
+ * \li  no snapshots exist
+ */
+
+void
 dns_qp_compact(dns_qp_t *qp, dns_qpgc_t mode);
 /*%<
  * Defragment the qp-trie and release unused memory.
