@@ -11,7 +11,7 @@
 
 from collections.abc import Iterable, Iterator
 from types import TracebackType
-from typing import NamedTuple
+from typing import NamedTuple, Self
 
 import asyncio
 import contextlib
@@ -68,7 +68,7 @@ class TcpStatus(NamedTuple):
             )
 
     @classmethod
-    def of(cls, ns: NamedInstance) -> "TcpStatus":
+    def of(cls, ns: NamedInstance) -> Self:
         status = ns.rndc("status").out
 
         def value(label: str) -> str:
@@ -98,7 +98,7 @@ class TcpStatus(NamedTuple):
         recursive_high_water: int | None = None,
         timeout: int = 2,
         delay: int = 1,
-    ) -> "TcpStatus":
+    ) -> Self:
         status: TcpStatus | None = None
 
         def check() -> bool:
@@ -123,7 +123,7 @@ class TcpConnectionPool:
     def __init__(self) -> None:
         self.connections: list[socket.socket] = []
 
-    async def __aenter__(self) -> "TcpConnectionPool":
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(
@@ -145,7 +145,7 @@ class TcpConnectionPool:
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=self.OPEN_TIMEOUT,
             )
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             for task in tasks:
                 task.cancel()
             results = await asyncio.gather(*tasks, return_exceptions=True)

@@ -10,10 +10,11 @@
 # information regarding copyright ownership.
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import total_ordering
 from pathlib import Path
 from re import compile as Re
+from typing import Self
 
 import glob
 import os
@@ -32,6 +33,7 @@ import dns.zone
 from isctest.algorithms import ALL_ALGORITHMS_BY_DST, ECDSAP256SHA256, Algorithm
 from isctest.instance import NamedInstance
 from isctest.run import EnvCmd
+from isctest.text import FlexPattern
 from isctest.zone import FileZoneKey
 
 import isctest.log
@@ -126,9 +128,7 @@ class KeyTimingMetadata:
     def __init__(self, timestamp: str):
         if int(timestamp) <= 0:
             raise ValueError(f'invalid timing metadata value: "{timestamp}"')
-        self.value = datetime.strptime(timestamp, self.FORMAT).replace(
-            tzinfo=timezone.utc
-        )
+        self.value = datetime.strptime(timestamp, self.FORMAT).replace(tzinfo=UTC)
 
     def __repr__(self):
         return self.value.strftime(self.FORMAT)
@@ -167,9 +167,9 @@ class KeyTimingMetadata:
         return isinstance(other, KeyTimingMetadata) and self.value == other.value
 
     @staticmethod
-    def now() -> "KeyTimingMetadata":
+    def now() -> Self:
         result = KeyTimingMetadata.__new__(KeyTimingMetadata)
-        result.value = datetime.now(timezone.utc)
+        result.value = datetime.now(UTC)
         return result
 
 
@@ -213,7 +213,7 @@ class KeyProperties:
         return self.name
 
     @staticmethod
-    def default(with_state=True) -> "KeyProperties":
+    def default(with_state=True) -> Self:
         metadata = {
             "Algorithm": ECDSAP256SHA256.number,
             "Length": 256,
@@ -1712,7 +1712,7 @@ def wait_keymgr_done(server: NamedInstance, zone: str, reconfig: bool = False) -
     """
     Block and wait until the keymgr is done processing zone.
     """
-    messages = []
+    messages: list[FlexPattern] = []
     if reconfig:
         messages.append("received control channel command 'reconfig'")
         messages.append("apply_configuration")

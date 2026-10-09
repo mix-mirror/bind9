@@ -225,7 +225,7 @@ class Ns1ExampleOrgHandler(ReclimitHandler):
             self._second_query_events[qctx.qname] = second_query_event
             try:
                 await asyncio.wait_for(second_query_event.wait(), timeout=0.5)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             finally:
                 del self._second_query_events[qctx.qname]
