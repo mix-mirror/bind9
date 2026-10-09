@@ -10,7 +10,7 @@
 # information regarding copyright ownership.
 
 from collections.abc import AsyncGenerator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import base64
 
@@ -60,7 +60,7 @@ def malicious_nsec() -> dns.rrset.RRset:
 
 
 def garbage_rrsig(covered: dns.rrset.RRset) -> dns.rrset.RRset:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     inception = (now - timedelta(hours=1)).strftime("%Y%m%d%H%M%S")
     expiration = (now + timedelta(days=1)).strftime("%Y%m%d%H%M%S")
     signature = base64.b64encode(bytes(64)).decode("ascii")

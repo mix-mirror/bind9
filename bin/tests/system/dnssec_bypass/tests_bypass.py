@@ -9,7 +9,7 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import shutil
 
@@ -72,7 +72,7 @@ def bootstrap():
 
         # Sign zone.
         isctest.log.info(f"{zone}: sign zone")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         inception = now - timedelta(hours=1)
         expiration = now + timedelta(days=30)
 

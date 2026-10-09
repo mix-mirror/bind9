@@ -10,7 +10,7 @@
 # information regarding copyright ownership.
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from itertools import count
 from time import sleep
 
@@ -27,7 +27,7 @@ FMT = "%Y-%m-%dT%H:%M:%S%z"
 # The constants were taken from BIND 9 source code (lib/dns/zone.c)
 max_refresh = timedelta(seconds=2419200)  # 4 weeks
 max_expires = timedelta(seconds=14515200)  # 24 weeks
-dayzero = datetime.fromtimestamp(0, timezone.utc).replace(microsecond=0)
+dayzero = datetime.fromtimestamp(0, UTC).replace(microsecond=0)
 
 # Wait for the secondary zone files to appear to extract their mtime
 MAX_SECONDARY_ZONE_WAITTIME_SEC = 5
@@ -51,7 +51,7 @@ def check_loaded(loaded, expected, now):
 
 
 def check_zone_timers(loaded, expires, refresh, loaded_exp):
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
     # Sanity checks the zone timers values
     if expires is not None:
         check_expires(expires, now, now + max_expires)
@@ -80,7 +80,7 @@ def zone_mtime(zonedir, name):
     except FileNotFoundError:
         return dayzero
 
-    mtime = datetime.fromtimestamp(si.st_mtime, timezone.utc).replace(microsecond=0)
+    mtime = datetime.fromtimestamp(si.st_mtime, UTC).replace(microsecond=0)
 
     return mtime
 

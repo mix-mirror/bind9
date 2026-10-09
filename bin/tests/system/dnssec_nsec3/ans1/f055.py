@@ -11,7 +11,7 @@
 
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import base64
 
@@ -50,7 +50,7 @@ FORGED_A = "192.0.2.55"
 
 
 def garbage_rrsig(covered: dns.rrset.RRset, signer: Key) -> dns.rrset.RRset:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     inception = (now - timedelta(hours=1)).strftime("%Y%m%d%H%M%S")
     expiration = (now + timedelta(days=1)).strftime("%Y%m%d%H%M%S")
     signature = base64.b64encode(bytes(64)).decode("ascii")

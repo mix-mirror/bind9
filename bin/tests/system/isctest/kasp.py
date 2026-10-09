@@ -10,7 +10,7 @@
 # information regarding copyright ownership.
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import total_ordering
 from pathlib import Path
 from re import compile as Re
@@ -126,9 +126,7 @@ class KeyTimingMetadata:
     def __init__(self, timestamp: str):
         if int(timestamp) <= 0:
             raise ValueError(f'invalid timing metadata value: "{timestamp}"')
-        self.value = datetime.strptime(timestamp, self.FORMAT).replace(
-            tzinfo=timezone.utc
-        )
+        self.value = datetime.strptime(timestamp, self.FORMAT).replace(tzinfo=UTC)
 
     def __repr__(self):
         return self.value.strftime(self.FORMAT)
@@ -169,7 +167,7 @@ class KeyTimingMetadata:
     @staticmethod
     def now() -> "KeyTimingMetadata":
         result = KeyTimingMetadata.__new__(KeyTimingMetadata)
-        result.value = datetime.now(timezone.utc)
+        result.value = datetime.now(UTC)
         return result
 
 
