@@ -15,8 +15,8 @@
 
 dnspython_genzone() (
   servers="$@"
-  # Drop unusual RR sets and RR types (AMTRELAY, GPOS, apl02) that dnspython
-  # can't handle. For more information see
+  # Drop unusual RR sets (AMTRELAY, GPOS, apl02) that dnspython can't handle.
+  # For more information see
   # https://github.com/rthalley/dnspython/issues/1034#issuecomment-1896541899.
   $SHELL "${TOP_SRCDIR}/bin/tests/system/genzone.sh" $servers \
     | sed \
