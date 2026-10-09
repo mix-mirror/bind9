@@ -81,6 +81,7 @@ struct dns_deleg {
  */
 struct dns_delegset {
 	unsigned int   magic;
+	isc_mem_t     *mctx;
 	isc_refcount_t references;
 
 	dns_deleglist_t delegs;

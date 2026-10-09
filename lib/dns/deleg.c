@@ -389,6 +389,7 @@ dns_delegset_allocset(dns_delegdb_t *delegdb, dns_delegset_t **delegsetp) {
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.delegs = ISC_LIST_INITIALIZER,
 	};
+	isc_mem_attach(dns_deleg_mctx, &delegset->mctx);
 
 	*delegsetp = delegset;
 }
@@ -402,7 +403,7 @@ dns_delegset_allocdeleg(dns_delegset_t *delegset, dns_deleg_type_t type,
 	REQUIRE(delegp != NULL && *delegp == NULL);
 	REQUIRE(type != DNS_DELEGTYPE_UNDEFINED);
 
-	deleg = isc_mem_get(dns_deleg_mctx, sizeof(*deleg));
+	deleg = isc_mem_get(delegset->mctx, sizeof(*deleg));
 	*deleg = (dns_deleg_t){ .addresses = ISC_LIST_INITIALIZER,
 				.names = ISC_LIST_INITIALIZER,
 				.type = type,
@@ -424,7 +425,7 @@ dns_delegset_freedeleg(dns_delegset_t *delegset, dns_deleg_t **delegp) {
 
 	ISC_LIST_UNLINK(delegset->delegs, deleg, link);
 
-	isc_mem_put(dns_deleg_mctx, deleg, sizeof(*deleg));
+	isc_mem_put(delegset->mctx, deleg, sizeof(*deleg));
 }
 
 void
@@ -438,7 +439,7 @@ dns_delegset_addaddr(dns_delegset_t *delegset, dns_deleg_t *deleg,
 	REQUIRE(deleg->type == DNS_DELEGTYPE_DELEG_ADDRESSES ||
 		deleg->type == DNS_DELEGTYPE_NS_GLUES);
 
-	addrlink = isc_mem_get(dns_deleg_mctx, sizeof(*addrlink));
+	addrlink = isc_mem_get(delegset->mctx, sizeof(*addrlink));
 	*addrlink = (isc_netaddrlink_t){ .addr = *addr,
 					 .link = ISC_LINK_INITIALIZER };
 
@@ -453,9 +454,9 @@ addname(dns_delegset_t *delegset, dns_namelist_t *list,
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
 	REQUIRE(DNS_NAME_VALID(name));
 
-	clone = isc_mem_get(dns_deleg_mctx, sizeof(*clone));
+	clone = isc_mem_get(delegset->mctx, sizeof(*clone));
 	dns_linkedname_init(clone);
-	dns_name_dup(name, dns_deleg_mctx, dns_name(clone));
+	dns_name_dup(name, delegset->mctx, dns_name(clone));
 	ISC_LIST_APPEND(*list, clone, link);
 }
 
@@ -623,6 +624,13 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	REQUIRE(DNS_NAME_VALID(zonecut));
 	REQUIRE(DNS_DELEGSET_VALID(delegset));
 
+	/*
+	 * Only delegset allocated by the delegdb memory context can be added in
+	 * the delegdb. This exclude transient delegset built from rdataset (see
+	 * dns_delegset_fromrdataset()).
+	 */
+	REQUIRE(delegset->mctx == dns_deleg_mctx);
+
 	if (LIBDNS_DELEGDB_INSERT_START_ENABLED() ||
 	    LIBDNS_DELEGDB_INSERT_DONE_ENABLED())
 	{
@@ -731,20 +739,20 @@ delegset_destroy(dns_delegset_t *delegset) {
 
 		ISC_LIST_FOREACH(deleg->addresses, address, link) {
 			ISC_LIST_UNLINK(deleg->addresses, address, link);
-			isc_mem_put(dns_deleg_mctx, address, sizeof(*address));
+			isc_mem_put(delegset->mctx, address, sizeof(*address));
 		}
 
 		ISC_LIST_FOREACH(deleg->names, nameserver, link) {
 			ISC_LIST_UNLINK(deleg->names, nameserver, link);
-			dns_linkedname_free(nameserver, dns_deleg_mctx);
-			isc_mem_put(dns_deleg_mctx, nameserver,
+			dns_linkedname_free(nameserver, delegset->mctx);
+			isc_mem_put(delegset->mctx, nameserver,
 				    sizeof(*nameserver));
 		}
 
-		isc_mem_put(dns_deleg_mctx, deleg, sizeof(*deleg));
+		isc_mem_put(delegset->mctx, deleg, sizeof(*deleg));
 	}
 
-	isc_mem_put(dns_deleg_mctx, delegset, sizeof(*delegset));
+	isc_mem_putanddetach(&delegset->mctx, delegset, sizeof(*delegset));
 }
 ISC_REFCOUNT_IMPL(dns_delegset, delegset_destroy);
 
@@ -885,8 +893,7 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, bool expired, FILE *fp) {
 }
 
 void
-dns_delegset_fromnsrdataset(isc_mem_t *_mctx ISC_ATTR_UNUSED,
-			    dns_rdataset_t *rdataset,
+dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
 			    dns_delegset_t **delegsetp) {
 	dns_delegset_t *delegset = NULL;
 	dns_deleg_t *deleg = NULL;
@@ -899,16 +906,17 @@ dns_delegset_fromnsrdataset(isc_mem_t *_mctx ISC_ATTR_UNUSED,
 
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 
-	delegset = isc_mem_get(dns_deleg_mctx, sizeof(*delegset));
+	delegset = isc_mem_get(mctx, sizeof(*delegset));
 	*delegset = (dns_delegset_t){
 		.magic = DNS_DELEGSET_MAGIC,
+		.mctx = isc_mem_ref(mctx),
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.delegs = ISC_LIST_INITIALIZER,
 		.expires = rdataset->ttl + isc_stdtime_now(),
 		.staticstub = rdataset->attributes.staticstub
 	};
 
-	deleg = isc_mem_get(dns_deleg_mctx, sizeof(*deleg));
+	deleg = isc_mem_get(delegset->mctx, sizeof(*deleg));
 	*deleg = (dns_deleg_t){ .addresses = ISC_LIST_INITIALIZER,
 				.names = ISC_LIST_INITIALIZER,
 				.type = DNS_DELEGTYPE_NS_NAMES,
