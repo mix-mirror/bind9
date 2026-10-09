@@ -25,6 +25,11 @@
 #include <isccfg/grammar.h>
 #include <isccfg/tokens.h>
 
+struct cfg_tokenstring {
+	cfg_obj_t *obj;
+	cfg_tokenstring_t *next;
+};
+
 static const char *const empty[] = { NULL };
 
 void
@@ -37,6 +42,17 @@ cfg_tokens_init(cfg_tokens_t *tok, const char *const *tokens, const char *file,
 		.file = file,
 		.line = line,
 	};
+}
+
+void
+cfg_tokens_clear(cfg_tokens_t *tok) {
+	while (tok->strings != NULL) {
+		cfg_tokenstring_t *string = tok->strings;
+
+		tok->strings = string->next;
+		cfg_obj_detach(&string->obj);
+		isc_mem_put(isc_g_mctx, string, sizeof(*string));
+	}
 }
 
 const char *
@@ -126,7 +142,25 @@ cfg_tokens_getstring(cfg_tokens_t *tok, const char **strp) {
 		cfg_tokens_log(tok, ISC_LOG_ERROR, "expected string");
 		return ISC_R_UNEXPECTEDTOKEN;
 	}
-	*strp = token;
+	if (token[0] == '"') {
+		cfg_obj_t *obj = NULL;
+		isc_buffer_t buffer;
+		size_t length = strlen(token);
+
+		isc_buffer_constinit(&buffer, token, length);
+		isc_buffer_add(&buffer, length);
+		RETERR(cfg_parse_buffer(&buffer, tok->file, tok->line,
+					&cfg_type_qstring, 0, &obj));
+
+		cfg_tokenstring_t *string = isc_mem_get(isc_g_mctx,
+							sizeof(*string));
+		*string = (cfg_tokenstring_t){ .obj = obj,
+					       .next = tok->strings };
+		tok->strings = string;
+		*strp = cfg_obj_asstring(obj);
+	} else {
+		*strp = token;
+	}
 	return ISC_R_SUCCESS;
 }
 

@@ -25,9 +25,9 @@
  *	'{', '}' and ';' respectively;
  * \li	CFG_TOKEN_NEWLINE marks a line break in the original text, so
  *	that line numbers can be tracked;
- * \li	every other element is a string (quoted or unquoted in the
- *	original text; the distinction is not kept). '/' and '!' are
- *	returned as the one-character strings "/" and "!", so for example
+ * \li	every other element preserves the token's original spelling,
+ *	including quotes and escapes. Unquoted '/' and '!' are returned
+ *	as the one-character strings "/" and "!", so for example
  *	"10.0.0.0/8" is three tokens.
  *
  * The outer brackets are not included. The cfg_tokens_*() functions
@@ -53,10 +53,13 @@
  */
 #define CFG_TOKEN_ISSTRING(t) ((uintptr_t)(t) < (uintptr_t)CFG_TOKEN_END)
 
+typedef struct cfg_tokenstring cfg_tokenstring_t;
+
 typedef struct cfg_tokens {
 	const char *const *next;
 	const char	  *file;
 	unsigned long	   line;
+	cfg_tokenstring_t *strings;
 } cfg_tokens_t;
 
 void
@@ -66,6 +69,13 @@ cfg_tokens_init(cfg_tokens_t *tok, const char *const *tokens, const char *file,
  * Initialize the cursor 'tok' to walk 'tokens'. 'file' and 'line' are
  * the location of the opening bracket, and are used for logging.
  * 'tokens' may be NULL, which is treated as an empty list.
+ */
+
+void
+cfg_tokens_clear(cfg_tokens_t *tok);
+/*%<
+ * Release decoded strings owned by the cursor. Call after finishing
+ * with the cursor and all values returned by cfg_tokens_getstring().
  */
 
 const char *
@@ -97,7 +107,9 @@ isc_result_t
 cfg_tokens_getstring(cfg_tokens_t *tok, const char **strp);
 /*%<
  * Consume the next token, which must be a string, and store it in
- * '*strp'. Logs an error if it is not.
+ * '*strp'. Quoted strings are decoded using the configuration grammar.
+ * The result is valid until cfg_tokens_clear() or the token array is
+ * freed. Logs an error if the token is not a string.
  *
  * Returns:
  * \li	ISC_R_SUCCESS

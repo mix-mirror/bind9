@@ -242,6 +242,7 @@ parse_parameters(const char *const *parameters, const char *cfg_file,
 	}
 
 cleanup:
+	cfg_tokens_clear(&tok);
 	if (result != ISC_R_SUCCESS && params->aclobj != NULL) {
 		cfg_obj_detach(&params->aclobj);
 	}

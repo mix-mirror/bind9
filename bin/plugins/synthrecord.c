@@ -396,68 +396,69 @@ synthrecord_entry(void *arg, void *cbdata, isc_result_t *resp) {
 }
 
 /*
- * The parsed plugin parameters. The strings point into the token
- * array passed to the plugin.
+ * The parsed plugin parameters. The cursor owns decoded strings until
+ * the parameters have been applied.
  */
 typedef struct synthrecord_params {
+	cfg_tokens_t tokens;
 	const char *prefix;
 	const char *origin;
-	cfg_obj_t  *allowsynth;
-	uint32_t    ttl;
-	bool	    has_ttl;
+	cfg_obj_t *allowsynth;
+	uint32_t ttl;
+	bool has_ttl;
 } synthrecord_params_t;
 
 static isc_result_t
 synthrecord_parseparams(const char *const *parameters, const char *cfgfile,
 			unsigned long cfgline, synthrecord_params_t *params) {
 	isc_result_t result = ISC_R_SUCCESS;
-	cfg_tokens_t tok;
+	cfg_tokens_t *tok = &params->tokens;
 
 	*params = (synthrecord_params_t){ .ttl = DEFAULT_TTL };
 
-	cfg_tokens_init(&tok, parameters, cfgfile, cfgline);
-	while (cfg_tokens_peek(&tok) != NULL) {
+	cfg_tokens_init(tok, parameters, cfgfile, cfgline);
+	while (cfg_tokens_peek(tok) != NULL) {
 		const char *name = NULL, *value = NULL;
 		bool redefined = false;
 
-		CHECK(cfg_tokens_getstring(&tok, &name));
+		CHECK(cfg_tokens_getstring(tok, &name));
 
 		if (strcasecmp(name, "prefix") == 0) {
 			redefined = (params->prefix != NULL);
-			CHECK(cfg_tokens_getstring(&tok, &params->prefix));
+			CHECK(cfg_tokens_getstring(tok, &params->prefix));
 		} else if (strcasecmp(name, "origin") == 0) {
 			redefined = (params->origin != NULL);
-			CHECK(cfg_tokens_getstring(&tok, &params->origin));
+			CHECK(cfg_tokens_getstring(tok, &params->origin));
 		} else if (strcasecmp(name, "allow-synth") == 0) {
 			redefined = (params->allowsynth != NULL);
 			if (!redefined) {
-				CHECK(cfg_tokens_getaml(&tok,
+				CHECK(cfg_tokens_getaml(tok,
 							&params->allowsynth));
 			}
 		} else if (strcasecmp(name, "ttl") == 0) {
 			redefined = params->has_ttl;
 			params->has_ttl = true;
-			CHECK(cfg_tokens_getstring(&tok, &value));
+			CHECK(cfg_tokens_getstring(tok, &value));
 			if (isc_parse_uint32(&params->ttl, value, 10) !=
 			    ISC_R_SUCCESS)
 			{
-				cfg_tokens_log(&tok, ISC_LOG_ERROR,
+				cfg_tokens_log(tok, ISC_LOG_ERROR,
 					       "invalid ttl '%s'", value);
 				CLEANUP(ISC_R_BADNUMBER);
 			}
 		} else {
-			cfg_tokens_log(&tok, ISC_LOG_ERROR,
+			cfg_tokens_log(tok, ISC_LOG_ERROR,
 				       "unknown option '%s'", name);
 			CLEANUP(ISC_R_FAILURE);
 		}
 
 		if (redefined) {
-			cfg_tokens_log(&tok, ISC_LOG_ERROR, "'%s' redefined",
+			cfg_tokens_log(tok, ISC_LOG_ERROR, "'%s' redefined",
 				       name);
 			CLEANUP(ISC_R_EXISTS);
 		}
 
-		CHECK(cfg_tokens_expect(&tok, CFG_TOKEN_END));
+		CHECK(cfg_tokens_expect(tok, CFG_TOKEN_END));
 	}
 
 cleanup:
@@ -592,6 +593,7 @@ synthrecord_parseconfig(synthrecord_t *inst, const char *const *parameters,
 	inst->ttl = params.ttl;
 
 cleanup:
+	cfg_tokens_clear(&params.tokens);
 	if (params.allowsynth != NULL) {
 		cfg_obj_detach(&params.allowsynth);
 	}

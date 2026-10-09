@@ -1541,9 +1541,16 @@ parse_btokens(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 			token = UNCONST(CFG_TOKEN_NEWLINE);
 			break;
 		case isc_tokentype_string:
-		case isc_tokentype_qstring:
-			token = isc_mem_strdup(isc_g_mctx, TOKEN_STRING(pctx));
+		case isc_tokentype_qstring: {
+			isc_region_t region;
+
+			isc_lex_getlasttokentext(pctx->lexer, &pctx->token,
+						 &region);
+			token = isc_mem_allocate(isc_g_mctx, region.length + 1);
+			memmove(token, region.base, region.length);
+			token[region.length] = '\0';
 			break;
+		}
 		case isc_tokentype_special:
 			switch (pctx->token.value.as_char) {
 			case '{':
@@ -1589,39 +1596,11 @@ cleanup:
 	return result;
 }
 
-/*
- * Return true if 'str' would not be lexed back as a single string
- * token when printed without quotes.
- */
-static bool
-token_needsquote(const char *str) {
-	if (*str == '\0') {
-		return true;
-	}
-	for (const char *p = str; *p != '\0'; p++) {
-		if (*p == '\\' && p[1] != '\0') {
-			p++;
-			continue;
-		}
-		if (strchr(" \t\r\n{};\"!/#", *p) != NULL) {
-			return true;
-		}
-	}
-	return false;
-}
-
-static bool
-token_ischar(const char *token, char c) {
-	return token != NULL && CFG_TOKEN_ISSTRING(token) && token[0] == c &&
-	       token[1] == '\0';
-}
-
 void
 cfg_print_tokens(cfg_printer_t *pctx, const char *const *tokens,
 		 const char *const *end) {
 	bool oneline = (pctx->flags & CFG_PRINTER_ONELINE) != 0;
 	bool newline = false;
-	const char *prev = NULL;
 
 	/*
 	 * Line breaks are reproduced from the CFG_TOKEN_NEWLINE markers,
@@ -1648,9 +1627,7 @@ cfg_print_tokens(cfg_printer_t *pctx, const char *const *tokens,
 		if (newline) {
 			cfg_print_indent(pctx);
 			newline = false;
-		} else if (t != CFG_TOKEN_END && !token_ischar(t, '/') &&
-			   !token_ischar(prev, '/') && !token_ischar(prev, '!'))
-		{
+		} else if (t != CFG_TOKEN_END) {
 			cfg_print_cstr(pctx, " ");
 		}
 
@@ -1661,29 +1638,9 @@ cfg_print_tokens(cfg_printer_t *pctx, const char *const *tokens,
 			cfg_print_cstr(pctx, "}");
 		} else if (t == CFG_TOKEN_END) {
 			cfg_print_cstr(pctx, ";");
-		} else if (token_ischar(t, '/') || token_ischar(t, '!') ||
-			   !token_needsquote(t))
-		{
-			cfg_print_cstr(pctx, t);
 		} else {
-			/*
-			 * The lexer only unescapes '\"' in quoted strings;
-			 * other backslashes are kept verbatim.
-			 */
-			cfg_print_cstr(pctx, "\"");
-			for (const char *p = t; *p != '\0'; p++) {
-				const char *q = strchr(p, '"');
-				if (q == NULL) {
-					cfg_print_cstr(pctx, p);
-					break;
-				}
-				cfg_print_chars(pctx, p, (int)(q - p));
-				cfg_print_cstr(pctx, "\\\"");
-				p = q;
-			}
-			cfg_print_cstr(pctx, "\"");
+			cfg_print_cstr(pctx, t);
 		}
-		prev = t;
 	}
 
 	pctx->indent--;

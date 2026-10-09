@@ -105,13 +105,8 @@ dyndb_init(isc_mem_t *mctx, const char *name, const char *const *parameters,
 	argv = isc_mem_cget(mctx, size + 1, sizeof(*argv));
 
 	cfg_tokens_init(&tok, parameters, file, line);
-	while ((token = cfg_tokens_next(&tok)) != NULL) {
-		if (!CFG_TOKEN_ISSTRING(token)) {
-			cfg_tokens_log(&tok, ISC_LOG_ERROR,
-				       "dyndb_init: unexpected token");
-			result = ISC_R_UNEXPECTEDTOKEN;
-			goto cleanup;
-		}
+	while (cfg_tokens_peek(&tok) != NULL) {
+		CHECK(cfg_tokens_getstring(&tok, &token));
 		argv[argc++] = UNCONST(token);
 	}
 
@@ -143,6 +138,7 @@ dyndb_init(isc_mem_t *mctx, const char *name, const char *const *parameters,
 	*instp = sample_inst;
 
 cleanup:
+	cfg_tokens_clear(&tok);
 	isc_mem_cput(mctx, argv, size + 1, sizeof(*argv));
 
 	return result;
