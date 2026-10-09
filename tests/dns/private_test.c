@@ -228,9 +228,8 @@ check_private_chains(dns_rdata_t *privates, size_t nprivates,
 	bool build_nsec = !expected_nsec;
 	bool build_nsec3 = !expected_nsec3;
 
-	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(ZONEDB_DEFAULT, dns_rootname, dns_dbtype_zone,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	dns_db_newversion(db, &ver);
 	assert_non_null(ver);

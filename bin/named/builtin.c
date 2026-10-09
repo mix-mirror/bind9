@@ -1058,9 +1058,8 @@ static dns_dbmethods_t bdb_methods = {
 };
 
 static isc_result_t
-create(isc_mem_t *_mctx ISC_ATTR_UNUSED, const dns_name_t *origin,
-       dns_dbtype_t type, dns_rdataclass_t rdclass, unsigned int argc,
-       char *argv[], void *implementation, dns_db_t **dbp) {
+create(const dns_name_t *origin, dns_dbtype_t type, dns_rdataclass_t rdclass,
+       unsigned int argc, char *argv[], void *implementation, dns_db_t **dbp) {
 	isc_result_t result;
 	bool needargs = false;
 	bdb_t *bdb = NULL;
@@ -1143,11 +1142,9 @@ isc_result_t
 named_builtin_init(void) {
 	isc_result_t result;
 
-	RETERR(dns_db_register("_builtin", create, &builtin, isc_g_mctx,
-			       &builtin.dbimp));
+	RETERR(dns_db_register("_builtin", create, &builtin, &builtin.dbimp));
 
-	result = dns_db_register("_dns64", create, &dns64, isc_g_mctx,
-				 &dns64.dbimp);
+	result = dns_db_register("_dns64", create, &dns64, &dns64.dbimp);
 	if (result != ISC_R_SUCCESS) {
 		dns_db_unregister(&builtin.dbimp);
 		return result;

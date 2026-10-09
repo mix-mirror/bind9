@@ -114,8 +114,7 @@ ISC_LOOP_TEST_IMPL(after_shutdown) {
 	dns_view_initsecroots(view);
 	/* Keep the same weak view reference that a transfer owns. */
 	dns_view_weakattach(view, &test.view);
-	assert_int_equal(dns_db_create(isc_g_mctx, ZONEDB_DEFAULT,
-				       dns_zone_getorigin(zone),
+	assert_int_equal(dns_db_create(ZONEDB_DEFAULT, dns_zone_getorigin(zone),
 				       dns_dbtype_zone, dns_rdataclass_in, 0,
 				       NULL, &test.db),
 			 ISC_R_SUCCESS);

@@ -102,8 +102,8 @@ loadset(const char *filename, dns_rdataset_t *rdataset) {
 
 	dns_name_format(name, setname, sizeof(setname));
 
-	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, name,
-			       dns_dbtype_zone, rdclass, 0, NULL, &db);
+	result = dns_db_create(ZONEDB_DEFAULT, name, dns_dbtype_zone, rdclass,
+			       0, NULL, &db);
 	if (result != ISC_R_SUCCESS) {
 		fatal("can't create database");
 	}

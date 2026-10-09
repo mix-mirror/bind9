@@ -52,7 +52,6 @@
  */
 typedef struct syncptr syncptr_t;
 struct syncptr {
-	isc_mem_t *mctx;
 	dns_zone_t *zone;
 	dns_diff_t diff;
 	dns_fixedname_t ptr_target_name; /* referenced by owner name in
@@ -109,7 +108,7 @@ cleanup:
 	}
 	dns_zone_detach(&syncptr->zone);
 	dns_diff_clear(&syncptr->diff);
-	isc_mem_putanddetach(&syncptr->mctx, syncptr, sizeof(*syncptr));
+	isc_mem_put(isc_g_mctx, syncptr, sizeof(*syncptr));
 }
 
 /*
@@ -209,7 +208,6 @@ static isc_result_t
 syncptr(sample_instance_t *inst, dns_name_t *name, dns_rdata_t *addr_rdata,
 	dns_ttl_t ttl, dns_diffop_t op) {
 	isc_result_t result;
-	isc_mem_t *mctx = inst->mctx;
 	dns_fixedname_t ptr_name;
 	dns_zone_t *ptr_zone = NULL;
 	dns_rdata_ptr_t ptr_struct;
@@ -221,9 +219,8 @@ syncptr(sample_instance_t *inst, dns_name_t *name, dns_rdata_t *addr_rdata,
 	DNS_RDATACOMMON_INIT(&ptr_struct, dns_rdatatype_ptr, dns_rdataclass_in);
 	dns_name_init(&ptr_struct.ptr);
 
-	syncptr = isc_mem_get(mctx, sizeof(*syncptr));
+	syncptr = isc_mem_get(isc_g_mctx, sizeof(*syncptr));
 	*syncptr = (syncptr_t){ 0 };
-	isc_mem_attach(mctx, &syncptr->mctx);
 	isc_buffer_init(&syncptr->b, syncptr->buf, sizeof(syncptr->buf));
 	dns_fixedname_init(&syncptr->ptr_target_name);
 
@@ -241,7 +238,7 @@ syncptr(sample_instance_t *inst, dns_name_t *name, dns_rdata_t *addr_rdata,
 	dns_zone_attach(ptr_zone, &syncptr->zone);
 	dns_name_copy(name, dns_name(&syncptr->ptr_target_name));
 	dns_name_clone(&syncptr->ptr_target_name, &ptr_struct.ptr);
-	dns_diff_init(inst->mctx, &syncptr->diff);
+	dns_diff_init(isc_g_mctx, &syncptr->diff);
 	result = dns_rdata_fromstruct(&ptr_rdata, dns_rdataclass_in,
 				      dns_rdatatype_ptr, &ptr_struct,
 				      &syncptr->b);
@@ -253,8 +250,8 @@ syncptr(sample_instance_t *inst, dns_name_t *name, dns_rdata_t *addr_rdata,
 	}
 
 	/* Create diff */
-	dns_difftuple_create(mctx, op, dns_name(&ptr_name), ttl, &ptr_rdata,
-			     &tp);
+	dns_difftuple_create(isc_g_mctx, op, dns_name(&ptr_name), ttl,
+			     &ptr_rdata, &tp);
 	dns_diff_append(&syncptr->diff, &tp);
 
 	/*
@@ -272,7 +269,7 @@ cleanup:
 		dns_difftuple_free(&tp);
 	}
 	if (syncptr != NULL) {
-		isc_mem_put(mctx, syncptr, sizeof(*syncptr));
+		isc_mem_put(isc_g_mctx, syncptr, sizeof(*syncptr));
 	}
 
 	return result;

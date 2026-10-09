@@ -68,7 +68,7 @@ create_zone(sample_instance_t *const inst, dns_name_t *const name,
 
 	zone_argv[0] = inst->db_name;
 
-	dns_zone_create(&raw, inst->mctx, 0); /* FIXME: all zones are assigned
+	dns_zone_create(&raw, isc_g_mctx, 0); /* FIXME: all zones are assigned
 						 to loop 0 */
 	dns_zone_setorigin(raw, name);
 	dns_zone_setclass(raw, dns_rdataclass_in);
@@ -84,7 +84,7 @@ create_zone(sample_instance_t *const inst, dns_name_t *const name,
 	}
 
 	/* This is completely insecure - use some sensible values instead! */
-	dns_acl_any(inst->mctx, &acl_any);
+	dns_acl_any(isc_g_mctx, &acl_any);
 	dns_zone_setupdateacl(raw, acl_any);
 	dns_zone_setqueryacl(raw, acl_any);
 	dns_zone_setxfracl(raw, acl_any);

@@ -169,13 +169,12 @@ servestale_addrdataset(dns_db_t *db, const dns_name_t *name, isc_stdtime_t now,
  * initialized name pointing into 'fname'.
  */
 static dns_db_t *
-servestale_setup(isc_mem_t *mctx, dns_fixedname_t *fname, dns_name_t **namep) {
+servestale_setup(dns_fixedname_t *fname, dns_name_t **namep) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 
-	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	/* Keep expired entries for a day as a last-resort fallback. */
@@ -201,14 +200,12 @@ servestale_setup(isc_mem_t *mctx, dns_fixedname_t *fname, dns_name_t **namep) {
 ISC_LOOP_TEST_IMPL(servestale_fresh_over_stale_cname) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
-	isc_mem_t *mctx = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
 	dns_fixedname_t fname, ffound;
 	dns_name_t *name = NULL, *foundname = NULL;
 	dns_rdataset_t rdataset;
 
-	isc_mem_create("test", &mctx);
-	db = servestale_setup(mctx, &fname, &name);
+	db = servestale_setup(&fname, &name);
 
 	servestale_addrdataset(db, name, now - 7200, dns_rdatatype_cname,
 			       "target.example.com.", 3600, dns_trust_answer);
@@ -227,7 +224,6 @@ ISC_LOOP_TEST_IMPL(servestale_fresh_over_stale_cname) {
 
 	dns_rdataset_disassociate(&rdataset);
 	dns_db_detach(&db);
-	isc_mem_detach(&mctx);
 	isc_loopmgr_shutdown();
 }
 
@@ -240,14 +236,12 @@ ISC_LOOP_TEST_IMPL(servestale_fresh_over_stale_cname) {
 ISC_LOOP_TEST_IMPL(servestale_fresh_cname_over_stale_type) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
-	isc_mem_t *mctx = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
 	dns_fixedname_t fname, ffound;
 	dns_name_t *name = NULL, *foundname = NULL;
 	dns_rdataset_t rdataset;
 
-	isc_mem_create("test", &mctx);
-	db = servestale_setup(mctx, &fname, &name);
+	db = servestale_setup(&fname, &name);
 
 	servestale_addrdataset(db, name, now, dns_rdatatype_cname,
 			       "target.example.com.", 3600, dns_trust_answer);
@@ -266,7 +260,6 @@ ISC_LOOP_TEST_IMPL(servestale_fresh_cname_over_stale_type) {
 
 	dns_rdataset_disassociate(&rdataset);
 	dns_db_detach(&db);
-	isc_mem_detach(&mctx);
 	isc_loopmgr_shutdown();
 }
 
@@ -291,11 +284,10 @@ precedence_rdata(dns_rdatatype_t type) {
 
 /* 'age' is measured from insertion; dns_rdatatype_none skips an RRset. */
 static void
-check_cname_precedence(isc_mem_t *mctx, dns_rdatatype_t type1,
-		       isc_stdtime_t age1, dns_rdatatype_t type2,
-		       isc_stdtime_t age2, dns_rdatatype_t qtype,
-		       isc_result_t expected, dns_rdatatype_t expected_type,
-		       bool expected_stale) {
+check_cname_precedence(dns_rdatatype_t type1, isc_stdtime_t age1,
+		       dns_rdatatype_t type2, isc_stdtime_t age2,
+		       dns_rdatatype_t qtype, isc_result_t expected,
+		       dns_rdatatype_t expected_type, bool expected_stale) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
@@ -303,7 +295,7 @@ check_cname_precedence(isc_mem_t *mctx, dns_rdatatype_t type1,
 	dns_name_t *name = NULL, *foundname = NULL;
 	dns_rdataset_t rdataset;
 
-	db = servestale_setup(mctx, &fname, &name);
+	db = servestale_setup(&fname, &name);
 
 	if (type1 != dns_rdatatype_none) {
 		servestale_addrdataset(db, name, now - age1, type1,
@@ -335,7 +327,6 @@ check_cname_precedence(isc_mem_t *mctx, dns_rdatatype_t type1,
 
 /* Check CNAME precedence for both insertion orders. */
 ISC_LOOP_TEST_IMPL(cname_precedence) {
-	isc_mem_t *mctx = NULL;
 	const dns_rdatatype_t cname = dns_rdatatype_cname;
 	const dns_rdatatype_t a = dns_rdatatype_a;
 	const dns_rdatatype_t ns = dns_rdatatype_ns;
@@ -550,8 +541,6 @@ ISC_LOOP_TEST_IMPL(cname_precedence) {
 		},
 	};
 
-	isc_mem_create("test", &mctx);
-
 	for (size_t i = 0; i < ARRAY_SIZE(testcases); i++) {
 		const dns_rdatatype_t type1 = testcases[i].type1;
 		const isc_stdtime_t rank1 = testcases[i].rank1;
@@ -570,17 +559,16 @@ ISC_LOOP_TEST_IMPL(cname_precedence) {
 		 * 'purged' set, that insertion order is expected to find
 		 * nothing for the query.
 		 */
-		check_cname_precedence(mctx, type1, rank1, type2, rank2, qtype,
+		check_cname_precedence(type1, rank1, type2, rank2, qtype,
 				       expected_result, expected_type,
 				       expected_stale);
 		if (!one_direction) {
-			check_cname_precedence(mctx, type2, rank2, type1, rank1,
+			check_cname_precedence(type2, rank2, type1, rank1,
 					       qtype, expected_result,
 					       expected_type, expected_stale);
 		}
 	}
 
-	isc_mem_detach(&mctx);
 	isc_loopmgr_shutdown();
 }
 
@@ -589,16 +577,12 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 	dns_db_t *db = NULL;
 	dns_dbnode_t *node = NULL;
 	dns_rdatasetiter_t *iterator = NULL;
-	isc_mem_t *mctx = NULL;
 	isc_stdtime_t now = isc_stdtime_now();
 	dns_fixedname_t fname;
 	dns_name_t *name = NULL;
 
-	isc_mem_create("test", &mctx);
-
-	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	dns_test_namefromstring("deleted.example.com.", &fname);
@@ -624,7 +608,6 @@ ISC_LOOP_TEST_IMPL(allrdatasets_expiredok_skips_deleted_header) {
 	dns_rdatasetiter_destroy(&iterator);
 	dns_db_detachnode(&node);
 	dns_db_detach(&db);
-	isc_mem_detach(&mctx);
 	isc_loopmgr_shutdown();
 }
 
@@ -639,9 +622,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	isc_stdtime_t now = isc_stdtime_now();
 	size_t i = 0;
 
-	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_mem_setwater(mctx, hiwater, lowater);
@@ -690,9 +672,8 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	isc_stdtime_t now = isc_stdtime_now();
 	size_t i = 0;
 
-	result = dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	isc_mem_setwater(mctx, hiwater, lowater);

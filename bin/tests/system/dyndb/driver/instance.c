@@ -107,23 +107,21 @@ cleanup:
  * load_sample_instance_zones() is called.
  */
 isc_result_t
-new_sample_instance(isc_mem_t *mctx, const char *db_name, int argc, char **argv,
+new_sample_instance(const char *db_name, int argc, char **argv,
 		    const dns_dyndbctx_t *dctx,
 		    sample_instance_t **sample_instp) {
 	isc_result_t result;
 
 	REQUIRE(sample_instp != NULL && *sample_instp == NULL);
 
-	sample_instance_t *inst = isc_mem_get(mctx, sizeof(*inst));
+	sample_instance_t *inst = isc_mem_get(isc_g_mctx, sizeof(*inst));
 	*inst = (sample_instance_t){ 0 };
 
-	isc_mem_attach(mctx, &inst->mctx);
-
-	inst->db_name = isc_mem_strdup(mctx, db_name);
+	inst->db_name = isc_mem_strdup(isc_g_mctx, db_name);
 	inst->zone1_name = dns_fixedname_initname(&inst->zone1_fn);
 	inst->zone2_name = dns_fixedname_initname(&inst->zone2_fn);
 
-	result = parse_params(mctx, argc, argv, inst->zone1_name,
+	result = parse_params(isc_g_mctx, argc, argv, inst->zone1_name,
 			      inst->zone2_name);
 	if (result != ISC_R_SUCCESS) {
 		log_write(ISC_LOG_ERROR,
@@ -136,7 +134,7 @@ new_sample_instance(isc_mem_t *mctx, const char *db_name, int argc, char **argv,
 	dns_zonemgr_attach(dctx->zmgr, &inst->zmgr);
 
 	/* Register new DNS DB implementation. */
-	result = dns_db_register(db_name, create_db, inst, mctx, &inst->db_imp);
+	result = dns_db_register(db_name, create_db, inst, &inst->db_imp);
 	if (result != ISC_R_SUCCESS) {
 		log_write(ISC_LOG_ERROR,
 			  "new_sample_instance: dns_db_register -> %s",
@@ -208,7 +206,7 @@ destroy_sample_instance(sample_instance_t **instp) {
 	}
 
 	if (inst->db_name != NULL) {
-		isc_mem_free(inst->mctx, inst->db_name);
+		isc_mem_free(isc_g_mctx, inst->db_name);
 	}
 	if (inst->zone1 != NULL) {
 		dns_zone_detach(&inst->zone1);
@@ -223,5 +221,5 @@ destroy_sample_instance(sample_instance_t **instp) {
 	dns_view_detach(&inst->view);
 	dns_zonemgr_detach(&inst->zmgr);
 
-	isc_mem_putanddetach(&inst->mctx, inst, sizeof(*inst));
+	isc_mem_put(isc_g_mctx, inst, sizeof(*inst));
 }

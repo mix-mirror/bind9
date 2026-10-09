@@ -174,8 +174,7 @@ typedef struct dns_db_methods {
 	isc_result_t (*getzoneversion)(dns_db_t *db, isc_buffer_t *b);
 } dns_dbmethods_t;
 
-typedef isc_result_t (*dns_dbcreatefunc_t)(isc_mem_t	    *mctx,
-					   const dns_name_t *name,
+typedef isc_result_t (*dns_dbcreatefunc_t)(const dns_name_t *name,
 					   dns_dbtype_t	     type,
 					   dns_rdataclass_t  rdclass,
 					   unsigned int argc, char *argv[],
@@ -342,9 +341,9 @@ ISC_REFCOUNT_DECL(dns_db);
 #endif
 
 isc_result_t
-dns_db_create(isc_mem_t *mctx, const char *db_type, const dns_name_t *origin,
-	      dns_dbtype_t type, dns_rdataclass_t rdclass, unsigned int argc,
-	      char *argv[], dns_db_t **dbp);
+dns_db_create(const char *db_type, const dns_name_t *origin, dns_dbtype_t type,
+	      dns_rdataclass_t rdclass, unsigned int argc, char *argv[],
+	      dns_db_t **dbp);
 /*%<
  * Create a new database using implementation 'db_type'.
  *
@@ -361,8 +360,6 @@ dns_db_create(isc_mem_t *mctx, const char *db_type, const dns_name_t *origin,
  * \li	dbp != NULL and *dbp == NULL
  *
  * \li	'origin' is a valid absolute domain name.
- *
- * \li	mctx is a valid memory context
  *
  * Ensures:
  *
@@ -1446,7 +1443,7 @@ dns_db_ispersistent(dns_db_t *db);
 
 isc_result_t
 dns_db_register(const char *name, dns_dbcreatefunc_t create, void *driverarg,
-		isc_mem_t *mctx, dns_dbimplementation_t **dbimp);
+		dns_dbimplementation_t **dbimp);
 
 /*%<
  * Register a new database implementation and add it to the list of
@@ -1456,7 +1453,6 @@ dns_db_register(const char *name, dns_dbcreatefunc_t create, void *driverarg,
  *
  * \li 	'name' is not NULL
  * \li	'order' is a valid function pointer
- * \li	'mctx' is a valid memory context
  * \li	dbimp != NULL && *dbimp == NULL
  *
  * Returns:

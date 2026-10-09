@@ -10222,7 +10222,7 @@ zone_expire(dns_zone_t *zone) {
 		isc_result_t result;
 		dns_rpz_zone_t *rpz = zone->rpzs->zones[zone->rpz_num];
 
-		CHECK(dns_db_create(zone->mctx, ZONEDB_DEFAULT, &zone->origin,
+		CHECK(dns_db_create(ZONEDB_DEFAULT, &zone->origin,
 				    dns_dbtype_zone, zone->rdclass, 0, NULL,
 				    &db));
 		CHECK(dns_rpz_dbupdate_callback(db, rpz));
@@ -12845,9 +12845,9 @@ ns_query(dns_zone_t *zone, dns_rdataset_t *soardataset, dns_stub_t *stub) {
 			ZONEDB_UNLOCK(&zone->dblock, isc_rwlocktype_read);
 
 			INSIST(zone->db_argc >= 1);
-			result = dns_db_create(zone->mctx, zone->db_argv[0],
-					       &zone->origin, dns_dbtype_stub,
-					       zone->rdclass, zone->db_argc - 1,
+			result = dns_db_create(zone->db_argv[0], &zone->origin,
+					       dns_dbtype_stub, zone->rdclass,
+					       zone->db_argc - 1,
 					       zone->db_argv + 1, &stub->db);
 			if (result != ISC_R_SUCCESS) {
 				dns_zone_log(zone, ISC_LOG_ERROR,
@@ -15139,9 +15139,9 @@ secure_db_create_from_raw(dns_zone_t *zone, dns_db_t *rawdb, dns_db_t **dbp) {
 	}
 	ZONEDB_UNLOCK(&zone->dblock, isc_rwlocktype_read);
 
-	CHECK(dns_db_create(zone->mctx, zone->db_argv[0], &zone->origin,
-			    dns_dbtype_zone, zone->rdclass, zone->db_argc - 1,
-			    zone->db_argv + 1, &db));
+	CHECK(dns_db_create(zone->db_argv[0], &zone->origin, dns_dbtype_zone,
+			    zone->rdclass, zone->db_argc - 1, zone->db_argv + 1,
+			    &db));
 
 	result = dns_db_setgluecachestats(db, zone->gluecachestats);
 	if (result != ISC_R_NOTIMPLEMENTED) {
@@ -20844,7 +20844,7 @@ dns_zone_makedb(dns_zone_t *zone, dns_db_t **dbp) {
 	dns_db_t *db = NULL;
 
 	isc_result_t result = dns_db_create(
-		zone->mctx, zone->db_argv[0], &zone->origin,
+		zone->db_argv[0], &zone->origin,
 		(zone->type == dns_zone_stub) ? dns_dbtype_stub
 					      : dns_dbtype_zone,
 		zone->rdclass, zone->db_argc - 1, zone->db_argv + 1, &db);

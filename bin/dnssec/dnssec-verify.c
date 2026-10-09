@@ -107,8 +107,8 @@ loadzone(char *file, const char *origin, bool origin_is_file,
 		      isc_result_totext(result));
 	}
 
-	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, name,
-			       dns_dbtype_zone, rdclass, 0, NULL, db);
+	result = dns_db_create(ZONEDB_DEFAULT, name, dns_dbtype_zone, rdclass,
+			       0, NULL, db);
 	check_result(result, "dns_db_create()");
 
 	result = dns_db_load(*db, file, inputformat, 0);

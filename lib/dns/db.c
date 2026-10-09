@@ -47,7 +47,6 @@
 struct dns_dbimplementation {
 	const char *name;
 	dns_dbcreatefunc_t create;
-	isc_mem_t *mctx;
 	void *driverarg;
 	ISC_LINK(dns_dbimplementation_t) link;
 };
@@ -117,9 +116,9 @@ call_updatenotify(dns_db_t *db);
  ***/
 
 isc_result_t
-dns_db_create(isc_mem_t *mctx, const char *db_type, const dns_name_t *origin,
-	      dns_dbtype_t type, dns_rdataclass_t rdclass, unsigned int argc,
-	      char *argv[], dns_db_t **dbp) {
+dns_db_create(const char *db_type, const dns_name_t *origin, dns_dbtype_t type,
+	      dns_rdataclass_t rdclass, unsigned int argc, char *argv[],
+	      dns_db_t **dbp) {
 	dns_dbimplementation_t *impinfo = NULL;
 
 	/*
@@ -133,8 +132,8 @@ dns_db_create(isc_mem_t *mctx, const char *db_type, const dns_name_t *origin,
 	impinfo = impfind(db_type);
 	if (impinfo != NULL) {
 		isc_result_t result;
-		result = ((impinfo->create)(mctx, origin, type, rdclass, argc,
-					    argv, impinfo->driverarg, dbp));
+		result = ((impinfo->create)(origin, type, rdclass, argc, argv,
+					    impinfo->driverarg, dbp));
 		RWUNLOCK(&implock, isc_rwlocktype_read);
 
 #if DNS_DB_TRACE
@@ -772,7 +771,7 @@ dns_db_nodecount(dns_db_t *db) {
 
 isc_result_t
 dns_db_register(const char *name, dns_dbcreatefunc_t create, void *driverarg,
-		isc_mem_t *mctx, dns_dbimplementation_t **dbimp) {
+		dns_dbimplementation_t **dbimp) {
 	dns_dbimplementation_t *imp;
 
 	REQUIRE(name != NULL);
@@ -785,12 +784,10 @@ dns_db_register(const char *name, dns_dbcreatefunc_t create, void *driverarg,
 		return ISC_R_EXISTS;
 	}
 
-	imp = isc_mem_get(mctx, sizeof(dns_dbimplementation_t));
+	imp = isc_mem_get(isc_g_mctx, sizeof(dns_dbimplementation_t));
 	imp->name = name;
 	imp->create = create;
-	imp->mctx = NULL;
 	imp->driverarg = driverarg;
-	isc_mem_attach(mctx, &imp->mctx);
 	ISC_LINK_INIT(imp, link);
 	ISC_LIST_APPEND(implementations, imp, link);
 	RWUNLOCK(&implock, isc_rwlocktype_write);
@@ -810,7 +807,7 @@ dns_db_unregister(dns_dbimplementation_t **dbimp) {
 	*dbimp = NULL;
 	RWLOCK(&implock, isc_rwlocktype_write);
 	ISC_LIST_UNLINK(implementations, imp, link);
-	isc_mem_putanddetach(&imp->mctx, imp, sizeof(dns_dbimplementation_t));
+	isc_mem_put(isc_g_mctx, imp, sizeof(dns_dbimplementation_t));
 	RWUNLOCK(&implock, isc_rwlocktype_write);
 	ENSURE(*dbimp == NULL);
 }

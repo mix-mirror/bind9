@@ -85,8 +85,8 @@ cache_create_db(dns_cache_t *cache, dns_db_t **dbp) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 
-	result = dns_db_create(dns_cache_mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, cache->rdclass, 0, NULL, &db);
+	result = dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			       cache->rdclass, 0, NULL, &db);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}

@@ -243,7 +243,7 @@ struct dns_adbaddrinfo {
  ****/
 
 void
-dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **newadb);
+dns_adb_create(dns_view_t *view, dns_adb_t **newadb);
 /*%<
  * Create a new ADB.
  *
@@ -253,8 +253,6 @@ dns_adb_create(isc_mem_t *mem, dns_view_t *view, dns_adb_t **newadb);
  *	should instead call dns_view_createresolver().
  *
  * Requires:
- *
- *\li	'mem' must be a valid memory context.
  *
  *\li	'view' be a pointer to a valid view.
  *

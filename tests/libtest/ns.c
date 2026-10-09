@@ -524,8 +524,8 @@ ns_test_loaddb(dns_db_t **db, dns_dbtype_t dbtype, const char *origin,
 
 	RETERR(dns_name_fromstring(name, origin, dns_rootname, 0, NULL));
 
-	RETERR(dns_db_create(isc_g_mctx, dbimp, name, dbtype, dns_rdataclass_in,
-			     0, NULL, db));
+	RETERR(dns_db_create(dbimp, name, dbtype, dns_rdataclass_in, 0, NULL,
+			     db));
 
 	result = dns_db_load(*db, testfile, dns_masterformat_text, 0);
 	return result;

@@ -540,7 +540,6 @@ dns_view_createresolver(dns_view_t *view, unsigned int options,
 			dns_dispatch_t *dispatchv4,
 			dns_dispatch_t *dispatchv6) {
 	isc_result_t result;
-	isc_mem_t *mctx = NULL;
 
 	REQUIRE(DNS_VIEW_VALID(view));
 	REQUIRE(!view->frozen);
@@ -550,9 +549,7 @@ dns_view_createresolver(dns_view_t *view, unsigned int options,
 	RETERR(dns_resolver_create(view, options, tlsctx_cache, dispatchv4,
 				   dispatchv6, &view->resolver));
 
-	isc_mem_create("ADB", &mctx);
-	dns_adb_create(mctx, view, &view->adb);
-	isc_mem_detach(&mctx);
+	dns_adb_create(view, &view->adb);
 
 	result = dns_requestmgr_create(view->mctx, view->dispatchmgr,
 				       dispatchv4, dispatchv6,

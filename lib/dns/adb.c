@@ -1640,8 +1640,7 @@ ISC_REFCOUNT_IMPL(dns_adb, dns_adb_destroy);
  */
 
 void
-dns_adb_create(isc_mem_t *mctx ISC_ATTR_UNUSED, dns_view_t *view,
-	       dns_adb_t **adbp) {
+dns_adb_create(dns_view_t *view, dns_adb_t **adbp) {
 	REQUIRE(view != NULL);
 	REQUIRE(adbp != NULL && *adbp == NULL);
 

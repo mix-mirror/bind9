@@ -40,7 +40,6 @@
 #include <dns/types.h>
 
 struct sample_instance {
-	isc_mem_t *mctx;
 	char *db_name;
 	dns_dbimplementation_t *db_imp;
 
@@ -61,7 +60,7 @@ struct sample_instance {
 typedef struct sample_instance sample_instance_t;
 
 isc_result_t
-new_sample_instance(isc_mem_t *mctx, const char *db_name, int argc, char **argv,
+new_sample_instance(const char *db_name, int argc, char **argv,
 		    const dns_dyndbctx_t *dctx,
 		    sample_instance_t **sample_instp);
 

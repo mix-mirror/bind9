@@ -424,9 +424,8 @@ ISC_RUN_TEST_IMPL(unscheduled_resign) {
 	dns_typepair_t typepair;
 	isc_stdtime_t resign;
 
-	result = dns__qpzone_create(isc_g_mctx, &example_org_name,
-				    dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-				    NULL, &db);
+	result = dns__qpzone_create(&example_org_name, dns_dbtype_zone,
+				    dns_rdataclass_in, 0, NULL, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	WITH_NEWVERSION(db, version, true) {
@@ -505,9 +504,8 @@ ISC_RUN_TEST_IMPL(diffop_add_sub) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 
-	result = dns__qpzone_create(isc_g_mctx, &example_org_name,
-				    dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-				    NULL, &db);
+	result = dns__qpzone_create(&example_org_name, dns_dbtype_zone,
+				    dns_rdataclass_in, 0, NULL, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(db);
 
@@ -560,9 +558,8 @@ ISC_RUN_TEST_IMPL(wildcard_foundname) {
 	dns_name_t *qname = NULL, *wild = NULL, *found = NULL;
 	dns_rdataset_t rdataset;
 
-	result = dns__qpzone_create(isc_g_mctx, &example_org_name,
-				    dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-				    NULL, &db);
+	result = dns__qpzone_create(&example_org_name, dns_dbtype_zone,
+				    dns_rdataclass_in, 0, NULL, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(db);
 
@@ -602,9 +599,8 @@ ISC_RUN_TEST_IMPL(wildcard_delegation_foundname) {
 	dns_rdataset_t rdataset;
 	unsigned char ns_data[256];
 
-	result = dns__qpzone_create(isc_g_mctx, &example_org_name,
-				    dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-				    NULL, &db);
+	result = dns__qpzone_create(&example_org_name, dns_dbtype_zone,
+				    dns_rdataclass_in, 0, NULL, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(db);
 
@@ -663,9 +659,8 @@ ISC_RUN_TEST_IMPL(diffop_addresign) {
 				      &buffer2);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns__qpzone_create(isc_g_mctx, &example_org_name,
-				    dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-				    NULL, &db);
+	result = dns__qpzone_create(&example_org_name, dns_dbtype_zone,
+				    dns_rdataclass_in, 0, NULL, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(db);
 
@@ -846,9 +841,8 @@ ISC_RUN_TEST_IMPL(nodes_outside_zone) {
 	dns_name_t *found = dns_fixedname_initname(&ffound);
 	dns_name_t *expected = NULL;
 
-	result = dns__qpzone_create(isc_g_mctx, &example_org_name,
-				    dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-				    NULL, &db);
+	result = dns__qpzone_create(&example_org_name, dns_dbtype_zone,
+				    dns_rdataclass_in, 0, NULL, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_non_null(db);
 

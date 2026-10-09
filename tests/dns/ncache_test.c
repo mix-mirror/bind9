@@ -145,9 +145,8 @@ ncache_add(dns_message_t *msg, const dns_name_t *qname,
 	dns_rdataset_t rdataset = DNS_RDATASET_INIT;
 	isc_result_t result;
 
-	result = dns_db_create(isc_g_mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_db_findnode(db, qname, true, &node);

@@ -2807,9 +2807,8 @@ nodecount(dns_db_t *db) {
 }
 
 isc_result_t
-dns__qpcache_create(isc_mem_t *_mctx ISC_ATTR_UNUSED, const dns_name_t *origin,
-		    dns_dbtype_t type, dns_rdataclass_t rdclass,
-		    unsigned int argc, char *argv[],
+dns__qpcache_create(const dns_name_t *origin, dns_dbtype_t type,
+		    dns_rdataclass_t rdclass, unsigned int argc, char *argv[],
 		    void *driverarg ISC_ATTR_UNUSED, dns_db_t **dbp) {
 	qpcache_t *qpdb = NULL;
 	isc_loop_t *loop = isc_loop();

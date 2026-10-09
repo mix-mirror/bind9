@@ -62,7 +62,7 @@ typedef struct dns_glue_additionaldata_ctx {
  */
 
 isc_result_t
-dns__qpzone_create(isc_mem_t *mctx, const dns_name_t *base, dns_dbtype_t type,
+dns__qpzone_create(const dns_name_t *base, dns_dbtype_t type,
 		   dns_rdataclass_t rdclass, unsigned int argc, char **argv,
 		   void *driverarg, dns_db_t **dbp);
 /*%<

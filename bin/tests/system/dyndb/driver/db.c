@@ -501,9 +501,8 @@ cleanup:
  * @param[in] driverarg Driver-specific parameter from dns_db_register().
  */
 isc_result_t
-create_db(isc_mem_t *_mctx ISC_ATTR_UNUSED, const dns_name_t *origin,
-	  dns_dbtype_t type, dns_rdataclass_t rdclass, unsigned int argc,
-	  char *argv[], void *driverarg, dns_db_t **dbp) {
+create_db(const dns_name_t *origin, dns_dbtype_t type, dns_rdataclass_t rdclass,
+	  unsigned int argc, char *argv[], void *driverarg, dns_db_t **dbp) {
 	sampledb_t *sampledb = NULL;
 	isc_result_t result;
 	dns_dbversion_t *version = NULL;
@@ -538,7 +537,7 @@ create_db(isc_mem_t *_mctx ISC_ATTR_UNUSED, const dns_name_t *origin,
 	sampledb->inst = driverarg;
 
 	/* Create internal instance of DB implementation from BIND. */
-	CHECK(dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, origin, dns_dbtype_zone,
+	CHECK(dns_db_create(ZONEDB_DEFAULT, origin, dns_dbtype_zone,
 			    dns_rdataclass_in, 0, NULL, &sampledb->db));
 
 	/* Create fake SOA, NS, and A records to make database loadable. */

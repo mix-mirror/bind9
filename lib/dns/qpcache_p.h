@@ -29,7 +29,7 @@
  */
 
 isc_result_t
-dns__qpcache_create(isc_mem_t *mctx, const dns_name_t *base, dns_dbtype_t type,
+dns__qpcache_create(const dns_name_t *base, dns_dbtype_t type,
 		    dns_rdataclass_t rdclass, unsigned int argc, char *argv[],
 		    void *driverarg, dns_db_t **dbp);
 /*%<

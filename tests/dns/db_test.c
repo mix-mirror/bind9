@@ -47,9 +47,8 @@ ISC_LOOP_TEST_IMPL(getoriginnode) {
 	dns_dbnode_t *node = NULL;
 	isc_result_t result;
 
-	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(ZONEDB_DEFAULT, dns_rootname, dns_dbtype_zone,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_db_getoriginnode(db, &node);
@@ -70,9 +69,8 @@ ISC_LOOP_TEST_IMPL(getsetservestalettl) {
 	isc_result_t result;
 	dns_ttl_t ttl;
 
-	result = dns_db_create(isc_g_mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	ttl = 5000;
@@ -108,9 +106,8 @@ ISC_LOOP_TEST_IMPL(dns_dbfind_staleok) {
 	isc_result_t result;
 	unsigned char data[] = { 0x0a, 0x00, 0x00, 0x01 };
 
-	result = dns_db_create(isc_g_mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	example = dns_fixedname_initname(&example_fixed);
@@ -245,9 +242,8 @@ ISC_LOOP_TEST_IMPL(class) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 
-	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(ZONEDB_DEFAULT, dns_rootname, dns_dbtype_zone,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = dns_db_load(db, TESTS_DIR "/testdata/db/data.db",
@@ -266,9 +262,8 @@ ISC_LOOP_TEST_IMPL(dbtype) {
 	dns_db_t *db = NULL;
 
 	/* DB has zone semantics */
-	result = dns_db_create(isc_g_mctx, ZONEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(ZONEDB_DEFAULT, dns_rootname, dns_dbtype_zone,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	result = dns_db_load(db, TESTS_DIR "/testdata/db/data.db",
 			     dns_masterformat_text, 0);
@@ -278,9 +273,8 @@ ISC_LOOP_TEST_IMPL(dbtype) {
 	dns_db_detach(&db);
 
 	/* DB has cache semantics */
-	result = dns_db_create(isc_g_mctx, CACHEDB_DEFAULT, dns_rootname,
-			       dns_dbtype_cache, dns_rdataclass_in, 0, NULL,
-			       &db);
+	result = dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			       dns_rdataclass_in, 0, NULL, &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 	assert_true(dns_db_iscache(db));
 	assert_false(dns_db_iszone(db));

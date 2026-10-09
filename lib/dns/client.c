@@ -192,9 +192,8 @@ createview(isc_mem_t *mctx, dns_rdataclass_t rdclass,
 
 	CHECK(dns_view_createresolver(view, 0, tlsctx_client_cache, dispatchv4,
 				      dispatchv6));
-	CHECK(dns_db_create(mctx, CACHEDB_DEFAULT, dns_rootname,
-			    dns_dbtype_cache, rdclass, 0, NULL,
-			    &view->cachedb));
+	CHECK(dns_db_create(CACHEDB_DEFAULT, dns_rootname, dns_dbtype_cache,
+			    rdclass, 0, NULL, &view->cachedb));
 
 	*viewp = view;
 	return ISC_R_SUCCESS;

@@ -871,9 +871,8 @@ allocate_version(isc_mem_t *mctx, uint32_t serial, unsigned int references,
 }
 
 isc_result_t
-dns__qpzone_create(isc_mem_t *_mctx ISC_ATTR_UNUSED, const dns_name_t *origin,
-		   dns_dbtype_t type, dns_rdataclass_t rdclass,
-		   unsigned int argc ISC_ATTR_UNUSED,
+dns__qpzone_create(const dns_name_t *origin, dns_dbtype_t type,
+		   dns_rdataclass_t rdclass, unsigned int argc ISC_ATTR_UNUSED,
 		   char **argv ISC_ATTR_UNUSED, void *driverarg ISC_ATTR_UNUSED,
 		   dns_db_t **dbp) {
 	qpzonedb_t *qpdb = NULL;
