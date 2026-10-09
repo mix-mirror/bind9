@@ -464,12 +464,14 @@ def test_tcp_message_compression_makes_difference(named_port, ns8):
         "10.53.0.8", zone, query=msg, port=named_port, timeout=10, lifetime=10
     )
 
+    # Sum the wire-format rdata sizes; the text form depends on dnspython's
+    # presentation style (e.g. hex chunking of generic rdata).
     xfr_size = 0
-    for name, node in zone.nodes.items():
-        fqdn = name.derelativize(zone.origin).to_text()
+    for node in zone.nodes.values():
         for rdataset in node.rdatasets:
-            xfr_size += len(f"{fqdn} {rdataset}")
-    assert xfr_size >= 452172, f"XFR size {xfr_size} seems too small"
+            for rdata in rdataset:
+                xfr_size += len(rdata.to_digestable(zone.origin))
+    assert xfr_size >= 132951, f"XFR size {xfr_size} seems too small"
 
     assert len(ns8.log.grep("sending TCP message of")) > 300
 
