@@ -11,7 +11,7 @@
 
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import base64
@@ -134,7 +134,7 @@ def stuffed_range_nsec() -> dns.rrset.RRset:
 
 
 def garbage_rrsig(covered: dns.rrset.RRset, signer: Key) -> dns.rrset.RRset:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     inception = (now - timedelta(hours=1)).strftime("%Y%m%d%H%M%S")
     expiration = (now + timedelta(days=1)).strftime("%Y%m%d%H%M%S")
     signer_name = signer.zone.to_text()
