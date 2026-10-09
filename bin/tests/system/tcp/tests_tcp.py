@@ -11,7 +11,7 @@
 
 from collections.abc import Iterable, Iterator
 from types import TracebackType
-from typing import NamedTuple
+from typing import NamedTuple, Self
 
 import asyncio
 import contextlib
@@ -123,7 +123,7 @@ class TcpConnectionPool:
     def __init__(self) -> None:
         self.connections: list[socket.socket] = []
 
-    async def __aenter__(self) -> "TcpConnectionPool":
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(

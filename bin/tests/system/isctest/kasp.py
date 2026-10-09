@@ -32,6 +32,7 @@ import dns.zone
 from isctest.algorithms import ALL_ALGORITHMS_BY_DST, ECDSAP256SHA256, Algorithm
 from isctest.instance import NamedInstance
 from isctest.run import EnvCmd
+from isctest.text import FlexPattern
 from isctest.zone import FileZoneKey
 
 import isctest.log
@@ -1710,7 +1711,7 @@ def wait_keymgr_done(server: NamedInstance, zone: str, reconfig: bool = False) -
     """
     Block and wait until the keymgr is done processing zone.
     """
-    messages = []
+    messages: list[FlexPattern] = []
     if reconfig:
         messages.append("received control channel command 'reconfig'")
         messages.append("apply_configuration")

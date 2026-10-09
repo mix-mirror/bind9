@@ -10,7 +10,7 @@
 # information regarding copyright ownership.
 
 from re import Match, Pattern
-from typing import Any, TextIO, TypeAlias, TypeVar
+from typing import Any, Self, TextIO, TypeAlias, TypeVar
 
 import abc
 import os
@@ -355,7 +355,7 @@ class WatchLog(abc.ABC):
 
         return matches
 
-    def __enter__(self) -> Any:
+    def __enter__(self) -> Self:
         self._fd = open(self._path, encoding="utf-8")
         self._seek_on_enter()
         self._reader = LineReader(self._fd)
