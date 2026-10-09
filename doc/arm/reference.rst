@@ -3824,7 +3824,7 @@ system.
    and its associated metadata, in bytes or percentage of total physical
    memory. The limit is process-wide: it is shared by the caches of all
    views, and it also covers the delegation database and the address
-   database (ADB), which each receive one eighth of the configured value.
+   database (ADB).
 
    :any:`max-cache-size` can only be set in the :namedconf:ref:`options`
    block. For compatibility with older configurations it is still accepted

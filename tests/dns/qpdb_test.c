@@ -618,7 +618,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_bigrdata) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	/* The cache database allocates from the shared cache context. */
-	isc_mem_t *mctx = dns_cache_mctx;
+	isc_mem_t *mctx = dns_g_mctx;
 	isc_stdtime_t now = isc_stdtime_now();
 	size_t i = 0;
 
@@ -668,7 +668,7 @@ ISC_LOOP_TEST_IMPL(overmempurge_longname) {
 	isc_result_t result;
 	dns_db_t *db = NULL;
 	/* The cache database allocates from the shared cache context. */
-	isc_mem_t *mctx = dns_cache_mctx;
+	isc_mem_t *mctx = dns_g_mctx;
 	isc_stdtime_t now = isc_stdtime_now();
 	size_t i = 0;
 

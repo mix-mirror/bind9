@@ -83,13 +83,9 @@
 #define DNS_ADBADDRINFO_MAGIC	 ISC_MAGIC('a', 'd', 'A', 'I')
 #define DNS_ADBADDRINFO_VALID(x) ISC_MAGIC_VALID(x, DNS_ADBADDRINFO_MAGIC)
 
-#define DNS_ADB_MINADBSIZE UINT64_C(1024 * 1024) /*%< 1 MB */
-
 /***
  *** TYPES
  ***/
-
-extern isc_mem_t *dns_adb_mctx;
 
 typedef struct dns_adbname dns_adbname_t;
 
@@ -601,16 +597,6 @@ dns_adb_flush(dns_adb_t *adb);
  */
 
 void
-dns_adb_setadbsize(size_t size);
-/*%<
- * Set a target memory size.  If memory usage exceeds the target
- * size entries will be removed before they would have expired on
- * a random basis.
- *
- * If 'size' is 0 then memory usage is unlimited.
- */
-
-void
 dns_adb_flushname(dns_adb_t *adb, const dns_name_t *name);
 /*%<
  * Flush 'name' from the adb cache.
@@ -748,8 +734,3 @@ dns_adb_dumpquota(dns_adb_t *adb, isc_buffer_t *buf);
  * Requires:
  * \li 'adb' is valid.
  */
-
-void
-dns__adb_initialize(void);
-void
-dns__adb_shutdown(void);

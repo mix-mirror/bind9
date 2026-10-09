@@ -100,8 +100,6 @@ ISC_REFCOUNT_DECL(dns_delegset);
 
 typedef struct dns_delegdb dns_delegdb_t;
 
-extern isc_mem_t *dns_deleg_mctx;
-
 /*
  * Allocate and initialize the delegation database. `db` is attached to the
  * caller.
@@ -116,9 +114,6 @@ dns_delegdb_create(dns_delegdb_t **delegdbp);
 void
 dns_delegdb_setconfig(dns_delegdb_t		 *delegdb,
 		      const dns_delegdb_config_t *config);
-
-void
-dns_delegdb_setdelegsize(size_t size);
 
 /*
  * Returns a copy of the current configuration of the delegation database. Can
@@ -290,8 +285,3 @@ void
 dns_delegdb_rootns_cleanup(dns_rdatacallbacks_t *callbacks);
 
 ISC_REFCOUNT_DECL(dns_delegdb);
-
-void
-dns__deleg_initialize(void);
-void
-dns__deleg_shutdown(void);

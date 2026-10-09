@@ -2007,7 +2007,7 @@ generatexml(named_server_t *server, uint32_t flags, int *buflen,
 						 ISC_XMLCHAR "CacheMemInUse"));
 		TRY0(xmlTextWriterWriteFormatString(
 			writer, "%" PRIu64,
-			(uint64_t)isc_mem_inuse(dns_cache_mctx)));
+			(uint64_t)isc_mem_inuse(dns_g_mctx)));
 		TRY0(xmlTextWriterEndElement(writer)); /* counter */
 		TRY0(xmlTextWriterEndElement(writer)); /* cachestats */
 
@@ -3179,7 +3179,7 @@ generatejson(named_server_t *server, size_t *msglen, const char **msg,
 		CHECKMEM(counters);
 		{
 			json_object *meminuse = json_object_new_int64(
-				isc_mem_inuse(dns_cache_mctx));
+				isc_mem_inuse(dns_g_mctx));
 			if (meminuse == NULL) {
 				json_object_put(counters);
 				result = ISC_R_NOMEMORY;
@@ -4260,8 +4260,8 @@ named_stats_dump(named_server_t *server, FILE *fp) {
 	 * is reported once rather than per view.
 	 */
 	fprintf(fp, "++ Cache Memory Statistics ++\n");
-	fprintf(fp, "%20" PRIu64 " %s\n",
-		(uint64_t)isc_mem_inuse(dns_cache_mctx), "cache memory in use");
+	fprintf(fp, "%20" PRIu64 " %s\n", (uint64_t)isc_mem_inuse(dns_g_mctx),
+		"cache memory in use");
 
 	fprintf(fp, "++ Cache Statistics ++\n");
 	ISC_LIST_FOREACH(server->viewlist, view, link) {

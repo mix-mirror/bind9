@@ -74,7 +74,7 @@ ISC_REFCOUNT_TRACE_DECL(dns_cache);
 ISC_REFCOUNT_DECL(dns_cache);
 #endif
 
-extern isc_mem_t *dns_cache_mctx;
+extern isc_mem_t *dns_g_mctx;
 
 isc_result_t
 dns_cache_create(dns_rdataclass_t rdclass, const char *cachename,

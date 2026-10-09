@@ -3687,18 +3687,13 @@ configure_max_cache_size(const cfg_obj_t **maps) {
 }
 
 /*
- * max-cache-size is a process-wide limit: 6/8 goes to the cache database,
- * 1/8 to the delegation database and 1/8 to the ADB.  Each library clamps
- * its share to its own minimum.
+ * max-cache-size is a process-wide limit.
  */
 static void
 configure_cache_sizes(const cfg_obj_t **maps) {
 	size_t max_cache_size = configure_max_cache_size(maps);
-	size_t slice = max_cache_size / 8;
 
-	dns_cache_setcachesize(slice * 6);
-	dns_delegdb_setdelegsize(slice);
-	dns_adb_setadbsize(slice);
+	dns_cache_setcachesize(max_cache_size);
 }
 
 static isc_result_t

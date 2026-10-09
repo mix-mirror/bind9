@@ -18,6 +18,7 @@
 #include <isc/urcu.h>
 #include <isc/uv.h>
 
+#include <dns/cache.h>
 #include <dns/callbacks.h>
 #include <dns/deleg.h>
 #include <dns/name.h>
@@ -31,8 +32,6 @@
 
 #define DELEGDB_MAGIC	  ISC_MAGIC('D', 'e', 'G', 'D')
 #define VALID_DELEGDB(db) ISC_MAGIC_VALID(db, DELEGDB_MAGIC)
-
-#define DELEGDB_MINSIZE (1024 * 1024) /* 1MiB */
 
 typedef struct delegdb_node delegdb_node_t;
 
@@ -89,7 +88,7 @@ delegdb_destroy(dns_delegdb_t *delegdb) {
 
 	LIBDNS_DELEGDB_SHUTDOWN(delegdb);
 
-	isc_mem_put(dns_deleg_mctx, delegdb, sizeof(*delegdb));
+	isc_mem_put(dns_g_mctx, delegdb, sizeof(*delegdb));
 }
 
 ISC_REFCOUNT_IMPL(dns_delegdb, delegdb_destroy);
@@ -136,7 +135,7 @@ delegdb_node_destroy(delegdb_node_t *node) {
 
 	dns_delegset_detach(&node->delegset);
 
-	isc_mem_put(dns_deleg_mctx, node, delegdb_node_size(node));
+	isc_mem_put(dns_g_mctx, node, delegdb_node_size(node));
 
 	qplru_detach(&qplru);
 }
@@ -192,25 +191,23 @@ static dns_qpmethods_t qpmethods = { .attach = dbnode_attach,
 				     .makekey = makekey,
 				     .triename = triename };
 
-isc_mem_t *dns_deleg_mctx = NULL;
-
 void
 dns_delegdb_create(dns_delegdb_t **delegdbp) {
 	dns_delegdb_t *delegdb = NULL;
 
 	REQUIRE(delegdbp != NULL && *delegdbp == NULL);
 
-	delegdb = isc_mem_get(dns_deleg_mctx, sizeof(*delegdb));
+	delegdb = isc_mem_get(dns_g_mctx, sizeof(*delegdb));
 	*delegdb = (dns_delegdb_t){ .magic = DELEGDB_MAGIC,
 				    .references = ISC_REFCOUNT_INITIALIZER(1),
 				    .config = {} };
 
-	qplru_t *qplru = isc_mem_get(dns_deleg_mctx, sizeof(*qplru));
+	qplru_t *qplru = isc_mem_get(dns_g_mctx, sizeof(*qplru));
 	*qplru = (qplru_t){
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 	};
 
-	dns_qpmulti_create(dns_deleg_mctx, &qpmethods, &qplru->nodes,
+	dns_qpmulti_create(dns_g_mctx, &qpmethods, &qplru->nodes,
 			   &qplru->nodes);
 	ISC_SIEVE_INIT(qplru->lru);
 
@@ -223,7 +220,7 @@ dns_delegdb_create(dns_delegdb_t **delegdbp) {
 
 static void
 qplru_destroy(qplru_t *qplru) {
-	isc_mem_put(dns_deleg_mctx, qplru, sizeof(*qplru));
+	isc_mem_put(dns_g_mctx, qplru, sizeof(*qplru));
 }
 
 inline static bool
@@ -382,14 +379,13 @@ dns_delegset_allocset(dns_delegdb_t *delegdb, dns_delegset_t **delegsetp) {
 	REQUIRE(VALID_DELEGDB(delegdb));
 	REQUIRE(delegsetp != NULL && *delegsetp == NULL);
 
-	dns_delegset_t *delegset = isc_mem_get(dns_deleg_mctx,
-					       sizeof(*delegset));
+	dns_delegset_t *delegset = isc_mem_get(dns_g_mctx, sizeof(*delegset));
 	*delegset = (dns_delegset_t){
 		.magic = DNS_DELEGSET_MAGIC,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 		.delegs = ISC_LIST_INITIALIZER,
 	};
-	isc_mem_attach(dns_deleg_mctx, &delegset->mctx);
+	isc_mem_attach(dns_g_mctx, &delegset->mctx);
 
 	*delegsetp = delegset;
 }
@@ -486,7 +482,7 @@ delegdb_cleanup(dns_delegdb_t *delegdb, dns_qp_t *qp, size_t requested) {
 	delegdb_node_t *node = NULL;
 	size_t reclaimed = 0;
 
-	if (!isc_mem_isovermem(dns_deleg_mctx)) {
+	if (!isc_mem_isovermem(dns_g_mctx)) {
 		return;
 	}
 
@@ -568,7 +564,7 @@ delegdb_node_prepare(dns_delegdb_t *delegdb, isc_stdtime_t now, dns_ttl_t ttl,
 	isc_region_t zonecut_r = { 0 };
 	dns_name_toregion(zonecut, &zonecut_r);
 
-	delegdb_node_t *node = isc_mem_get(dns_deleg_mctx,
+	delegdb_node_t *node = isc_mem_get(dns_g_mctx,
 					   sizeof(*node) + zonecut_r.length);
 	*node = (delegdb_node_t){
 
@@ -629,7 +625,7 @@ dns_delegset_insert(dns_delegdb_t *delegdb, const dns_name_t *zonecut,
 	 * the delegdb. This exclude transient delegset built from rdataset (see
 	 * dns_delegset_fromrdataset()).
 	 */
-	REQUIRE(delegset->mctx == dns_deleg_mctx);
+	REQUIRE(delegset->mctx == dns_g_mctx);
 
 	if (LIBDNS_DELEGDB_INSERT_START_ENABLED() ||
 	    LIBDNS_DELEGDB_INSERT_DONE_ENABLED())
@@ -1111,30 +1107,6 @@ dns_delegdb_setconfig(dns_delegdb_t *delegdb,
 	delegdb->config = *config;
 }
 
-void
-dns_delegdb_setdelegsize(size_t size) {
-	size_t lowater;
-	size_t hiwater;
-
-	if (size != 0 && size < DELEGDB_MINSIZE) {
-		size = DELEGDB_MINSIZE;
-	}
-
-	hiwater = size - (size >> 3); /* Approximately 7/8ths. */
-	lowater = size - (size >> 2); /* Approximately 3/4ths. */
-
-	if (size == 0 || hiwater == 0 || lowater == 0) {
-		isc_mem_clearwater(dns_deleg_mctx);
-
-		/*
-		 * TODO: Is it worth a warning if size > 0? Sounds like
-		 * implicit overmem bypass, so the user should be warned...
-		 */
-	} else {
-		isc_mem_setwater(dns_deleg_mctx, hiwater, lowater);
-	}
-}
-
 typedef struct {
 	dns_delegdb_t *db;
 	dns_delegset_t *delegset;
@@ -1227,8 +1199,7 @@ dns_delegdb_rootns_prepare(dns_delegdb_t *db, dns_rdatacallbacks_t *callbacks) {
 
 	callbacks->update = delegdb_rootns_update;
 
-	delegdb_rootns_ctx_t *ctx = isc_mem_cget(dns_deleg_mctx, 1,
-						 sizeof(*ctx));
+	delegdb_rootns_ctx_t *ctx = isc_mem_cget(dns_g_mctx, 1, sizeof(*ctx));
 	dns_delegdb_attach(db, &ctx->db);
 	dns_delegset_allocset(db, &ctx->delegset);
 	dns_delegset_allocdeleg(ctx->delegset, DNS_DELEGTYPE_NS_GLUES,
@@ -1282,21 +1253,7 @@ dns_delegdb_rootns_cleanup(dns_rdatacallbacks_t *callbacks) {
 	dns_delegdb_attach(ctx->db, &db);
 	dns_delegset_detach(&ctx->delegset);
 	dns_delegdb_detach(&ctx->db);
-	isc_mem_cput(dns_deleg_mctx, ctx, 1, sizeof(*ctx));
+	isc_mem_cput(dns_g_mctx, ctx, 1, sizeof(*ctx));
 	callbacks->add_private = NULL;
 	dns_delegdb_detach(&db);
-}
-
-void
-dns__deleg_initialize(void) {
-	/*
-	 * The DB uses its own memory context in order to easily enforce
-	 * overmem policies based on allocations made from this memory context.
-	 */
-	isc_mem_create("deleg", &dns_deleg_mctx);
-}
-
-void
-dns__deleg_shutdown(void) {
-	isc_mem_detach(&dns_deleg_mctx);
 }

@@ -640,9 +640,9 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	assert_non_null(db);
 
 	/*
-	 * dns_deleg_mctx is shared by every test case in this process and
-	 * the delegdb is torn down via call_rcu(), so wait for the previous
-	 * cases' deferred frees before measuring memory use.
+	 * dns_g_mctx is shared by every test case in this process and the
+	 * delegdb is torn down via call_rcu(), so wait for the previous cases'
+	 * deferred frees before measuring memory use.
 	 */
 	rcu_barrier();
 
@@ -650,7 +650,7 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	 * hiwater is 4375000 = 5000000 - (5000000 >> 3)
 	 * lowater is 3750000 = 5000000 - (5000000 >> 2)
 	 */
-	dns_delegdb_setdelegsize(5000000);
+	dns_cache_setcachesize(5000000);
 
 	now = isc_stdtime_now();
 
@@ -671,14 +671,13 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	dns_delegset_allocdeleg(delegset, DNS_DELEGTYPE_DELEG_ADDRESSES,
 				&deleg);
 
-	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx), 500, 2500);
+	assert_int_in_range(isc_mem_inuse(dns_g_mctx), 500, 2500);
 
 	for (size_t i = 0; i < NENTRIES; i++) {
 		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	}
 
-	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
-			    ENTRIES_MEM(NENTRIES),
+	assert_int_in_range(isc_mem_inuse(dns_g_mctx), ENTRIES_MEM(NENTRIES),
 			    ENTRIES_MEM(NENTRIES) + 100000);
 
 	writedb(db, "stuff.", 10, &delegset, true);
@@ -701,7 +700,7 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	 * with DB mem context) overmem conditions will be detected, and the
 	 * expired node will be removed
 	 */
-	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
+	assert_int_in_range(isc_mem_inuse(dns_g_mctx),
 			    ENTRIES_MEM(2 * NENTRIES),
 			    ENTRIES_MEM(2 * NENTRIES) + 100000);
 	writedb(db, "bar.", 30, &delegset, true);
@@ -715,8 +714,7 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	 */
 	rcu_barrier();
 
-	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
-			    ENTRIES_MEM(NENTRIES),
+	assert_int_in_range(isc_mem_inuse(dns_g_mctx), ENTRIES_MEM(NENTRIES),
 			    ENTRIES_MEM(NENTRIES) + 100000);
 
 	/*
@@ -737,7 +735,7 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	for (size_t i = 0; i < NENTRIES; i++) {
 		addipdeleg(AF_INET6, "1111::2222", delegset, deleg);
 	}
-	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
+	assert_int_in_range(isc_mem_inuse(dns_g_mctx),
 			    ENTRIES_MEM(2 * NENTRIES),
 			    ENTRIES_MEM(2 * NENTRIES) + 100000);
 	writedb(db, "baz.", 30, &delegset, true);
@@ -749,7 +747,7 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	 */
 	rcu_barrier();
 
-	assert_int_in_range(isc_mem_inuse(dns_deleg_mctx),
+	assert_int_in_range(isc_mem_inuse(dns_g_mctx),
 			    ENTRIES_MEM(2 * NENTRIES),
 			    ENTRIES_MEM(2 * NENTRIES) + 100000);
 
@@ -765,7 +763,7 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	assert_int_equal(result, ISC_R_NOTFOUND);
 
 	/* Remove the limit again so that the later cases are unaffected. */
-	dns_delegdb_setdelegsize(0);
+	isc_mem_clearwater(dns_g_mctx);
 
 	shutdowntest(&db);
 }
@@ -1057,7 +1055,7 @@ teardowntests(ISC_ATTR_UNUSED void *arg) {
 	 */
 	db->magic = 0;
 	qplru = rcu_xchg_pointer(&db->qplru, NULL);
-	isc_mem_put(dns_deleg_mctx, db, sizeof(*db));
+	isc_mem_put(dns_g_mctx, db, sizeof(*db));
 	db = NULL;
 	synchronize_rcu();
 
@@ -1068,11 +1066,11 @@ teardowntests(ISC_ATTR_UNUSED void *arg) {
 	 */
 	rcu_read_lock();
 	qplru_shutdown_rcu(&qplru->rcu_head);
-	dns__deleg_shutdown();
+	dns__cache_shutdown();
 	rcu_read_unlock();
 
 	rcu_barrier();
-	dns__deleg_initialize();
+	dns__cache_initialize();
 	shutdownloop(NULL);
 }
 

@@ -48,7 +48,7 @@
 #define CACHE_MAGIC	   ISC_MAGIC('$', '$', '$', '$')
 #define VALID_CACHE(cache) ISC_MAGIC_VALID(cache, CACHE_MAGIC)
 
-isc_mem_t *dns_cache_mctx = NULL;
+isc_mem_t *dns_g_mctx = NULL;
 
 /***
  ***	Types
@@ -201,7 +201,7 @@ dns_cache_setcachesize(size_t size) {
 
 	size_t hi = size - (size >> 3); /* ~ 7/8ths. */
 	size_t lo = size - (size >> 2); /* ~ 3/4ths. */
-	isc_mem_setwater(dns_cache_mctx, hi, lo);
+	isc_mem_setwater(dns_g_mctx, hi, lo);
 }
 
 void
@@ -637,9 +637,9 @@ dns__cache_initialize(void) {
 	 * This will be the cache memory context, which is subject
 	 * to cleaning when the configured memory limits are exceeded.
 	 */
-	isc_mem_create("cache", &dns_cache_mctx);
+	isc_mem_create("cache", &dns_g_mctx);
 }
 void
 dns__cache_shutdown(void) {
-	isc_mem_detach(&dns_cache_mctx);
+	isc_mem_detach(&dns_g_mctx);
 }
