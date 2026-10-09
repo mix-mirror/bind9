@@ -24,13 +24,6 @@
  */
 typedef struct {
 	/*
-	 * Defines the size of the delegation cache. Whenever the effective
-	 * cache size comes close to this size, least recently used cache
-	 * entries are discarded. Value `0` means there is no limitation.
-	 */
-	size_t dbsize;
-
-	/*
 	 * Confgure minimum and maximum TTL of a delegation. A value of 0 means
 	 * there is no limits.
 	 */
@@ -122,6 +115,9 @@ dns_delegdb_create(dns_delegdb_t **delegdbp);
 void
 dns_delegdb_setconfig(dns_delegdb_t		 *delegdb,
 		      const dns_delegdb_config_t *config);
+
+void
+dns_delegdb_setdelegsize(size_t size);
 
 /*
  * Returns a copy of the current configuration of the delegation database. Can

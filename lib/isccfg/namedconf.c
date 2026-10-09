@@ -1536,6 +1536,7 @@ static cfg_clausedef_t options_clauses[] = {
 	{ "lock-file", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
 	{ "managed-keys-directory", &cfg_type_qstring, 0, NULL },
 	{ "match-mapped-addresses", &cfg_type_boolean, 0, NULL },
+	{ "max-cache-size", &cfg_type_maxcachesize, 0, NULL },
 	{ "max-rsa-exponent-size", &cfg_type_uint32, 0, NULL },
 	{ "memstatistics", &cfg_type_boolean, 0, NULL },
 	{ "memstatistics-file", &cfg_type_qstring, 0, NULL },
@@ -2391,7 +2392,6 @@ static cfg_clausedef_t view_clauses[] = {
 	{ "lame-ttl", &cfg_type_duration, 0, NULL },
 	{ "lmdb-mapsize", &cfg_type_sizeval, CFG_CLAUSEFLAG_OPTIONAL, NULL },
 	{ "max-acache-size", NULL, CFG_CLAUSEFLAG_ANCIENT, NULL },
-	{ "max-cache-size", &cfg_type_maxcachesize, 0, NULL },
 	{ "max-cache-ttl", &cfg_type_duration, 0, NULL },
 	{ "max-delegation-ttl", &cfg_type_duration, 0, NULL },
 	{ "max-clients-per-query", &cfg_type_uint32, 0, NULL },
@@ -2480,6 +2480,13 @@ static cfg_clausedef_t view_only_clauses[] = {
 	{ "match-clients", &cfg_type_bracketed_aml, 0, NULL },
 	{ "match-destinations", &cfg_type_bracketed_aml, 0, NULL },
 	{ "match-recursive-only", &cfg_type_boolean, 0, NULL },
+	/*
+	 * max-cache-size is a process-wide limit and is only honored at the
+	 * options level; it is still parsed here so that older configurations
+	 * keep loading, but the value is ignored and a warning is logged.
+	 */
+	{ "max-cache-size", &cfg_type_maxcachesize, CFG_CLAUSEFLAG_OBSOLETE,
+	  NULL },
 	{ NULL, NULL, 0, NULL }
 };
 

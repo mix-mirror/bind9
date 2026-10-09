@@ -25,8 +25,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <dns/name.h>
-
 #ifdef HAVE_DNSTAP
 #include <fstrm.h>
 #endif
@@ -67,6 +65,7 @@
 #include <dns/cache.h>
 #include <dns/catz.h>
 #include <dns/db.h>
+#include <dns/deleg.h>
 #include <dns/dispatch.h>
 #include <dns/dlz.h>
 #include <dns/dns64.h>
@@ -83,6 +82,7 @@
 #include <dns/keyvalues.h>
 #include <dns/master.h>
 #include <dns/masterdump.h>
+#include <dns/name.h>
 #include <dns/nametree.h>
 #include <dns/nsec3.h>
 #include <dns/nta.h>
@@ -221,14 +221,6 @@
 		}                              \
 	}
 
-/*%
- * Maximum ADB size for views that share a cache.  Use this limit to suppress
- * the total of memory footprint, which should be the main reason for sharing
- * a cache.  Only effective when a finite max-cache-size is specified.
- * This is currently defined to be 8MB.
- */
-#define MAX_ADB_SIZE_FOR_CACHESHARE 8388608U
-
 struct named_dispatch {
 	isc_sockaddr_t addr;
 	unsigned int dispatchgen;
@@ -240,7 +232,6 @@ struct named_cache {
 	dns_cache_t *cache;
 	dns_view_t *primaryview;
 	bool needflush;
-	bool adbsizeadjusted;
 	dns_rdataclass_t rdclass;
 	ISC_LINK(named_cache_t) link;
 };
@@ -1701,8 +1692,8 @@ cache_reusable(dns_view_t *originview, dns_view_t *view,
 
 static bool
 cache_sharable(dns_view_t *originview, dns_view_t *view,
-	       bool new_zero_no_soattl, uint64_t new_max_cache_size,
-	       uint32_t new_stale_ttl, uint32_t new_stale_refresh_time) {
+	       bool new_zero_no_soattl, uint32_t new_stale_ttl,
+	       uint32_t new_stale_refresh_time) {
 	/*
 	 * If the cache cannot even reused for the same view, it cannot be
 	 * shared with other views.
@@ -1717,8 +1708,7 @@ cache_sharable(dns_view_t *originview, dns_view_t *view,
 	 */
 	if (dns_cache_getservestalettl(originview->cache) != new_stale_ttl ||
 	    dns_cache_getservestalerefresh(originview->cache) !=
-		    new_stale_refresh_time ||
-	    dns_cache_getcachesize(originview->cache) != new_max_cache_size)
+		    new_stale_refresh_time)
 	{
 		return false;
 	}
@@ -3618,12 +3608,8 @@ max_cache_size_as_percent(const cfg_obj_t *obj, uint32_t percent) {
 }
 
 static size_t
-default_max_cache_size(const dns_view_t *view, const cfg_obj_t *obj) {
-	if (view->recursion) {
-		return max_cache_size_as_percent(obj, 90);
-	} else {
-		return DNS_CACHE_MINSIZE;
-	}
+default_max_cache_size(const cfg_obj_t *obj) {
+	return max_cache_size_as_percent(obj, 90);
 }
 
 static size_t
@@ -3648,7 +3634,7 @@ sanitized_max_cache_size(const cfg_obj_t *obj, uint64_t value) {
 }
 
 static size_t
-configure_max_cache_size(dns_view_t *view, const cfg_obj_t *maps[4]) {
+configure_max_cache_size(const cfg_obj_t **maps) {
 	isc_result_t result;
 	const cfg_obj_t *obj = NULL;
 	const char *str = NULL;
@@ -3667,25 +3653,28 @@ configure_max_cache_size(dns_view_t *view, const cfg_obj_t *maps[4]) {
 	obj = NULL;
 	result = named_config_get(maps, "max-cache-size", &obj);
 	INSIST(result == ISC_R_SUCCESS);
-	if (cfg_obj_isstring(obj) &&
-	    strcasecmp(cfg_obj_asstring(obj), "default") == 0)
-	{
-		/*
-		 * The default for a view with recursion
-		 * is 90% of memory. With no recursion,
-		 * it's the minimum cache size allowed by
-		 * dns_cache_setcachesize().
-		 */
-		return default_max_cache_size(view, obj);
-	} else if (cfg_obj_isstring(obj)) {
+	if (cfg_obj_isstring(obj)) {
 		str = cfg_obj_asstring(obj);
-		INSIST(strcasecmp(str, "unlimited") == 0);
 
-		cfg_obj_log(obj, ISC_LOG_WARNING,
-			    "'max-cache-size' can't be unlimited; "
-			    "falling back to default");
+		if (strcasecmp(str, "default") == 0) {
+			/*
+			 * The cache size is a process-wide limit, so the
+			 * default does not depend on any view's 'recursion'
+			 * setting; it is always 90% of memory.
+			 */
+		} else if (strcasecmp(str, "unlimited") == 0) {
+			cfg_obj_log(obj, ISC_LOG_WARNING,
+				    "'max-cache-size' can't be unlimited; "
+				    "falling back to default");
 
-		return default_max_cache_size(view, obj);
+		} else {
+			cfg_obj_log(obj, ISC_LOG_CRITICAL,
+				    "invalid value to 'max-cache-size': %s; "
+				    "falling back to default",
+				    str);
+		}
+
+		return default_max_cache_size(obj);
 	} else if (cfg_obj_ispercentage(obj)) {
 		return max_cache_size_as_percent(obj,
 						 cfg_obj_aspercentage(obj));
@@ -3697,10 +3686,24 @@ configure_max_cache_size(dns_view_t *view, const cfg_obj_t *maps[4]) {
 	}
 }
 
+/*
+ * max-cache-size is a process-wide limit: 6/8 goes to the cache database,
+ * 1/8 to the delegation database and 1/8 to the ADB.  Each library clamps
+ * its share to its own minimum.
+ */
+static void
+configure_cache_sizes(const cfg_obj_t **maps) {
+	size_t max_cache_size = configure_max_cache_size(maps);
+	size_t slice = max_cache_size / 8;
+
+	dns_cache_setcachesize(slice * 6);
+	dns_delegdb_setdelegsize(slice);
+	dns_adb_setadbsize(slice);
+}
+
 static isc_result_t
 configure_view_delegdb(const cfg_obj_t **maps, dns_view_t *pview,
-		       dns_view_t *view, size_t cachesz,
-		       const char *hintsfilename) {
+		       dns_view_t *view, const char *hintsfilename) {
 	isc_result_t result;
 	const cfg_obj_t *obj;
 	uint32_t minttl, maxttl;
@@ -3735,9 +3738,7 @@ configure_view_delegdb(const cfg_obj_t **maps, dns_view_t *pview,
 		return ISC_R_RANGE;
 	}
 
-	dns_delegdb_config_t config = { .dbsize = cachesz,
-					.minttl = minttl,
-					.maxttl = maxttl };
+	dns_delegdb_config_t config = { .minttl = minttl, .maxttl = maxttl };
 	dns_delegdb_setconfig(view->deleg, &config);
 
 	/*
@@ -3789,8 +3790,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	in_port_t port;
 	dns_cache_t *cache = NULL;
 	isc_result_t result;
-	size_t max_cache_size;
-	size_t max_adb_size;
 	uint32_t lame_ttl, fail_ttl;
 	uint32_t max_stale_ttl = 0;
 	uint32_t stale_refresh_time = 0;
@@ -3997,15 +3996,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	INSIST(result == ISC_R_SUCCESS);
 	view->recursion = (view->rdclass == dns_rdataclass_in &&
 			   cfg_obj_asboolean(obj));
-
-	max_cache_size = configure_max_cache_size(view, maps);
-
-	/*
-	 * Since both the delegation DB and ADB uses 1/8 of the
-	 * `max_cache_size`, let's use 6/8 for the main cache DB.
-	 */
-	const size_t cache_size_slice = max_cache_size / 8;
-	const size_t main_cache_size = cache_size_slice * 6;
 
 	/* Check-names. */
 	obj = NULL;
@@ -4292,8 +4282,7 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	}
 	if (nsc != NULL) {
 		if (!cache_sharable(nsc->primaryview, view, zero_no_soattl,
-				    main_cache_size, max_stale_ttl,
-				    stale_refresh_time))
+				    max_stale_ttl, stale_refresh_time))
 		{
 			isc_log_write(NAMED_LOGCATEGORY_GENERAL,
 				      NAMED_LOGMODULE_SERVER, ISC_LOG_WARNING,
@@ -4368,7 +4357,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 
 	dns_view_setcache(view, cache, shared_cache);
 
-	dns_cache_setcachesize(cache, main_cache_size);
 	dns_cache_setservestalettl(cache, max_stale_ttl);
 	dns_cache_setservestalerefresh(cache, stale_refresh_time);
 
@@ -4394,11 +4382,10 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 				      dispatch4, dispatch6));
 
 	/*
-	 * Configure delegdb and detatch the previous viw which isn't needed
+	 * Configure delegdb and detach the previous view which isn't needed
 	 * afterwards.
 	 */
-	result = configure_view_delegdb(maps, pview, view, cache_size_slice,
-					hintsfilename);
+	result = configure_view_delegdb(maps, pview, view, hintsfilename);
 	if (pview != NULL) {
 		dns_view_detach(&pview);
 	}
@@ -4424,34 +4411,6 @@ configure_view(dns_view_t *view, dns_viewlist_t *viewlist, cfg_obj_t *config,
 	}
 	dns_resolver_setqueryrttstats(view->resolver, resqueryinrttstats,
 				      resqueryoutrttstats);
-
-	/*
-	 * Set the ADB cache size to 1/8th of the max-cache-size or
-	 * MAX_ADB_SIZE_FOR_CACHESHARE when the cache is shared.
-	 */
-	max_adb_size = cache_size_slice;
-	if (max_adb_size < DNS_ADB_MINADBSIZE) {
-		max_adb_size = DNS_ADB_MINADBSIZE; /* Force minimum. */
-	}
-	if (view != nsc->primaryview &&
-	    max_adb_size > MAX_ADB_SIZE_FOR_CACHESHARE)
-	{
-		max_adb_size = MAX_ADB_SIZE_FOR_CACHESHARE;
-		if (!nsc->adbsizeadjusted) {
-			dns_view_getadb(nsc->primaryview, &adb);
-			if (adb != NULL) {
-				dns_adb_setadbsize(adb,
-						   MAX_ADB_SIZE_FOR_CACHESHARE);
-				nsc->adbsizeadjusted = true;
-				dns_adb_detach(&adb);
-			}
-		}
-	}
-	dns_view_getadb(view, &adb);
-	if (adb != NULL) {
-		dns_adb_setadbsize(adb, max_adb_size);
-		dns_adb_detach(&adb);
-	}
 
 	/*
 	 * Set up ADB quotas
@@ -7949,6 +7908,12 @@ apply_configuration(cfg_obj_t *effectiveconfig, cfg_obj_t *userconfig,
 		softquota = (max * 90) / 100;
 	}
 	isc_quota_soft(&server->sctx->recursionquota, softquota);
+
+	/*
+	 * Set the process-wide cache, delegation DB and ADB memory limits
+	 * before the views are (re)configured.
+	 */
+	configure_cache_sizes(maps);
 
 	obj = NULL;
 	result = named_config_get(maps, "sig0checks-quota-exempt", &obj);

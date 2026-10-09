@@ -274,6 +274,7 @@ options {\n\
 	listen-on port 53 tls \"foobar\" {\n\
 		127.0.0.1/32;\n\
 	};\n\
+	max-cache-size 2097152;\n\
 	notify-rate 20;\n\
 	allow-recursion {\n\
 		\"localhost\";\n\
@@ -295,7 +296,6 @@ view \"_bind\" chaos {\n\
 			grant \"int\" zonesub \"any\";\n\
 		};\n\
 	};\n\
-	max-cache-size 2097152;\n\
 	rate-limit {\n\
 		min-table-size 10;\n\
 		slip 0;\n\

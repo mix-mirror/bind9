@@ -69,6 +69,8 @@ dns__lib_shutdown(void) {
 		return;
 	}
 
+	rcu_barrier();
+
 	dns__deleg_shutdown();
 	dns__adb_shutdown();
 	dns__cache_shutdown();

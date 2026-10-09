@@ -772,6 +772,17 @@ fi
 status=$((status + ret))
 
 n=$((n + 1))
+echo_i "check that max-cache-size in a view generates a warning ($n)"
+ret=0
+$CHECKCONF warn-max-cache-size-view.conf >checkconf.out$n 2>&1 || ret=1
+grep "option 'max-cache-size' is obsolete" <checkconf.out$n >/dev/null || ret=1
+if [ $ret -ne 0 ]; then
+  echo_i "failed"
+  ret=1
+fi
+status=$((status + ret))
+
+n=$((n + 1))
 echo_i "check that 'check-wildcard no;' succeeds as configured ($n)"
 ret=0
 $CHECKCONF -z check-wildcard-no.conf >checkconf.out$n 2>&1 || ret=1

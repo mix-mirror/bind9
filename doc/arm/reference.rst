@@ -1139,8 +1139,8 @@ default is used.
    requires the following configurable options be consistent among these
    views: :any:`check-names`, :any:`dnssec-accept-expired`,
    :any:`dnssec-validation`, :any:`max-cache-ttl`, :any:`max-ncache-ttl`,
-   :any:`max-stale-ttl`, :any:`max-cache-size`, :any:`min-cache-ttl`,
-   :any:`min-ncache-ttl`, and :any:`zero-no-soa-ttl`.
+   :any:`max-stale-ttl`, :any:`min-cache-ttl`, :any:`min-ncache-ttl`, and
+   :any:`zero-no-soa-ttl`.
 
    Note that there may be other parameters that may cause confusion if
    they are inconsistent for different views that share a single cache.
@@ -3818,25 +3818,25 @@ system.
 
 .. namedconf:statement:: max-cache-size
    :tags: server
-   :short: Sets the maximum amount of memory to use for an individual cache database and its associated metadata.
+   :short: Sets the maximum amount of memory to use for the cache database and its associated metadata.
 
-   This sets the maximum amount of memory to use for an individual cache
-   database and its associated metadata, in bytes or percentage of total
-   physical memory. By default, each view has its own separate cache,
-   which means the total amount of memory required for cache data is the
-   sum of the cache database sizes for all views (unless the
-   :any:`attach-cache` option is used).
+   This sets the maximum amount of memory to use for the cache database
+   and its associated metadata, in bytes or percentage of total physical
+   memory. The limit is process-wide: it is shared by the caches of all
+   views, and it also covers the delegation database and the address
+   database (ADB), which each receive one eighth of the configured value.
 
-   When the amount of data in a cache database reaches the configured
+   :any:`max-cache-size` can only be set in the :namedconf:ref:`options`
+   block. For compatibility with older configurations it is still accepted
+   inside a :any:`view` block, but the value is ignored there and
+   :iscman:`named-checkconf` and :iscman:`named` log a warning.
+
+   When the amount of data in the cache database reaches the configured
    limit, :iscman:`named` starts purging non-expired records (following an
    LRU-based strategy).
 
-   The default size limit for each individual cache is:
-
-     - 90% of physical memory for views with :any:`recursion` set to
-       ``yes`` (the default), or
-
-     - 2 MB for views with :any:`recursion` set to ``no``.
+   The default size limit is 90% of physical memory, regardless of
+   whether :any:`recursion` is enabled.
 
    Any positive value smaller than 2 MB is ignored and reset to 2 MB.
 
@@ -3846,25 +3846,11 @@ system.
        no limit on the cache size; this is no longer permitted as
        TTL-based cleaning has been removed from :iscman:`named`.
 
-   .. note::
-
-       For configurations which define multiple views with separate
-       caches and recursion enabled, it is recommended to set
-       :any:`max-cache-size` appropriately for each view, as using the
-       default value of that option (90% of physical memory for each
-       individual cache) may lead to memory exhaustion over time.
-
    .. warning::
 
        Setting :any:`max-cache-size` to a value lower than 256 MB is
        permitted but not recommended; LRU-only cache eviction may cause
        excessive churn under load.
-
-   Upon startup and reconfiguration, caches with a limited size
-   preallocate a small amount of memory (less than 1% of
-   :any:`max-cache-size` for a given view). This preallocation serves as an
-   optimization to eliminate extra latency introduced by resizing
-   internal cache structures.
 
    On systems where detection of the amount of physical memory is not
    supported, :iscman:`named` will fall back to the minimum value (2 MB).

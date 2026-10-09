@@ -603,16 +603,13 @@ dns_adb_flush(dns_adb_t *adb);
  */
 
 void
-dns_adb_setadbsize(dns_adb_t *adb, size_t size);
+dns_adb_setadbsize(size_t size);
 /*%<
  * Set a target memory size.  If memory usage exceeds the target
  * size entries will be removed before they would have expired on
  * a random basis.
  *
  * If 'size' is 0 then memory usage is unlimited.
- *
- * Requires:
- *\li	'adb' is valid.
  */
 
 void

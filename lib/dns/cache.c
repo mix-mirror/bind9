@@ -69,7 +69,6 @@ struct dns_cache {
 	/* Locked by 'lock'. */
 	dns_rdataclass_t rdclass;
 	dns_db_t *db;
-	size_t size;
 	dns_ttl_t serve_stale_ttl;
 	dns_ttl_t serve_stale_refresh;
 	isc_stats_t *stats;
@@ -161,7 +160,6 @@ cache_cleanup(dns_cache_t *cache) {
 	isc_refcount_destroy(&cache->references);
 	cache->magic = 0;
 
-	isc_mem_clearwater(dns_cache_mctx);
 	dns_db_detach(&cache->db);
 
 	cache_destroy(cache);
@@ -191,17 +189,8 @@ dns_cache_getname(dns_cache_t *cache) {
 	return cache->name;
 }
 
-static void
-updatewater(dns_cache_t *cache) {
-	size_t hi = cache->size - (cache->size >> 3); /* ~ 7/8ths. */
-	size_t lo = cache->size - (cache->size >> 2); /* ~ 3/4ths. */
-	isc_mem_setwater(dns_cache_mctx, hi, lo);
-}
-
 void
-dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
-	REQUIRE(VALID_CACHE(cache));
-
+dns_cache_setcachesize(size_t size) {
 	/*
 	 * Impose a minimum cache size; pathological things happen if there
 	 * is too little room.
@@ -210,23 +199,9 @@ dns_cache_setcachesize(dns_cache_t *cache, size_t size) {
 		size = DNS_CACHE_MINSIZE;
 	}
 
-	LOCK(&cache->lock);
-	cache->size = size;
-	updatewater(cache);
-	UNLOCK(&cache->lock);
-}
-
-size_t
-dns_cache_getcachesize(dns_cache_t *cache) {
-	size_t size;
-
-	REQUIRE(VALID_CACHE(cache));
-
-	LOCK(&cache->lock);
-	size = cache->size;
-	UNLOCK(&cache->lock);
-
-	return size;
+	size_t hi = size - (size >> 3); /* ~ 7/8ths. */
+	size_t lo = size - (size >> 2); /* ~ 3/4ths. */
+	isc_mem_setwater(dns_cache_mctx, hi, lo);
 }
 
 void
@@ -284,8 +259,6 @@ dns_cache_flush(dns_cache_t *cache) {
 	RETERR(cache_create_db(cache, &db));
 
 	LOCK(&cache->lock);
-	isc_mem_clearwater(dns_cache_mctx);
-	updatewater(cache);
 	olddb = cache->db;
 	cache->db = db;
 	UNLOCK(&cache->lock);

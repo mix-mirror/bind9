@@ -885,7 +885,8 @@ dns_delegdb_dump(dns_delegdb_t *delegdb, bool expired, FILE *fp) {
 }
 
 void
-dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
+dns_delegset_fromnsrdataset(isc_mem_t *_mctx ISC_ATTR_UNUSED,
+			    dns_rdataset_t *rdataset,
 			    dns_delegset_t **delegsetp) {
 	dns_delegset_t *delegset = NULL;
 	dns_deleg_t *deleg = NULL;
@@ -898,7 +899,7 @@ dns_delegset_fromnsrdataset(isc_mem_t *mctx, dns_rdataset_t *rdataset,
 
 	REQUIRE(rdataset->type == dns_rdatatype_ns);
 
-	delegset = isc_mem_get(mctx, sizeof(*delegset));
+	delegset = isc_mem_get(dns_deleg_mctx, sizeof(*delegset));
 	*delegset = (dns_delegset_t){
 		.magic = DNS_DELEGSET_MAGIC,
 		.references = ISC_REFCOUNT_INITIALIZER(1),
@@ -1083,12 +1084,25 @@ qplru_shutdown_rcu(struct rcu_head *rcu_head) {
 	qplru_detach(&qplru);
 }
 
-static void
-delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
+dns_delegdb_config_t
+dns_delegdb_getconfig(dns_delegdb_t *delegdb) {
+	REQUIRE(VALID_DELEGDB(delegdb));
+	return delegdb->config;
+}
+
+void
+dns_delegdb_setconfig(dns_delegdb_t *delegdb,
+		      const dns_delegdb_config_t *config) {
+	REQUIRE(isc_loop_get(isc_tid()) == isc_loop_main());
+	REQUIRE(VALID_DELEGDB(delegdb));
+
+	delegdb->config = *config;
+}
+
+void
+dns_delegdb_setdelegsize(size_t size) {
 	size_t lowater;
 	size_t hiwater;
-
-	REQUIRE(VALID_DELEGDB(delegdb));
 
 	if (size != 0 && size < DELEGDB_MINSIZE) {
 		size = DELEGDB_MINSIZE;
@@ -1107,23 +1121,6 @@ delegdb_setsize(dns_delegdb_t *delegdb, size_t size) {
 	} else {
 		isc_mem_setwater(dns_deleg_mctx, hiwater, lowater);
 	}
-}
-
-dns_delegdb_config_t
-dns_delegdb_getconfig(dns_delegdb_t *delegdb) {
-	REQUIRE(VALID_DELEGDB(delegdb));
-	return delegdb->config;
-}
-
-void
-dns_delegdb_setconfig(dns_delegdb_t *delegdb,
-		      const dns_delegdb_config_t *config) {
-	REQUIRE(isc_loop_get(isc_tid()) == isc_loop_main());
-	REQUIRE(VALID_DELEGDB(delegdb));
-
-	delegdb->config = *config;
-
-	delegdb_setsize(delegdb, delegdb->config.dbsize);
 }
 
 typedef struct {

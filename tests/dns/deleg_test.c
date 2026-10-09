@@ -636,18 +636,23 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 	isc_stdtime_t now;
 	isc_result_t result;
 
+	dns_delegdb_create(&db);
+	assert_non_null(db);
+
+	/*
+	 * dns_deleg_mctx is shared by every test case in this process and
+	 * the delegdb is torn down via call_rcu(), so wait for the previous
+	 * cases' deferred frees before measuring memory use.
+	 */
+	rcu_barrier();
+
 	/*
 	 * hiwater is 4375000 = 5000000 - (5000000 >> 3)
 	 * lowater is 3750000 = 5000000 - (5000000 >> 2)
 	 */
-	dns_delegdb_config_t config = { .dbsize = 5000000 };
-
-	dns_delegdb_create(&db);
-	assert_non_null(db);
+	dns_delegdb_setdelegsize(5000000);
 
 	now = isc_stdtime_now();
-
-	dns_delegdb_setconfig(db, &config);
 
 	/*
 	 * A valid record
@@ -758,6 +763,9 @@ cleanuptests(ISC_ATTR_UNUSED void *arg) {
 
 	result = lookupdb(db, "bar.", now, 0, "bar.", &delegset);
 	assert_int_equal(result, ISC_R_NOTFOUND);
+
+	/* Remove the limit again so that the later cases are unaffected. */
+	dns_delegdb_setdelegsize(0);
 
 	shutdowntest(&db);
 }

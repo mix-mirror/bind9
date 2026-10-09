@@ -567,7 +567,7 @@ view <string> [ <class> ] {
 	match-clients { <address_match_element>; ... };
 	match-destinations { <address_match_element>; ... };
 	match-recursive-only <boolean>;
-	max-cache-size ( default | unlimited | <sizeval> | <percentage> );
+	max-cache-size ( default | unlimited | <sizeval> | <percentage> ); // obsolete
 	max-cache-ttl <duration>;
 	max-clients-per-query <integer>;
 	max-delegation-servers <integer>; // experimental

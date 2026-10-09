@@ -1715,8 +1715,6 @@ dns_adb_shutdown(dns_adb_t *adb) {
 
 	DP(DEF_LEVEL, "shutting down ADB %p", adb);
 
-	isc_mem_clearwater(dns_adb_mctx);
-
 	/*
 	 * dns_adb_shutdown() can get called from call_rcu thread, so we need to
 	 * pass the control over synchronize_rcu() back to main loop thread when
@@ -3397,10 +3395,8 @@ dns_adb_flushnames(dns_adb_t *adb, const dns_name_t *name) {
 }
 
 void
-dns_adb_setadbsize(dns_adb_t *adb, size_t size) {
+dns_adb_setadbsize(size_t size) {
 	size_t hiwater, lowater;
-
-	REQUIRE(DNS_ADB_VALID(adb));
 
 	if (size != 0U && size < DNS_ADB_MINADBSIZE) {
 		size = DNS_ADB_MINADBSIZE;

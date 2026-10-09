@@ -20776,7 +20776,7 @@ dns_zone_verifydb(dns_view_t *view, dns_db_t *db, dns_dbversion_t *ver) {
 
 	origin = dns_db_origin(db);
 	result = dns_zoneverify_dnssec(name, db, version, origin, secroots,
-				       db->mctx, true, false, dnssec_report);
+				       isc_g_mctx, true, false, dnssec_report);
 
 cleanup:
 	if (secroots != NULL) {
