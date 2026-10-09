@@ -75,7 +75,7 @@ create_vecheader(isc_mem_t *mctx, dns_rdatatype_t type,
 	dns_rdatalist_tordataset(rdatalist, &rdataset);
 
 	/* Convert to vecheader */
-	CHECK(dns_rdatavec_fromrdataset(&rdataset, mctx, &region, 0));
+	CHECK(dns_rdatavec_fromrdataset(&rdataset, &region, 0));
 	*headerp = (dns_vecheader_t *)region.base;
 
 	/* Cleanup rdataset */
@@ -125,7 +125,7 @@ ISC_RUN_TEST_IMPL(merge_headers) {
 	count2 = dns_rdatavec_count(header2);
 
 	/* Merge headers */
-	CHECK(dns_rdatavec_merge(header1, header2, mctx, dns_rdataclass_in,
+	CHECK(dns_rdatavec_merge(header1, header2, dns_rdataclass_in,
 				 dns_rdatatype_a, 0, 0, &merged_header));
 	assert_non_null(merged_header);
 
@@ -187,7 +187,7 @@ ISC_RUN_TEST_IMPL(merge_case_preservation) {
 	dns_vecheader_setownercase(header2, name2);
 
 	/* Merge headers */
-	CHECK(dns_rdatavec_merge(header1, header2, mctx, dns_rdataclass_in,
+	CHECK(dns_rdatavec_merge(header1, header2, dns_rdataclass_in,
 				 dns_rdatatype_a, 0, 0, &merged_header));
 	assert_non_null(merged_header);
 
@@ -351,12 +351,12 @@ ISC_RUN_TEST_IMPL(rdatavec_subtract_assertion_failure) {
 	dns_rdatalist_tordataset(subtract_rdatalist, &subtract_rdataset);
 
 	/* Convert to vecheaders (each starts with refcount = 1) */
-	CHECK(dns_rdatavec_fromrdataset(&original_rdataset, mctx,
-					&original_region, 0));
+	CHECK(dns_rdatavec_fromrdataset(&original_rdataset, &original_region,
+					0));
 	original_header = (dns_vecheader_t *)original_region.base;
 
-	CHECK(dns_rdatavec_fromrdataset(&subtract_rdataset, mctx,
-					&subtract_region, 0));
+	CHECK(dns_rdatavec_fromrdataset(&subtract_rdataset, &subtract_region,
+					0));
 	subtract_header = (dns_vecheader_t *)subtract_region.base;
 
 	/*
@@ -366,7 +366,7 @@ ISC_RUN_TEST_IMPL(rdatavec_subtract_assertion_failure) {
 	 * Since we're subtracting 1 record from 2, it should create a new
 	 * header and hit the problematic code path at rdatavec.c:759
 	 */
-	result = dns_rdatavec_subtract(original_header, subtract_header, mctx,
+	result = dns_rdatavec_subtract(original_header, subtract_header,
 				       dns_rdataclass_in, dns_rdatatype_a, 0,
 				       &result_header);
 
@@ -489,14 +489,14 @@ ISC_RUN_TEST_IMPL(rdatavec_refcount_merge) {
 	dns_rdatalist_tordataset(rdatalist2, &rdataset2);
 
 	/* Convert to vecheaders (each starts with refcount = 1) */
-	CHECK(dns_rdatavec_fromrdataset(&rdataset1, mctx, &region1, 0));
+	CHECK(dns_rdatavec_fromrdataset(&rdataset1, &region1, 0));
 	header1 = (dns_vecheader_t *)region1.base;
 
-	CHECK(dns_rdatavec_fromrdataset(&rdataset2, mctx, &region2, 0));
+	CHECK(dns_rdatavec_fromrdataset(&rdataset2, &region2, 0));
 	header2 = (dns_vecheader_t *)region2.base;
 
 	/* Merge headers (this will create a new header with refcount = 1) */
-	CHECK(dns_rdatavec_merge(header1, header2, mctx, dns_rdataclass_in,
+	CHECK(dns_rdatavec_merge(header1, header2, dns_rdataclass_in,
 				 dns_rdatatype_a, 0, 0, &merged_header));
 	assert_non_null(merged_header);
 

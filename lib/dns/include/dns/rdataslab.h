@@ -155,13 +155,12 @@ extern dns_rdatasetmethods_t dns_rdataslab_rdatasetmethods;
  *** Functions
  ***/
 
-#define dns_rdataslab_fromrdataset(rdataset, mctx, region, limit)            \
-	dns_rdataslab__fromrdataset(rdataset, mctx, region, limit, __func__, \
+#define dns_rdataslab_fromrdataset(rdataset, region, limit)            \
+	dns_rdataslab__fromrdataset(rdataset, region, limit, __func__, \
 				    __FILE__, __LINE__)
 isc_result_t
-dns_rdataslab__fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
-			    isc_region_t *region, uint32_t limit,
-			    const char *func, const char *file,
+dns_rdataslab__fromrdataset(dns_rdataset_t *rdataset, isc_region_t *region,
+			    uint32_t limit, const char *func, const char *file,
 			    const unsigned int line);
 /*%<
  * Allocate space for a slab to hold the data in rdataset, and copy the
@@ -247,7 +246,7 @@ dns_slabheader__reset(dns_slabheader_t *h, dns_dbnode_t *node, const char *func,
  */
 
 void
-dns_slabheader_freeproof(isc_mem_t *mctx, dns_slabheader_proof_t **proof);
+dns_slabheader_freeproof(dns_slabheader_proof_t **proof);
 /*%<
  * Free all memory associated with a nonexistence proof.
  */

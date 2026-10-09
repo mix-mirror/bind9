@@ -146,8 +146,8 @@ extern dns_rdatasetmethods_t dns_rdatavec_rdatasetmethods;
  ***/
 
 isc_result_t
-dns_rdatavec_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
-			  isc_region_t *region, uint32_t limit);
+dns_rdatavec_fromrdataset(dns_rdataset_t *rdataset, isc_region_t *region,
+			  uint32_t limit);
 /*%<
  * Allocate space for a vec to hold the data in rdataset, and copy the
  * data into it.  The resulting vec will be returned in 'region'.
@@ -200,18 +200,17 @@ dns_rdatavec_count(dns_vecheader_t *header);
 
 isc_result_t
 dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
-		   isc_mem_t *mctx, dns_rdataclass_t rdclass,
-		   dns_rdatatype_t type, unsigned int flags,
-		   uint32_t maxrrperset, dns_vecheader_t **theaderp);
+		   dns_rdataclass_t rdclass, dns_rdatatype_t type,
+		   unsigned int flags, uint32_t maxrrperset,
+		   dns_vecheader_t **theaderp);
 /*%<
  * Merge the vecs following 'oheader' and 'nheader'.
  */
 
 isc_result_t
 dns_rdatavec_subtract(dns_vecheader_t *mheader, dns_vecheader_t *sheader,
-		      isc_mem_t *mctx, dns_rdataclass_t rdclass,
-		      dns_rdatatype_t type, unsigned int flags,
-		      dns_vecheader_t **theaderp);
+		      dns_rdataclass_t rdclass, dns_rdatatype_t type,
+		      unsigned int flags, dns_vecheader_t **theaderp);
 /*%<
  * Subtract the vec following 'sheader' from the one following 'mheader'.
  * If 'exact' is true then all elements from the 'sheader' vec must exist
@@ -232,20 +231,20 @@ dns_vecheader_setownercase(dns_vecheader_t *header, const dns_name_t *name);
  */
 
 dns_vecheader_t *
-dns_vecheader_new(isc_mem_t *mctx);
+dns_vecheader_new(void);
 /*%<
  * Allocate memory for an rdatavec header and initialize it.
  */
 
 dns_vectop_t *
-dns_vectop_new(isc_mem_t *mctx, dns_typepair_t typepair);
+dns_vectop_new(dns_typepair_t typepair);
 /*%<
  * Allocate memory for an rdatavec top and initialize it for use
  * with 'typepair' type and covers pair.
  */
 
 void
-dns_vectop_destroy(isc_mem_t *mctx, dns_vectop_t **topp);
+dns_vectop_destroy(dns_vectop_t **topp);
 /*%<
  * Free all memory associated with '*vectopp'.
  */

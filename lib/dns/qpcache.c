@@ -2573,9 +2573,9 @@ addnoqname(isc_mem_t *mctx, dns_slabheader_t *newheader, uint32_t maxrrperset,
 
 	CHECK(dns_rdataset_getnoqname(rdataset, &name, &neg, &negsig));
 
-	CHECK(dns_rdataslab_fromrdataset(&neg, mctx, &r1, maxrrperset));
+	CHECK(dns_rdataslab_fromrdataset(&neg, &r1, maxrrperset));
 
-	CHECK(dns_rdataslab_fromrdataset(&negsig, mctx, &r2, maxrrperset));
+	CHECK(dns_rdataslab_fromrdataset(&negsig, &r2, maxrrperset));
 
 	noqname = isc_mem_get(mctx, sizeof(*noqname));
 	*noqname = (dns_slabheader_proof_t){
@@ -2639,7 +2639,7 @@ qpcache_addrdataset(dns_db_t *db, dns_dbnode_t *node, dns_dbversion_t *version,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	result = dns_rdataslab_fromrdataset(rdataset, dns_cache_mctx, &region,
+	result = dns_rdataslab_fromrdataset(rdataset, &region,
 					    qpdb->maxrrperset);
 	if (result != ISC_R_SUCCESS) {
 		if (result == DNS_R_TOOMANYRECORDS) {

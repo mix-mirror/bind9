@@ -358,18 +358,17 @@ free_rdatas:
 }
 
 isc_result_t
-dns_rdataslab__fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
-			    isc_region_t *region, uint32_t maxrrperset,
-			    const char *func, const char *file,
-			    const unsigned int line) {
+dns_rdataslab__fromrdataset(dns_rdataset_t *rdataset, isc_region_t *region,
+			    uint32_t maxrrperset, const char *func,
+			    const char *file, const unsigned int line) {
 	if (rdataset->type == dns_rdatatype_none &&
 	    rdataset->covers == dns_rdatatype_none)
 	{
 		return DNS_R_DISALLOWED;
 	}
 
-	isc_result_t result = makeslab(rdataset, mctx, region, maxrrperset,
-				       func, file, line);
+	isc_result_t result = makeslab(rdataset, dns_cache_mctx, region,
+				       maxrrperset, func, file, line);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -533,19 +532,19 @@ slabheader_destroy(dns_slabheader_t *header) {
 	unsigned int size = dns_rdataslab_size(header);
 
 	if (header->noqname != NULL) {
-		dns_slabheader_freeproof(dns_cache_mctx, &header->noqname);
+		dns_slabheader_freeproof(&header->noqname);
 	}
 
 	isc_mem_put(dns_cache_mctx, header, size);
 }
 
 void
-dns_slabheader_freeproof(isc_mem_t *mctx, dns_slabheader_proof_t **proofp) {
+dns_slabheader_freeproof(dns_slabheader_proof_t **proofp) {
 	dns_slabheader_proof_t *proof = *proofp;
 	*proofp = NULL;
 
 	if (dns_name_dynamic(&proof->name)) {
-		dns_name_free(&proof->name, mctx);
+		dns_name_free(&proof->name, dns_cache_mctx);
 	}
 	if (proof->neg != NULL) {
 		dns_slabheader_t *header =
@@ -559,7 +558,7 @@ dns_slabheader_freeproof(isc_mem_t *mctx, dns_slabheader_proof_t **proofp) {
 					     sizeof(dns_slabheader_t));
 		dns_slabheader_detach(&header);
 	}
-	isc_mem_put(mctx, proof, sizeof(*proof));
+	isc_mem_put(dns_cache_mctx, proof, sizeof(*proof));
 }
 
 #if DNS_SLABHEADER_TRACE

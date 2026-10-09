@@ -338,8 +338,8 @@ free_rdatas:
 }
 
 isc_result_t
-dns_rdatavec_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
-			  isc_region_t *region, uint32_t maxrrperset) {
+dns_rdatavec_fromrdataset(dns_rdataset_t *rdataset, isc_region_t *region,
+			  uint32_t maxrrperset) {
 	isc_result_t result;
 
 	if (rdataset->type == dns_rdatatype_none &&
@@ -348,7 +348,7 @@ dns_rdatavec_fromrdataset(dns_rdataset_t *rdataset, isc_mem_t *mctx,
 		return DNS_R_DISALLOWED;
 	}
 
-	result = makevec(rdataset, mctx, region, maxrrperset);
+	result = makevec(rdataset, isc_g_mctx, region, maxrrperset);
 	if (result == ISC_R_SUCCESS) {
 		dns_vecheader_t *new = (dns_vecheader_t *)region->base;
 
@@ -456,9 +456,9 @@ typedef struct vecinfo {
 
 isc_result_t
 dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
-		   isc_mem_t *mctx, dns_rdataclass_t rdclass,
-		   dns_rdatatype_t type, unsigned int flags,
-		   uint32_t maxrrperset, dns_vecheader_t **theaderp) {
+		   dns_rdataclass_t rdclass, dns_rdatatype_t type,
+		   unsigned int flags, uint32_t maxrrperset,
+		   dns_vecheader_t **theaderp) {
 	isc_result_t result = ISC_R_SUCCESS;
 	unsigned char *ocurrent = NULL, *ncurrent = NULL, *tcurrent = NULL;
 	unsigned int ocount, ncount, tcount = 0;
@@ -491,8 +491,8 @@ dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
 	 * Allocate both info arrays up front so the cleanup path is
 	 * always safe to call regardless of where we exit.
 	 */
-	oinfo = isc_mem_cget(mctx, ocount, sizeof(struct vecinfo));
-	ninfo = isc_mem_cget(mctx, ncount, sizeof(struct vecinfo));
+	oinfo = isc_mem_cget(isc_g_mctx, ocount, sizeof(struct vecinfo));
+	ninfo = isc_mem_cget(isc_g_mctx, ncount, sizeof(struct vecinfo));
 
 	/*
 	 * Gather the rdatas in the old vec and add their lengths to
@@ -593,7 +593,7 @@ dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
 	 * Preserve the case of the old header, but the rest from the
 	 * new header.
 	 */
-	unsigned char *tstart = isc_mem_get(mctx, tlength);
+	unsigned char *tstart = isc_mem_get(isc_g_mctx, tlength);
 	dns_vecheader_t *as_header = (dns_vecheader_t *)tstart;
 	uint16_t attrs = DNS_VECHEADER_GETATTR(
 		oheader,
@@ -654,17 +654,16 @@ dns_rdatavec_merge(dns_vecheader_t *oheader, dns_vecheader_t *nheader,
 	*theaderp = (dns_vecheader_t *)tstart;
 
 cleanup:
-	isc_mem_cput(mctx, oinfo, ocount, sizeof(struct vecinfo));
-	isc_mem_cput(mctx, ninfo, ncount, sizeof(struct vecinfo));
+	isc_mem_cput(isc_g_mctx, oinfo, ocount, sizeof(struct vecinfo));
+	isc_mem_cput(isc_g_mctx, ninfo, ncount, sizeof(struct vecinfo));
 
 	return result;
 }
 
 isc_result_t
 dns_rdatavec_subtract(dns_vecheader_t *oheader, dns_vecheader_t *sheader,
-		      isc_mem_t *mctx, dns_rdataclass_t rdclass,
-		      dns_rdatatype_t type, unsigned int flags,
-		      dns_vecheader_t **theaderp) {
+		      dns_rdataclass_t rdclass, dns_rdatatype_t type,
+		      unsigned int flags, dns_vecheader_t **theaderp) {
 	isc_result_t result = ISC_R_SUCCESS;
 	unsigned char *ocurrent = NULL, *scurrent = NULL;
 	unsigned char *tstart = NULL, *tcurrent = NULL;
@@ -685,7 +684,7 @@ dns_rdatavec_subtract(dns_vecheader_t *oheader, dns_vecheader_t *sheader,
 	INSIST(ocount > 0 && scount > 0);
 
 	/* Get info about the rdatas being subtracted */
-	sinfo = isc_mem_cget(mctx, scount, sizeof(struct vecinfo));
+	sinfo = isc_mem_cget(isc_g_mctx, scount, sizeof(struct vecinfo));
 	for (size_t i = 0; i < scount; i++) {
 		sinfo[i].pos = scurrent;
 		dns_rdata_init(&sinfo[i].rdata);
@@ -702,7 +701,7 @@ dns_rdatavec_subtract(dns_vecheader_t *oheader, dns_vecheader_t *sheader,
 	 * Add the length of the rdatas in the old vec that
 	 * aren't being subtracted.
 	 */
-	oinfo = isc_mem_cget(mctx, ocount, sizeof(struct vecinfo));
+	oinfo = isc_mem_cget(isc_g_mctx, ocount, sizeof(struct vecinfo));
 	for (size_t i = 0; i < ocount; i++) {
 		bool matched = false;
 
@@ -769,7 +768,7 @@ dns_rdatavec_subtract(dns_vecheader_t *oheader, dns_vecheader_t *sheader,
 	/*
 	 * Allocate the target buffer and copy the old vec's header.
 	 */
-	tstart = isc_mem_get(mctx, tlength);
+	tstart = isc_mem_get(isc_g_mctx, tlength);
 	dns_vecheader_t *as_header = (dns_vecheader_t *)tstart;
 	uint16_t attrs = RESIGN(oheader) ? DNS_VECHEADERATTR_RESIGN : 0;
 	*as_header = (dns_vecheader_t){
@@ -805,8 +804,8 @@ dns_rdatavec_subtract(dns_vecheader_t *oheader, dns_vecheader_t *sheader,
 	*theaderp = (dns_vecheader_t *)tstart;
 
 cleanup:
-	isc_mem_cput(mctx, oinfo, ocount, sizeof(struct vecinfo));
-	isc_mem_cput(mctx, sinfo, scount, sizeof(struct vecinfo));
+	isc_mem_cput(isc_g_mctx, oinfo, ocount, sizeof(struct vecinfo));
+	isc_mem_cput(isc_g_mctx, sinfo, scount, sizeof(struct vecinfo));
 
 	return result;
 }
@@ -835,10 +834,8 @@ dns_vecheader_setownercase(dns_vecheader_t *header, const dns_name_t *name) {
 }
 
 dns_vecheader_t *
-dns_vecheader_new(isc_mem_t *mctx) {
-	dns_vecheader_t *h = NULL;
-
-	h = isc_mem_get(mctx, sizeof(*h));
+dns_vecheader_new(void) {
+	dns_vecheader_t *h = isc_mem_get(isc_g_mctx, sizeof(*h));
 	*h = (dns_vecheader_t){
 		.references = ISC_REFCOUNT_INITIALIZER(1),
 	};
@@ -1015,8 +1012,8 @@ dns_vecheader_moveheader(dns_rdataset_t *rdataset) {
 }
 
 dns_vectop_t *
-dns_vectop_new(isc_mem_t *mctx, dns_typepair_t typepair) {
-	dns_vectop_t *top = isc_mem_get(mctx, sizeof(*top));
+dns_vectop_new(dns_typepair_t typepair) {
+	dns_vectop_t *top = isc_mem_get(isc_g_mctx, sizeof(*top));
 	*top = (dns_vectop_t){
 		.next_type = ISC_SLINK_INITIALIZER,
 		.headers = ISC_SLIST_INITIALIZER,
@@ -1027,11 +1024,11 @@ dns_vectop_new(isc_mem_t *mctx, dns_typepair_t typepair) {
 }
 
 void
-dns_vectop_destroy(isc_mem_t *mctx, dns_vectop_t **topp) {
+dns_vectop_destroy(dns_vectop_t **topp) {
 	REQUIRE(topp != NULL && *topp != NULL);
 	dns_vectop_t *top = *topp;
 	*topp = NULL;
-	isc_mem_put(mctx, top, sizeof(*top));
+	isc_mem_put(isc_g_mctx, top, sizeof(*top));
 }
 
 static void

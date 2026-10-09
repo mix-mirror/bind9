@@ -1106,7 +1106,7 @@ clean_zone_node(qpz_heap_t *heap, qpznode_t *node, uint32_t least_serial) {
 		dns_vectop_t *next = *iter;
 		if (ISC_SLIST_EMPTY(next->headers)) {
 			ISC_SLIST_PTR_REMOVE(iter, next, next_type);
-			dns_vectop_destroy(isc_g_mctx, &next);
+			dns_vectop_destroy(&next);
 		} else {
 			ISC_SLIST_PTR_ADVANCE(iter, next_type);
 		}
@@ -1980,8 +1980,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			}
 			if (result == ISC_R_SUCCESS) {
 				result = dns_rdatavec_merge(
-					header, newheader, isc_g_mctx,
-					qpdb->common.rdclass,
+					header, newheader, qpdb->common.rdclass,
 					DNS_TYPEPAIR_TYPE(header->typepair),
 					flags, qpdb->maxrrperset, &merged);
 			}
@@ -2136,7 +2135,7 @@ add(qpzonedb_t *qpdb, qpznode_t *node, const dns_name_t *nodename,
 			}
 
 			dns_vectop_t *newtop =
-				dns_vectop_new(isc_g_mctx, newheader->typepair);
+				dns_vectop_new(newheader->typepair);
 
 			ISC_SLIST_PREPEND(newtop->headers, newheader,
 					  next_header);
@@ -2270,7 +2269,7 @@ loading_addrdataset(void *arg, const dns_name_t *name, dns_rdataset_t *rdataset,
 	}
 
 	loading_addnode(loadctx, name, rdataset->type, rdataset->covers, &node);
-	result = dns_rdatavec_fromrdataset(rdataset, isc_g_mctx, &region,
+	result = dns_rdatavec_fromrdataset(rdataset, &region,
 					   qpdb->maxrrperset);
 	if (result != ISC_R_SUCCESS) {
 		if (result == DNS_R_TOOMANYRECORDS) {
@@ -4940,7 +4939,7 @@ qpzone_addrdataset_inner(qpzonedb_t *qpdb, qpznode_t *node,
 		 rdataset->type != dns_rdatatype_nsec3 &&
 		 rdataset->covers != dns_rdatatype_nsec3));
 
-	result = dns_rdatavec_fromrdataset(rdataset, isc_g_mctx, &region,
+	result = dns_rdatavec_fromrdataset(rdataset, &region,
 					   qpdb->maxrrperset);
 	if (result != ISC_R_SUCCESS) {
 		if (result == DNS_R_TOOMANYRECORDS) {
@@ -5081,7 +5080,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		 rdataset->covers != dns_rdatatype_nsec3));
 
 	dns_name_copy(&node->name, nodename);
-	result = dns_rdatavec_fromrdataset(rdataset, isc_g_mctx, &region, 0);
+	result = dns_rdatavec_fromrdataset(rdataset, &region, 0);
 	if (result != ISC_R_SUCCESS) {
 		return result;
 	}
@@ -5131,8 +5130,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		}
 		if (result == ISC_R_SUCCESS) {
 			result = dns_rdatavec_subtract(
-				header, newheader, isc_g_mctx,
-				qpdb->common.rdclass,
+				header, newheader, qpdb->common.rdclass,
 				DNS_TYPEPAIR_TYPE(foundtop->typepair), flags,
 				&subresult);
 		}
@@ -5176,7 +5174,7 @@ qpzone_subtractrdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 			(void)resign_unregister(qpdb->heap, node, newheader);
 			UNLOCK(&qpdb->heap->lock);
 			dns_vecheader_unref(newheader);
-			newheader = dns_vecheader_new(isc_g_mctx);
+			newheader = dns_vecheader_new();
 			newheader->ttl = 0;
 			newheader->typepair = foundtop->typepair;
 			atomic_init(&newheader->attributes,
@@ -5264,7 +5262,7 @@ qpzone_deleterdataset(dns_db_t *db, dns_dbnode_t *dbnode,
 		return ISC_R_NOTIMPLEMENTED;
 	}
 
-	newheader = dns_vecheader_new(isc_g_mctx);
+	newheader = dns_vecheader_new();
 	newheader->typepair = DNS_TYPEPAIR_VALUE(type, covers);
 	newheader->ttl = 0;
 	atomic_init(&newheader->attributes, DNS_VECHEADERATTR_NONEXISTENT);
@@ -5800,7 +5798,7 @@ destroy_qpznode(qpznode_t *node) {
 			dns_vecheader_unref(header);
 		}
 
-		dns_vectop_destroy(isc_g_mctx, &top);
+		dns_vectop_destroy(&top);
 	}
 
 	dns_name_free(&node->name, isc_g_mctx);
