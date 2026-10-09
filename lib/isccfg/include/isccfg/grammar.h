@@ -89,7 +89,7 @@ enum {
 };
 
 typedef struct cfg_tuplefielddef cfg_tuplefielddef_t;
-typedef struct cfg_printer	      cfg_printer_t;
+typedef struct cfg_printer	 cfg_printer_t;
 typedef ISC_LIST(cfg_listelt_t) cfg_list_t;
 typedef struct cfg_map cfg_map_t;
 typedef struct cfg_rep cfg_rep_t;

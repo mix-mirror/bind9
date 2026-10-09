@@ -628,7 +628,7 @@
     X(CFG_CLAUSE_ZONE_PROPAGATION_DELAY, "zone-propagation-delay") \
     X(CFG_CLAUSE_ZONESTAT, "zonestat") \
     X(CFG_CLAUSE_ZONE_STATISTICS, "zone-statistics") \
-    X(CFG_CLAUSE_ZONETYPE, "zonetype") \
+    X(CFG_CLAUSE_ZONETYPE, "zonetype")
 
 /* clang-format on */
 
@@ -637,7 +637,7 @@ enum cfg_clause {
 #define X(name, str) name,
 	CFG_CLAUSES
 #undef X
-	CFG_CLAUSE__COUNT
+		CFG_CLAUSE__COUNT
 };
 
 extern const char *cfg_clause_as_string[];

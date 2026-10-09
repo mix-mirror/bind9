@@ -41,8 +41,8 @@
 
 #include <dst/dst.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/check.h>
+#include <isccfg/clause.h>
 #include <isccfg/grammar.h>
 #include <isccfg/namedconf.h>
 
@@ -314,10 +314,10 @@ named_config_getname(isc_mem_t *mctx, const cfg_obj_t *obj,
 		oldlen = newlen;                                    \
 	}
 
-static const enum cfg_clause remotesnames[4] = {
-	CFG_CLAUSE_REMOTE_SERVERS, CFG_CLAUSE_PARENTAL_AGENTS,
-	CFG_CLAUSE_PRIMARIES, CFG_CLAUSE_MASTERS
-};
+static const enum cfg_clause remotesnames[4] = { CFG_CLAUSE_REMOTE_SERVERS,
+						 CFG_CLAUSE_PARENTAL_AGENTS,
+						 CFG_CLAUSE_PRIMARIES,
+						 CFG_CLAUSE_MASTERS };
 
 typedef struct {
 	isc_sockaddr_t *addrs;

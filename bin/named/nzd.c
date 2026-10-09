@@ -22,8 +22,8 @@
 #include <dns/name.h>
 #include <dns/zoneproperties.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/cfg.h>
+#include <isccfg/clause.h>
 #include <isccfg/namedconf.h>
 
 #include <named/nzd.h>

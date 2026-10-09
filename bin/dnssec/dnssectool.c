@@ -56,6 +56,7 @@
 #include <dns/rdatatype.h>
 #include <dns/secalg.h>
 #include <dns/time.h>
+
 #include <isccfg/clause.h>
 
 #include "dnssectool.h"

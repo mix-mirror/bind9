@@ -39,8 +39,8 @@
 #include <dns/rootns.h>
 #include <dns/zone.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/check.h>
+#include <isccfg/clause.h>
 #include <isccfg/grammar.h>
 #include <isccfg/namedconf.h>
 
@@ -85,7 +85,8 @@ get_checknames(const cfg_obj_t **maps, const cfg_obj_t **obj) {
 			return false;
 		}
 		checknames = NULL;
-		result = cfg_map_get(maps[i], CFG_CLAUSE_CHECK_NAMES, &checknames);
+		result = cfg_map_get(maps[i], CFG_CLAUSE_CHECK_NAMES,
+				     &checknames);
 		if (result != ISC_R_SUCCESS) {
 			continue;
 		}
@@ -243,7 +244,8 @@ configure_zone(const char *vclass, const char *view, const cfg_obj_t *zconfig,
 	if (strcasecmp(cfg_obj_asstring(typeobj), "redirect") == 0) {
 		cfg_map_get(zoptions, CFG_CLAUSE_PRIMARIES, &primariesobj);
 		if (primariesobj == NULL) {
-			cfg_map_get(zoptions, CFG_CLAUSE_MASTERS, &primariesobj);
+			cfg_map_get(zoptions, CFG_CLAUSE_MASTERS,
+				    &primariesobj);
 		}
 
 		if (primariesobj != NULL) {

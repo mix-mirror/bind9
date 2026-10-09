@@ -26,8 +26,8 @@
 #include <dns/fixedname.h>
 #include <dns/iptable.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/aclconf.h>
+#include <isccfg/clause.h>
 #include <isccfg/namedconf.h>
 
 #define LOOP_MAGIC ISC_MAGIC('L', 'O', 'O', 'P')

@@ -40,8 +40,8 @@
 #include <isccc/sexpr.h>
 #include <isccc/util.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/check.h>
+#include <isccfg/clause.h>
 #include <isccfg/namedconf.h>
 
 #include <named/config.h>
@@ -720,8 +720,10 @@ register_keys(const cfg_obj_t *control, const cfg_obj_t *keylist,
 			const char *secretstr = NULL;
 			unsigned int algtype;
 
-			(void)cfg_map_get(keydef, CFG_CLAUSE_ALGORITHM, &algobj);
-			(void)cfg_map_get(keydef, CFG_CLAUSE_SECRET, &secretobj);
+			(void)cfg_map_get(keydef, CFG_CLAUSE_ALGORITHM,
+					  &algobj);
+			(void)cfg_map_get(keydef, CFG_CLAUSE_SECRET,
+					  &secretobj);
 			INSIST(algobj != NULL && secretobj != NULL);
 
 			algstr = cfg_obj_asstring(algobj);
@@ -1138,7 +1140,8 @@ named_controls_configure(named_controls_t *cp, const cfg_obj_t *config,
 
 			controls = cfg_listelt_value(element);
 
-			(void)cfg_map_get(controls, CFG_CLAUSE_UNIX, &unixcontrols);
+			(void)cfg_map_get(controls, CFG_CLAUSE_UNIX,
+					  &unixcontrols);
 			if (unixcontrols != NULL) {
 				cfg_obj_log(controls, ISC_LOG_ERROR,
 					    "UNIX domain sockets are not "
@@ -1146,7 +1149,8 @@ named_controls_configure(named_controls_t *cp, const cfg_obj_t *config,
 				return ISC_R_FAILURE;
 			}
 
-			(void)cfg_map_get(controls, CFG_CLAUSE_INET, &inetcontrols);
+			(void)cfg_map_get(controls, CFG_CLAUSE_INET,
+					  &inetcontrols);
 			if (inetcontrols == NULL) {
 				continue;
 			}

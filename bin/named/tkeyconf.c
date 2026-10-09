@@ -19,8 +19,8 @@
 
 #include <dst/gssapi.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/cfg.h>
+#include <isccfg/clause.h>
 
 #include <named/log.h>
 #include <named/tkeyconf.h>

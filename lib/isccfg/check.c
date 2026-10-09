@@ -62,10 +62,10 @@
 
 #include <dst/dst.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/aclconf.h>
 #include <isccfg/cfg.h>
 #include <isccfg/check.h>
+#include <isccfg/clause.h>
 #include <isccfg/grammar.h>
 #include <isccfg/kaspconf.h>
 #include <isccfg/namedconf.h>
@@ -87,7 +87,8 @@ keydirexist(const cfg_obj_t *zcgf, const char *optname, dns_name_t *zname,
 	    isc_mem_t *mctx);
 
 static const cfg_obj_t *
-find_maplist(const cfg_obj_t *config, enum cfg_clause listname, const char *name);
+find_maplist(const cfg_obj_t *config, enum cfg_clause listname,
+	     const char *name);
 
 static isc_result_t
 validate_remotes(const cfg_obj_t *obj, const cfg_obj_t *voptions,
@@ -194,7 +195,8 @@ check_order(const cfg_obj_t *options) {
 	isc_result_t tresult;
 	const cfg_obj_t *obj = NULL;
 
-	if (cfg_map_get(options, CFG_CLAUSE_RRSET_ORDER, &obj) != ISC_R_SUCCESS) {
+	if (cfg_map_get(options, CFG_CLAUSE_RRSET_ORDER, &obj) != ISC_R_SUCCESS)
+	{
 		return result;
 	}
 
@@ -283,7 +285,8 @@ validate_tls(const cfg_obj_t *config, const cfg_obj_t *obj, const char *str) {
 	}
 
 	if (strcasecmp(str, "ephemeral") != 0) {
-		const cfg_obj_t *tlsmap = find_maplist(config, CFG_CLAUSE_TLS, str);
+		const cfg_obj_t *tlsmap = find_maplist(config, CFG_CLAUSE_TLS,
+						       str);
 
 		if (tlsmap == NULL) {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
@@ -483,9 +486,7 @@ checkacl(enum cfg_clause aclname, cfg_aclconfctx_t *aclctx,
 		dns_acl_detach(&acl);
 	}
 
-	if (aclname == CFG_CLAUSE_ALLOW_TRANSFER &&
-	    cfg_obj_istuple(aclobj))
-	{
+	if (aclname == CFG_CLAUSE_ALLOW_TRANSFER && cfg_obj_istuple(aclobj)) {
 		const cfg_obj_t *obj_port = cfg_tuple_get(
 			cfg_tuple_get(aclobj, "port-transport"), "port");
 		const cfg_obj_t *obj_proto = cfg_tuple_get(
@@ -535,10 +536,10 @@ check_viewacls(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	int i = 0;
 
 	static const enum cfg_clause acls[] = {
-		CFG_CLAUSE_ALLOW_PROXY,	      CFG_CLAUSE_ALLOW_PROXY_ON,
-		CFG_CLAUSE_ALLOW_QUERY,	      CFG_CLAUSE_ALLOW_QUERY_ON,
+		CFG_CLAUSE_ALLOW_PROXY,	       CFG_CLAUSE_ALLOW_PROXY_ON,
+		CFG_CLAUSE_ALLOW_QUERY,	       CFG_CLAUSE_ALLOW_QUERY_ON,
 		CFG_CLAUSE_ALLOW_QUERY_CACHE,  CFG_CLAUSE_ALLOW_QUERY_CACHE_ON,
-		CFG_CLAUSE_BLACKHOLE,	      CFG_CLAUSE_MATCH_CLIENTS,
+		CFG_CLAUSE_BLACKHOLE,	       CFG_CLAUSE_MATCH_CLIENTS,
 		CFG_CLAUSE_MATCH_DESTINATIONS,
 	};
 
@@ -573,7 +574,9 @@ check_dns64(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	int nbytes;
 	int i;
 
-	static const enum cfg_clause acls[] = { CFG_CLAUSE_CLIENTS, CFG_CLAUSE_EXCLUDE, CFG_CLAUSE_MAPPED };
+	static const enum cfg_clause acls[] = { CFG_CLAUSE_CLIENTS,
+						CFG_CLAUSE_EXCLUDE,
+						CFG_CLAUSE_MAPPED };
 
 	if (voptions != NULL) {
 		cfg_map_get(voptions, CFG_CLAUSE_DNS64, &dns64);
@@ -674,7 +677,7 @@ check_dns64(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 		}                                                         \
 	} while (0)
 
-#define CHECK_RRL_RATE(rate, def, max_rate, clause, name)                   \
+#define CHECK_RRL_RATE(rate, def, max_rate, clause, name)                  \
 	do {                                                               \
 		obj = NULL;                                                \
 		mresult = cfg_map_get(map, clause, &obj);                  \
@@ -739,15 +742,20 @@ check_ratelimit(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 		       CFG_CLAUSE_RESPONSES_PER_SECOND, "responses-per-second");
 
 	CHECK_RRL_RATE(referrals_per_second, responses_per_second,
-		       DNS_RRL_MAX_RATE, CFG_CLAUSE_REFERRALS_PER_SECOND, "referrals-per-second");
+		       DNS_RRL_MAX_RATE, CFG_CLAUSE_REFERRALS_PER_SECOND,
+		       "referrals-per-second");
 	CHECK_RRL_RATE(nodata_per_second, responses_per_second,
-		       DNS_RRL_MAX_RATE, CFG_CLAUSE_NODATA_PER_SECOND, "nodata-per-second");
+		       DNS_RRL_MAX_RATE, CFG_CLAUSE_NODATA_PER_SECOND,
+		       "nodata-per-second");
 	CHECK_RRL_RATE(nxdomains_per_second, responses_per_second,
-		       DNS_RRL_MAX_RATE, CFG_CLAUSE_NXDOMAINS_PER_SECOND, "nxdomains-per-second");
+		       DNS_RRL_MAX_RATE, CFG_CLAUSE_NXDOMAINS_PER_SECOND,
+		       "nxdomains-per-second");
 	CHECK_RRL_RATE(errors_per_second, responses_per_second,
-		       DNS_RRL_MAX_RATE, CFG_CLAUSE_ERRORS_PER_SECOND, "errors-per-second");
+		       DNS_RRL_MAX_RATE, CFG_CLAUSE_ERRORS_PER_SECOND,
+		       "errors-per-second");
 
-	CHECK_RRL_RATE(all_per_second, 0, DNS_RRL_MAX_RATE, CFG_CLAUSE_ALL_PER_SECOND, "all-per-second");
+	CHECK_RRL_RATE(all_per_second, 0, DNS_RRL_MAX_RATE,
+		       CFG_CLAUSE_ALL_PER_SECOND, "all-per-second");
 
 	CHECK_RRL_RATE(slip, 2, DNS_RRL_MAX_SLIP, CFG_CLAUSE_SLIP, "slip");
 
@@ -816,7 +824,8 @@ check_fetchlimit(const cfg_obj_t *voptions, const cfg_obj_t *config) {
 		options = NULL;
 		cfg_map_get(config, CFG_CLAUSE_OPTIONS, &options);
 		if (options != NULL) {
-			cfg_map_get(options, CFG_CLAUSE_FETCH_QUOTA_PARAMS, &map);
+			cfg_map_get(options, CFG_CLAUSE_FETCH_QUOTA_PARAMS,
+				    &map);
 		}
 	}
 	if (map == NULL) {
@@ -871,7 +880,8 @@ check_recursionacls(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 	const char *forview = " for view ";
 	int i = 0;
 
-	static const enum cfg_clause acls[] = { CFG_CLAUSE_ALLOW_RECURSION, CFG_CLAUSE_ALLOW_RECURSION_ON };
+	static const enum cfg_clause acls[] = { CFG_CLAUSE_ALLOW_RECURSION,
+						CFG_CLAUSE_ALLOW_RECURSION_ON };
 
 	if (voptions != NULL) {
 		cfg_map_get(voptions, CFG_CLAUSE_RECURSION, &obj);
@@ -927,7 +937,8 @@ check_recursionacls(cfg_aclconfctx_t *aclctx, const cfg_obj_t *voptions,
 			cfg_obj_log(aclobj, ISC_LOG_WARNING,
 				    "both \"recursion no;\" and "
 				    "\"%s\" active%s%s",
-				    cfg_clause_as_string[acls[i]], forview, viewname);
+				    cfg_clause_as_string[acls[i]], forview,
+				    viewname);
 		}
 
 		if (acl != NULL) {
@@ -986,7 +997,8 @@ kasp_name_allowed(const cfg_listelt_t *element) {
 }
 
 static const cfg_obj_t *
-find_maplist(const cfg_obj_t *config, enum cfg_clause listname, const char *name) {
+find_maplist(const cfg_obj_t *config, enum cfg_clause listname,
+	     const char *name) {
 	isc_result_t result = ISC_R_SUCCESS;
 	const cfg_obj_t *maplist = NULL;
 
@@ -1142,16 +1154,17 @@ check_listeners(const cfg_obj_t *list, const cfg_obj_t *config,
 }
 
 static void
-check_range_uint32(const cfg_obj_t *map, isc_result_t *result, enum cfg_clause name,
-		   uint32_t lower, uint32_t upper) {
+check_range_uint32(const cfg_obj_t *map, isc_result_t *result,
+		   enum cfg_clause name, uint32_t lower, uint32_t upper) {
 	const cfg_obj_t *obj = NULL;
 	(void)cfg_map_get(map, name, &obj);
 	if (obj != NULL) {
 		uint32_t value = cfg_obj_asuint32(obj);
 		if (value < lower || value > upper) {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
-				    "%s '%u' out of range (%u..%u)", cfg_clause_as_string[name],
-				    value, lower, upper);
+				    "%s '%u' out of range (%u..%u)",
+				    cfg_clause_as_string[name], value, lower,
+				    upper);
 			if (*result == ISC_R_SUCCESS) {
 				*result = ISC_R_RANGE;
 			}
@@ -1230,21 +1243,35 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	 * (scale * value) <= UINT32_MAX
 	 */
 	static intervaltable intervals[] = {
-		{ CFG_CLAUSE_INTERFACE_INTERVAL, 60, 28 * 24 * 60 },    /* 28 days */
-		{ CFG_CLAUSE_MAX_TRANSFER_IDLE_IN, 60, 28 * 24 * 60 },  /* 28 days */
-		{ CFG_CLAUSE_MAX_TRANSFER_IDLE_OUT, 60, 28 * 24 * 60 }, /* 28 days */
-		{ CFG_CLAUSE_MAX_TRANSFER_TIME_IN, 60, 28 * 24 * 60 },  /* 28 days */
-		{ CFG_CLAUSE_MAX_TRANSFER_TIME_OUT, 60, 28 * 24 * 60 }, /* 28 days */
+		{ CFG_CLAUSE_INTERFACE_INTERVAL, 60, 28 * 24 * 60 }, /* 28 days
+								      */
+		{ CFG_CLAUSE_MAX_TRANSFER_IDLE_IN, 60, 28 * 24 * 60 },	/* 28
+									   days
+									 */
+		{ CFG_CLAUSE_MAX_TRANSFER_IDLE_OUT, 60, 28 * 24 * 60 }, /* 28
+									   days
+									 */
+		{ CFG_CLAUSE_MAX_TRANSFER_TIME_IN, 60, 28 * 24 * 60 },	/* 28
+									   days
+									 */
+		{ CFG_CLAUSE_MAX_TRANSFER_TIME_OUT, 60, 28 * 24 * 60 }, /* 28
+									   days
+									 */
 
 		/* minimum and maximum cache and negative cache TTLs */
-		{ CFG_CLAUSE_MIN_CACHE_TTL, 1, MAX_MIN_CACHE_TTL },   /* 90 secs */
-		{ CFG_CLAUSE_MAX_CACHE_TTL, 1, UINT32_MAX },	     /* no limit */
-		{ CFG_CLAUSE_MIN_NCACHE_TTL, 1, MAX_MIN_NCACHE_TTL }, /* 90 secs */
-		{ CFG_CLAUSE_MAX_NCACHE_TTL, 1, MAX_MAX_NCACHE_TTL }, /*  7 days */
+		{ CFG_CLAUSE_MIN_CACHE_TTL, 1, MAX_MIN_CACHE_TTL }, /* 90 secs
+								     */
+		{ CFG_CLAUSE_MAX_CACHE_TTL, 1, UINT32_MAX }, /* no limit */
+		{ CFG_CLAUSE_MIN_NCACHE_TTL, 1, MAX_MIN_NCACHE_TTL }, /* 90 secs
+								       */
+		{ CFG_CLAUSE_MAX_NCACHE_TTL, 1, MAX_MAX_NCACHE_TTL }, /*  7 days
+								       */
 	};
 
-	static const enum cfg_clause server_contact[] = { CFG_CLAUSE_EMPTY_SERVER, CFG_CLAUSE_EMPTY_CONTACT,
-						CFG_CLAUSE_DNS64_SERVER, CFG_CLAUSE_DNS64_CONTACT };
+	static const enum cfg_clause server_contact[] = {
+		CFG_CLAUSE_EMPTY_SERVER, CFG_CLAUSE_EMPTY_CONTACT,
+		CFG_CLAUSE_DNS64_SERVER, CFG_CLAUSE_DNS64_CONTACT
+	};
 
 #ifndef IOV_MAX
 /*
@@ -1258,7 +1285,8 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	static fstrmtable fstrm[] = {
 		{ CFG_CLAUSE_FSTRM_SET_BUFFER_HINT, FSTRM_IOTHR_BUFFER_HINT_MIN,
 		  FSTRM_IOTHR_BUFFER_HINT_MAX },
-		{ CFG_CLAUSE_FSTRM_SET_FLUSH_TIMEOUT, FSTRM_IOTHR_FLUSH_TIMEOUT_MIN,
+		{ CFG_CLAUSE_FSTRM_SET_FLUSH_TIMEOUT,
+		  FSTRM_IOTHR_FLUSH_TIMEOUT_MIN,
 		  FSTRM_IOTHR_FLUSH_TIMEOUT_MAX },
 		{ CFG_CLAUSE_FSTRM_SET_INPUT_QUEUE_SIZE,
 		  FSTRM_IOTHR_INPUT_QUEUE_SIZE_MIN,
@@ -1268,7 +1296,8 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 		{ CFG_CLAUSE_FSTRM_SET_OUTPUT_QUEUE_SIZE,
 		  FSTRM_IOTHR_OUTPUT_QUEUE_SIZE_MIN,
 		  FSTRM_IOTHR_OUTPUT_QUEUE_SIZE_MAX },
-		{ CFG_CLAUSE_FSTRM_SET_REOPEN_INTERVAL, FSTRM_IOTHR_REOPEN_INTERVAL_MIN,
+		{ CFG_CLAUSE_FSTRM_SET_REOPEN_INTERVAL,
+		  FSTRM_IOTHR_REOPEN_INTERVAL_MIN,
 		  FSTRM_IOTHR_REOPEN_INTERVAL_MAX }
 	};
 #endif /* ifdef HAVE_DNSTAP */
@@ -1344,12 +1373,13 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 		if (val > intervals[i].max) {
 			cfg_obj_log(obj, ISC_LOG_ERROR,
 				    "%s '%u' is out of range (0..%u)",
-				    cfg_clause_as_string[intervals[i].name], val, intervals[i].max);
+				    cfg_clause_as_string[intervals[i].name],
+				    val, intervals[i].max);
 			result = ISC_R_RANGE;
 		} else if (val > (UINT32_MAX / intervals[i].scale)) {
-			cfg_obj_log(obj, ISC_LOG_ERROR,
-				    "%s '%d' is out of range",
-				    cfg_clause_as_string[intervals[i].name], val);
+			cfg_obj_log(
+				obj, ISC_LOG_ERROR, "%s '%d' is out of range",
+				cfg_clause_as_string[intervals[i].name], val);
 			result = ISC_R_RANGE;
 		}
 	}
@@ -1392,8 +1422,8 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 				}
 
 				kopt = cfg_tuple_get(kconfig, "options");
-				if (cfg_map_get(kopt, CFG_CLAUSE_DIRECTORY, &kobj) ==
-				    ISC_R_SUCCESS)
+				if (cfg_map_get(kopt, CFG_CLAUSE_DIRECTORY,
+						&kobj) == ISC_R_SUCCESS)
 				{
 					val = cfg_obj_asstring(kobj);
 					ret = isc_file_isdirectory(val);
@@ -1601,7 +1631,8 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 	 */
 	if (optlevel != optlevel_zone) {
 		obj = NULL;
-		(void)cfg_map_get(options, CFG_CLAUSE_SEND_REPORT_CHANNEL, &obj);
+		(void)cfg_map_get(options, CFG_CLAUSE_SEND_REPORT_CHANNEL,
+				  &obj);
 		if (obj != NULL) {
 			str = cfg_obj_asstring(obj);
 			tresult = check_name(str);
@@ -1624,9 +1655,11 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 		if (obj != NULL) {
 			str = cfg_obj_asstring(obj);
 			if (check_name(str) != ISC_R_SUCCESS) {
-				cfg_obj_log(obj, ISC_LOG_ERROR,
-					    "%s: invalid name '%s'",
-					    cfg_clause_as_string[server_contact[i]], str);
+				cfg_obj_log(
+					obj, ISC_LOG_ERROR,
+					"%s: invalid name '%s'",
+					cfg_clause_as_string[server_contact[i]],
+					str);
 				if (result == ISC_R_SUCCESS) {
 					result = ISC_R_FAILURE;
 				}
@@ -1786,12 +1819,13 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 			if (fstrm[i].max != 0U) {
 				cfg_obj_log(obj, ISC_LOG_ERROR,
 					    "%s '%u' out of range (%u..%u)",
-					    cfg_clause_as_string[fstrm[i].name], value, fstrm[i].min,
-					    fstrm[i].max);
+					    cfg_clause_as_string[fstrm[i].name],
+					    value, fstrm[i].min, fstrm[i].max);
 			} else {
 				cfg_obj_log(obj, ISC_LOG_ERROR,
 					    "%s out of range (%u < %u)",
-					    cfg_clause_as_string[fstrm[i].name], value, fstrm[i].min);
+					    cfg_clause_as_string[fstrm[i].name],
+					    value, fstrm[i].min);
 			}
 			if (result == ISC_R_SUCCESS) {
 				result = ISC_R_RANGE;
@@ -2042,7 +2076,8 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 		}
 	}
 
-	check_range_uint32(options, &result, CFG_CLAUSE_MAX_QUERY_RESTARTS, 1, 255);
+	check_range_uint32(options, &result, CFG_CLAUSE_MAX_QUERY_RESTARTS, 1,
+			   255);
 
 	obj = NULL;
 	(void)cfg_map_get(options, CFG_CLAUSE_PREFETCH, &obj);
@@ -2075,8 +2110,10 @@ check_options(const cfg_obj_t *options, const cfg_obj_t *config,
 		}
 	}
 
-	check_range_uint32(options, &result, CFG_CLAUSE_EDNS_UDP_SIZE, 512, 4096);
-	check_range_uint32(options, &result, CFG_CLAUSE_MAX_UDP_SIZE, 512, 4096);
+	check_range_uint32(options, &result, CFG_CLAUSE_EDNS_UDP_SIZE, 512,
+			   4096);
+	check_range_uint32(options, &result, CFG_CLAUSE_MAX_UDP_SIZE, 512,
+			   4096);
 	check_range_uint32(options, &result, CFG_CLAUSE_NOCOOKIE_UDP_SIZE, 128,
 			   UINT32_MAX);
 
@@ -2129,7 +2166,8 @@ check_remoteserverlist(const cfg_obj_t *cctx, enum cfg_clause list,
 			cfg_obj_log(obj, ISC_LOG_ERROR,
 				    "%s list '%s' is duplicated: "
 				    "also defined at %s:%u",
-				    cfg_clause_as_string[list], name, file, line);
+				    cfg_clause_as_string[list], name, file,
+				    line);
 			isc_mem_free(mctx, tmp);
 			result = tresult;
 			break;
@@ -2154,20 +2192,24 @@ check_remoteserverlists(const cfg_obj_t *cctx, isc_mem_t *mctx) {
 
 	isc_symtab_create(mctx, freekey, mctx, false, &symtab);
 
-	tresult = check_remoteserverlist(cctx, CFG_CLAUSE_REMOTE_SERVERS, symtab, mctx);
+	tresult = check_remoteserverlist(cctx, CFG_CLAUSE_REMOTE_SERVERS,
+					 symtab, mctx);
 	if (tresult != ISC_R_SUCCESS) {
 		result = tresult;
 	}
 	/* parental-agents, primaries, masters are treated as synonyms */
-	tresult = check_remoteserverlist(cctx, CFG_CLAUSE_PARENTAL_AGENTS, symtab, mctx);
+	tresult = check_remoteserverlist(cctx, CFG_CLAUSE_PARENTAL_AGENTS,
+					 symtab, mctx);
 	if (tresult != ISC_R_SUCCESS) {
 		result = tresult;
 	}
-	tresult = check_remoteserverlist(cctx, CFG_CLAUSE_PRIMARIES, symtab, mctx);
+	tresult = check_remoteserverlist(cctx, CFG_CLAUSE_PRIMARIES, symtab,
+					 mctx);
 	if (tresult != ISC_R_SUCCESS) {
 		result = tresult;
 	}
-	tresult = check_remoteserverlist(cctx, CFG_CLAUSE_MASTERS, symtab, mctx);
+	tresult = check_remoteserverlist(cctx, CFG_CLAUSE_MASTERS, symtab,
+					 mctx);
 	if (tresult != ISC_R_SUCCESS) {
 		result = tresult;
 	}
@@ -2388,7 +2430,8 @@ check_tls_definition(const cfg_obj_t *tlsobj, const char *name,
 	}
 
 	/* Check if the cipher suites string is valid */
-	tresult = cfg_map_get(tlsobj, CFG_CLAUSE_CIPHER_SUITES, &tls_cipher_suites);
+	tresult = cfg_map_get(tlsobj, CFG_CLAUSE_CIPHER_SUITES,
+			      &tls_cipher_suites);
 	if (tresult == ISC_R_SUCCESS) {
 		const char *cipher_suites = cfg_obj_asstring(tls_cipher_suites);
 		if (!isc_tls_cipher_suites_valid(cipher_suites)) {
@@ -2844,9 +2887,10 @@ check_nonzero(const cfg_obj_t *options) {
 	const cfg_obj_t *obj = NULL;
 	unsigned int i;
 
-	static const enum cfg_clause nonzero[] = { CFG_CLAUSE_MAX_RETRY_TIME, CFG_CLAUSE_MIN_RETRY_TIME,
-					 CFG_CLAUSE_MAX_REFRESH_TIME,
-					 CFG_CLAUSE_MIN_REFRESH_TIME };
+	static const enum cfg_clause nonzero[] = {
+		CFG_CLAUSE_MAX_RETRY_TIME, CFG_CLAUSE_MIN_RETRY_TIME,
+		CFG_CLAUSE_MAX_REFRESH_TIME, CFG_CLAUSE_MIN_REFRESH_TIME
+	};
 	/*
 	 * Check if value is zero.
 	 */
@@ -2951,10 +2995,12 @@ check_recursion(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	obj = NULL;
 	result = ISC_R_NOTFOUND;
 	if (voptions != NULL) {
-		result = cfg_map_get(voptions, CFG_CLAUSE_ALLOW_RECURSION, &obj);
+		result = cfg_map_get(voptions, CFG_CLAUSE_ALLOW_RECURSION,
+				     &obj);
 	}
 	if (result != ISC_R_SUCCESS && goptions != NULL) {
-		result = cfg_map_get(goptions, CFG_CLAUSE_ALLOW_RECURSION, &obj);
+		result = cfg_map_get(goptions, CFG_CLAUSE_ALLOW_RECURSION,
+				     &obj);
 	}
 	if (result == ISC_R_SUCCESS) {
 		CHECK(cfg_acl_fromconfig(obj, config, aclctx, mctx, 0, &acl));
@@ -3284,8 +3330,8 @@ check_plugins(const cfg_obj_t *plugins, const cfg_obj_t *config,
  */
 static isc_result_t
 get_zoneopt(const cfg_obj_t *opts1, const cfg_obj_t *opts2,
-	    const cfg_obj_t *opts3, const cfg_obj_t *opts4, enum cfg_clause name,
-	    const cfg_obj_t **objp) {
+	    const cfg_obj_t *opts3, const cfg_obj_t *opts4,
+	    enum cfg_clause name, const cfg_obj_t **objp) {
 	isc_result_t result = ISC_R_NOTFOUND;
 
 	REQUIRE(*objp == NULL);
@@ -3384,7 +3430,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		ztype = CFG_ZONE_INVIEW;
 	} else {
 		obj = NULL;
-		(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_TYPE, &obj);
+		(void)get_zoneopt(zoptions, toptions, NULL, NULL,
+				  CFG_CLAUSE_TYPE, &obj);
 		if (obj == NULL) {
 			cfg_obj_log(zconfig, ISC_LOG_ERROR,
 				    "zone '%s': type not present", znamestr);
@@ -3590,7 +3637,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 			kasp_inlinesigning = false;
 		} else {
 			const cfg_obj_t *kasps = NULL;
-			(void)cfg_map_get(config, CFG_CLAUSE_DNSSEC_POLICY, &kasps);
+			(void)cfg_map_get(config, CFG_CLAUSE_DNSSEC_POLICY,
+					  &kasps);
 			CFG_LIST_FOREACH(kasps, element) {
 				const cfg_obj_t *kobj = cfg_tuple_get(
 					cfg_listelt_value(element), "name");
@@ -3601,8 +3649,10 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 					const cfg_obj_t *kopt = cfg_tuple_get(
 						cfg_listelt_value(element),
 						"options");
-					if (cfg_map_get(kopt, CFG_CLAUSE_INLINE_SIGNING,
-							&inlinesigning) ==
+					if (cfg_map_get(
+						    kopt,
+						    CFG_CLAUSE_INLINE_SIGNING,
+						    &inlinesigning) ==
 					    ISC_R_SUCCESS)
 					{
 						kasp_inlinesigning =
@@ -3671,7 +3721,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 			cfg_obj_log(obj, ISC_LOG_WARNING,
 				    "option '%s' is not allowed "
 				    "in '%s' zone '%s'%s%s%s",
-				    cfg_clause_as_string[option->name], typestr, znamestr,
+				    cfg_clause_as_string[option->name], typestr,
+				    znamestr,
 				    topt ? " (referencing template '" : "",
 				    topt ? tmplname : "", topt ? "')" : "");
 			result = ISC_R_FAILURE;
@@ -3728,8 +3779,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		}
 
 		obj = NULL;
-		(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_ALSO_NOTIFY,
-				  &obj);
+		(void)get_zoneopt(zoptions, toptions, NULL, NULL,
+				  CFG_CLAUSE_ALSO_NOTIFY, &obj);
 		if (obj != NULL && !donotify) {
 			cfg_obj_log(zoptions, ISC_LOG_WARNING,
 				    "zone '%s': 'also-notify' set but "
@@ -3803,8 +3854,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	     !dns_name_isroot(zname)))
 	{
 		obj = NULL;
-		(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_PRIMARIES,
-				  &obj);
+		(void)get_zoneopt(zoptions, toptions, NULL, NULL,
+				  CFG_CLAUSE_PRIMARIES, &obj);
 		if (obj == NULL) {
 			/* If "primaries" was unset, check for "masters" */
 			(void)get_zoneopt(zoptions, toptions, NULL, NULL,
@@ -3997,8 +4048,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	 */
 	obj = NULL;
 	if (root) {
-		(void)get_zoneopt(voptions, goptions, NULL, NULL, CFG_CLAUSE_FORWARDERS,
-				  &obj);
+		(void)get_zoneopt(voptions, goptions, NULL, NULL,
+				  CFG_CLAUSE_FORWARDERS, &obj);
 	}
 	if (check_forward(config, zoptions, obj) != ISC_R_SUCCESS) {
 		result = ISC_R_FAILURE;
@@ -4012,8 +4063,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	    (dns_name_isrfc1918(zname) || dns_name_isula(zname)))
 	{
 		obj = NULL;
-		(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_FORWARD,
-				  &obj);
+		(void)get_zoneopt(zoptions, toptions, NULL, NULL,
+				  CFG_CLAUSE_FORWARD, &obj);
 		if (obj == NULL) {
 			/*
 			 * Forward mode not explicitly configured
@@ -4039,8 +4090,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	 * Check validity of static stub server addresses.
 	 */
 	obj = NULL;
-	(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_SERVER_ADDRESSES,
-			  &obj);
+	(void)get_zoneopt(zoptions, toptions, NULL, NULL,
+			  CFG_CLAUSE_SERVER_ADDRESSES, &obj);
 	if (ztype == CFG_ZONE_STATICSTUB && obj != NULL) {
 		CFG_LIST_FOREACH(obj, element) {
 			isc_sockaddr_t sa;
@@ -4063,7 +4114,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	 * Check validity of static stub server names.
 	 */
 	obj = NULL;
-	(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_SERVER_NAMES, &obj);
+	(void)get_zoneopt(zoptions, toptions, NULL, NULL,
+			  CFG_CLAUSE_SERVER_NAMES, &obj);
 	if (zname != NULL && ztype == CFG_ZONE_STATICSTUB && obj != NULL) {
 		CFG_LIST_FOREACH(obj, element) {
 			const char *snamestr = NULL;
@@ -4096,8 +4148,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	}
 
 	obj = NULL;
-	(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_SEND_REPORT_CHANNEL,
-			  &obj);
+	(void)get_zoneopt(zoptions, toptions, NULL, NULL,
+			  CFG_CLAUSE_SEND_REPORT_CHANNEL, &obj);
 	if (obj != NULL) {
 		const char *str = cfg_obj_asstring(obj);
 		dns_fixedname_t fad;
@@ -4211,7 +4263,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 	}
 
 	obj = NULL;
-	(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_DATABASE, &obj);
+	(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_DATABASE,
+			  &obj);
 	if (dlz && obj != NULL) {
 		cfg_obj_log(zconfig, ISC_LOG_ERROR,
 			    "zone '%s': cannot specify both 'dlz' "
@@ -4225,8 +4278,8 @@ isccfg_check_zoneconf(const cfg_obj_t *zconfig, const cfg_obj_t *voptions,
 		    strcmp(ZONEDB_DEFAULT, cfg_obj_asstring(obj)) == 0))
 	{
 		const cfg_obj_t *fileobj = NULL;
-		(void)get_zoneopt(zoptions, toptions, NULL, NULL, CFG_CLAUSE_FILE,
-				  &fileobj);
+		(void)get_zoneopt(zoptions, toptions, NULL, NULL,
+				  CFG_CLAUSE_FILE, &fileobj);
 		if (fileobj == NULL &&
 		    (ztype == CFG_ZONE_PRIMARY || ztype == CFG_ZONE_HINT ||
 		     (ztype == CFG_ZONE_SECONDARY && inline_signing)))
@@ -4796,12 +4849,14 @@ check_servers(const cfg_obj_t *config, const cfg_obj_t *voptions,
 					in_port_t port =
 						isc_sockaddr_getport(sa);
 					if (port == dnsport) {
-						cfg_obj_log(obj, ISC_LOG_ERROR,
-							    "'%s' cannot "
-							    "specify the "
-							    "DNS listener port "
-							    "(%d)",
-							    cfg_clause_as_string[xfr], port);
+						cfg_obj_log(
+							obj, ISC_LOG_ERROR,
+							"'%s' cannot "
+							"specify the "
+							"DNS listener port "
+							"(%d)",
+							cfg_clause_as_string[xfr],
+							port);
 						result = ISC_R_FAILURE;
 					}
 				} else {
@@ -4876,7 +4931,8 @@ check_servers(const cfg_obj_t *config, const cfg_obj_t *voptions,
 					cfg_obj_log(opt, ISC_LOG_ERROR,
 						    "setting server option "
 						    "'%s' failed: %s",
-						    cfg_clause_as_string[bools[i].name],
+						    cfg_clause_as_string
+							    [bools[i].name],
 						    isc_result_totext(tresult));
 					result = ISC_R_FAILURE;
 				}
@@ -4892,7 +4948,8 @@ check_servers(const cfg_obj_t *config, const cfg_obj_t *voptions,
 					cfg_obj_log(opt, ISC_LOG_ERROR,
 						    "setting server option "
 						    "'%s' failed: %s",
-						    cfg_clause_as_string[uint32s[i].name],
+						    cfg_clause_as_string
+							    [uint32s[i].name],
 						    isc_result_totext(tresult));
 					result = ISC_R_FAILURE;
 				}
@@ -4900,9 +4957,12 @@ check_servers(const cfg_obj_t *config, const cfg_obj_t *voptions,
 		}
 		dns_peer_detach(&peer);
 
-		check_range_uint32(v1, &result, CFG_CLAUSE_EDNS_UDP_SIZE, 512, 4096);
-		check_range_uint32(v1, &result, CFG_CLAUSE_MAX_UDP_SIZE, 512, 4096);
-		check_range_uint32(v1, &result, CFG_CLAUSE_EDNS_VERSION, 0, 255);
+		check_range_uint32(v1, &result, CFG_CLAUSE_EDNS_UDP_SIZE, 512,
+				   4096);
+		check_range_uint32(v1, &result, CFG_CLAUSE_MAX_UDP_SIZE, 512,
+				   4096);
+		check_range_uint32(v1, &result, CFG_CLAUSE_EDNS_VERSION, 0,
+				   255);
 		check_range_uint32(v1, &result, CFG_CLAUSE_PADDING, 0, 512);
 	}
 	return result;
@@ -5534,7 +5594,8 @@ check_rpz_catz(const char *rpz_catz, const cfg_obj_t *rpz_obj,
 				zoneobj = cfg_tuple_get(zoneobj, "options");
 			}
 			if (zoneobj != NULL && cfg_obj_ismap(zoneobj)) {
-				(void)cfg_map_get(zoneobj, CFG_CLAUSE_TYPE, &obj);
+				(void)cfg_map_get(zoneobj, CFG_CLAUSE_TYPE,
+						  &obj);
 			}
 			if (obj != NULL) {
 				zonetype = cfg_obj_asstring(obj);
@@ -5819,7 +5880,9 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 	 */
 	if (opts != NULL) {
 		obj = NULL;
-		if (cfg_map_get(opts, CFG_CLAUSE_CATALOG_ZONES, &obj) == ISC_R_SUCCESS) {
+		if (cfg_map_get(opts, CFG_CLAUSE_CATALOG_ZONES, &obj) ==
+		    ISC_R_SUCCESS)
+		{
 			if (vclass != dns_rdataclass_in) {
 				cfg_obj_log(
 					obj, ISC_LOG_ERROR,
@@ -6075,7 +6138,8 @@ check_viewconf(const cfg_obj_t *config, const cfg_obj_t *voptions,
 		const cfg_obj_t *plugins = NULL;
 
 		if (voptions != NULL) {
-			(void)cfg_map_get(voptions, CFG_CLAUSE_PLUGIN, &plugins);
+			(void)cfg_map_get(voptions, CFG_CLAUSE_PLUGIN,
+					  &plugins);
 		} else {
 			(void)cfg_map_get(config, CFG_CLAUSE_PLUGIN, &plugins);
 		}

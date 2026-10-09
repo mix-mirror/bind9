@@ -605,7 +605,8 @@ parse_config(const char *keyname, cfg_obj_t **configp) {
 		servername = "127.0.0.1";
 	} else if (servername == NULL && options != NULL) {
 		const cfg_obj_t *defserverobj = NULL;
-		(void)cfg_map_get(options, CFG_CLAUSE_DEFAULT_SERVER, &defserverobj);
+		(void)cfg_map_get(options, CFG_CLAUSE_DEFAULT_SERVER,
+				  &defserverobj);
 		if (defserverobj != NULL) {
 			servername = cfg_obj_asstring(defserverobj);
 		}
@@ -637,7 +638,8 @@ parse_config(const char *keyname, cfg_obj_t **configp) {
 	if (keyname != NULL) {
 		/* Was set on command line, do nothing. */
 	} else if (server != NULL) {
-		DO("get key for server", cfg_map_get(server, CFG_CLAUSE_KEY, &defkey));
+		DO("get key for server",
+		   cfg_map_get(server, CFG_CLAUSE_KEY, &defkey));
 		keyname = cfg_obj_asstring(defkey);
 	} else if (options != NULL) {
 		DO("get default key",
@@ -653,7 +655,8 @@ parse_config(const char *keyname, cfg_obj_t **configp) {
 	if (key_only) {
 		DO("get key", cfg_map_get(config, CFG_CLAUSE_KEY, &key));
 	} else {
-		DO("get config key list", cfg_map_get(config, CFG_CLAUSE_KEY, &keys));
+		DO("get config key list",
+		   cfg_map_get(config, CFG_CLAUSE_KEY, &keys));
 		bool match = false;
 		CFG_LIST_FOREACH(keys, elt) {
 			const char *name = NULL;
@@ -710,7 +713,8 @@ parse_config(const char *keyname, cfg_obj_t **configp) {
 			(void)cfg_map_get(server, CFG_CLAUSE_PORT, &defport);
 		}
 		if (defport == NULL && options != NULL) {
-			(void)cfg_map_get(options, CFG_CLAUSE_DEFAULT_PORT, &defport);
+			(void)cfg_map_get(options, CFG_CLAUSE_DEFAULT_PORT,
+					  &defport);
 		}
 	}
 	if (defport != NULL) {
@@ -788,7 +792,8 @@ parse_config(const char *keyname, cfg_obj_t **configp) {
 	}
 	if (!local4set && options != NULL) {
 		address = NULL;
-		cfg_map_get(options, CFG_CLAUSE_DEFAULT_SOURCE_ADDRESS, &address);
+		cfg_map_get(options, CFG_CLAUSE_DEFAULT_SOURCE_ADDRESS,
+			    &address);
 		if (address != NULL) {
 			local4 = *cfg_obj_assockaddr(address);
 			local4set = true;
@@ -805,7 +810,8 @@ parse_config(const char *keyname, cfg_obj_t **configp) {
 	}
 	if (!local6set && options != NULL) {
 		address = NULL;
-		cfg_map_get(options, CFG_CLAUSE_DEFAULT_SOURCE_ADDRESS_V6, &address);
+		cfg_map_get(options, CFG_CLAUSE_DEFAULT_SOURCE_ADDRESS_V6,
+			    &address);
 		if (address != NULL) {
 			local6 = *cfg_obj_assockaddr(address);
 			local6set = true;

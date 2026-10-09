@@ -2669,9 +2669,8 @@ cfg_parse_mapbody(cfg_parser_t *pctx, const cfg_type_t *type, cfg_obj_t **ret) {
 				    &cfg_type_implicitlist, &listobj);
 			symval.as_pointer = listobj;
 			result = isc_symtab_define_and_return(
-				obj->value.map->symtab, "",
-				clause->name, symval, isc_symexists_reject,
-				&symval);
+				obj->value.map->symtab, "", clause->name,
+				symval, isc_symexists_reject, &symval);
 			if (result == ISC_R_EXISTS) {
 				CLEANUP_OBJ(listobj);
 				listobj = symval.as_pointer;

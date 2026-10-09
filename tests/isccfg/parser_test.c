@@ -33,8 +33,8 @@
 #include <isc/types.h>
 #include <isc/util.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/cfg.h>
+#include <isccfg/clause.h>
 #include <isccfg/grammar.h>
 #include <isccfg/namedconf.h>
 #include <isccfg/tokens.h>

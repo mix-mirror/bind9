@@ -23,8 +23,8 @@
 #include <isc/syslog.h>
 #include <isc/util.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/cfg.h>
+#include <isccfg/clause.h>
 
 #include <named/log.h>
 #include <named/logconf.h>
@@ -205,8 +205,10 @@ channel_fromconf(const cfg_obj_t *channel, isc_logconfig_t *logconfig) {
 		const cfg_obj_t *printtime = NULL;
 		const cfg_obj_t *buffered = NULL;
 
-		(void)cfg_map_get(channel, CFG_CLAUSE_PRINT_CATEGORY, &printcat);
-		(void)cfg_map_get(channel, CFG_CLAUSE_PRINT_SEVERITY, &printsev);
+		(void)cfg_map_get(channel, CFG_CLAUSE_PRINT_CATEGORY,
+				  &printcat);
+		(void)cfg_map_get(channel, CFG_CLAUSE_PRINT_SEVERITY,
+				  &printsev);
 		(void)cfg_map_get(channel, CFG_CLAUSE_PRINT_TIME, &printtime);
 		(void)cfg_map_get(channel, CFG_CLAUSE_BUFFERED, &buffered);
 
@@ -237,7 +239,9 @@ channel_fromconf(const cfg_obj_t *channel, isc_logconfig_t *logconfig) {
 	}
 
 	level = ISC_LOG_INFO;
-	if (cfg_map_get(channel, CFG_CLAUSE_SEVERITY, &severity) == ISC_R_SUCCESS) {
+	if (cfg_map_get(channel, CFG_CLAUSE_SEVERITY, &severity) ==
+	    ISC_R_SUCCESS)
+	{
 		if (cfg_obj_isstring(severity)) {
 			const char *str = cfg_obj_asstring(severity);
 			if (strcasecmp(str, "critical") == 0) {

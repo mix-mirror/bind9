@@ -24,8 +24,8 @@
 
 #include <dns/tsig.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/cfg.h>
+#include <isccfg/clause.h>
 
 #include <named/config.h>
 #include <named/log.h>

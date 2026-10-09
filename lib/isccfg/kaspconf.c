@@ -33,8 +33,8 @@
 
 #include <dst/dst.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/cfg.h>
+#include <isccfg/clause.h>
 #include <isccfg/duration.h>
 #include <isccfg/kaspconf.h>
 #include <isccfg/namedconf.h>
@@ -674,7 +674,8 @@ cfg_kasp_fromconfig(const cfg_obj_t *config, dns_kasp_t *default_kasp,
 	}
 	dns_kasp_setmanualmode(kasp, manual_mode);
 
-	maxttl = get_duration(maps, CFG_CLAUSE_MAX_ZONE_TTL, DNS_KASP_ZONE_MAXTTL);
+	maxttl = get_duration(maps, CFG_CLAUSE_MAX_ZONE_TTL,
+			      DNS_KASP_ZONE_MAXTTL);
 	dns_kasp_setzonemaxttl(kasp, maxttl);
 
 	zonepropdelay = get_duration(maps, CFG_CLAUSE_ZONE_PROPAGATION_DELAY,
@@ -685,7 +686,8 @@ cfg_kasp_fromconfig(const cfg_obj_t *config, dns_kasp_t *default_kasp,
 	dsttl = get_duration(maps, CFG_CLAUSE_PARENT_DS_TTL, DNS_KASP_DS_TTL);
 	dns_kasp_setdsttl(kasp, dsttl);
 
-	parentpropdelay = get_duration(maps, CFG_CLAUSE_PARENT_PROPAGATION_DELAY,
+	parentpropdelay = get_duration(maps,
+				       CFG_CLAUSE_PARENT_PROPAGATION_DELAY,
 				       DNS_KASP_PARENT_PROPDELAY);
 	dns_kasp_setparentpropagationdelay(kasp, parentpropdelay);
 
@@ -726,8 +728,8 @@ cfg_kasp_fromconfig(const cfg_obj_t *config, dns_kasp_t *default_kasp,
 				    DNS_KASP_RETIRE_SAFETY);
 	dns_kasp_setretiresafety(kasp, retiresafety);
 
-	dns_kasp_setpurgekeys(
-		kasp, get_duration(maps, CFG_CLAUSE_PURGE_KEYS, DNS_KASP_PURGE_KEYS));
+	dns_kasp_setpurgekeys(kasp, get_duration(maps, CFG_CLAUSE_PURGE_KEYS,
+						 DNS_KASP_PURGE_KEYS));
 
 	ipub = dnskeyttl + publishsafety + zonepropdelay;
 	iret = dsttl + retiresafety + parentpropdelay;
@@ -1032,10 +1034,10 @@ cfg_keystore_fromconfig(const cfg_obj_t *config, isc_mem_t *mctx,
 		koptions = cfg_tuple_get(config, "options");
 		maps[i++] = koptions;
 		maps[i] = NULL;
-		dns_keystore_setdirectory(keystore,
-					  get_string(maps, CFG_CLAUSE_DIRECTORY));
-		dns_keystore_setpkcs11uri(keystore,
-					  get_string(maps, CFG_CLAUSE_PKCS11_URI));
+		dns_keystore_setdirectory(
+			keystore, get_string(maps, CFG_CLAUSE_DIRECTORY));
+		dns_keystore_setpkcs11uri(
+			keystore, get_string(maps, CFG_CLAUSE_PKCS11_URI));
 	}
 
 	/* Append it to the list for future lookups. */

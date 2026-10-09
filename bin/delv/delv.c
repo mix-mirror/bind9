@@ -853,7 +853,8 @@ setup_dnsseckeys(dns_client_t *client, dns_view_t *toview) {
 			fatal("Unable to parse built-in keys");
 		}
 		INSIST(bindkeys != NULL);
-		cfg_map_get(bindkeys, CFG_CLAUSE_BUILTIN_TRUST_ANCHORS, &trust_anchors);
+		cfg_map_get(bindkeys, CFG_CLAUSE_BUILTIN_TRUST_ANCHORS,
+			    &trust_anchors);
 	}
 
 	if (trust_anchors != NULL) {

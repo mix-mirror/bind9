@@ -20,8 +20,8 @@
 #include <dns/types.h>
 #include <dns/zone.h>
 
-#include <isccfg/clause.h>
 #include <isccfg/cfg.h>
+#include <isccfg/clause.h>
 
 isc_result_t
 named_config_parsedefaults(cfg_obj_t **conf);
