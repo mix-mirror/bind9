@@ -50,6 +50,7 @@ options {
 		"none";
 	};
 	match-mapped-addresses yes;
+	max-cache-size 20000000000000;
 	memstatistics-file "named.memstats";
 	pid-file none;
 	port 5300;
@@ -61,7 +62,6 @@ options {
 	update-quota 200;
 	check-names primary warn;
 	check-names secondary ignore;
-	max-cache-size 20000000000000;
 	max-query-count 100;
 	max-query-restarts 10;
 	nta-lifetime 604800;
