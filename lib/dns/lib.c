@@ -70,7 +70,6 @@ dns__lib_shutdown(void) {
 	}
 
 	rcu_barrier();
-	rcu_barrier(); /* see qplru_shutdown_rcu() in delegdb */
 
 	dns__deleg_shutdown();
 	dns__adb_shutdown();
