@@ -24,6 +24,7 @@ atma02.example. 3600 IN TYPE34 \# 12 013631323030303030303030
 atma03.example. 3600 IN TYPE34 \# 9 001234567890abcdef
 atma04.example. 3600 IN TYPE34 \# 9 00fedcba0987654321
 avc.example. 3600 IN AVC "foo:bar"
+brid.example. 3600 IN BRID abcd
 caa01.example. 3600 IN CAA 0 issue "ca.example.net; policy=ev"
 caa02.example. 3600 IN CAA 128 tbs "Unknown"
 caa03.example. 3600 IN CAA 128 tbs ""
@@ -48,11 +49,13 @@ ds01.example. 3600 IN DS 12892 5 2 26584835ca80c81c91999f31cfaf2a0e89d4ff1c8fafd
 ds01.example. 3600 IN NS ns42.example.
 ds02.example. 3600 IN DS 12892 5 1 7aa4a3f416c2f2391fb7ab0d434f762cd62d1390
 ds02.example. 3600 IN NS ns43.example.
+dsync01.example. 3600 IN DSYNC CDS NOTIFY 53 .
 eid01.example. 3600 IN TYPE31 \# 3 1289ab
 eui48.example. 3600 IN EUI48 01-23-45-67-89-ab
 eui64.example. 3600 IN EUI64 01-23-45-67-89-ab-cd-ef
 gid01.example. 3600 IN TYPE102 \# 1 03
 gpos01.example. 3600 IN GPOS -22.6882 116.8652 250.0
+hhit.example. 3600 IN HHIT abcd
 hinfo01.example. 3600 IN HINFO "Generic PC clone" "NetBSD-1.4"
 hinfo02.example. 3600 IN HINFO "PC" "NetBSD"
 hip1.example. 3600 IN HIP 2 200100107b1a74df365639cc39f1d578 AwEAAbdxyhNuSutc5EMzxTs9LBPCIkOFH8cIvM4p9+LrV4e19WzK00+CI6zBCQTdtWsuxKbWIy87UOoJTwkUs7lBu+Upr1gsNrut79ryra+bSRGQb1slImA8YVJyuIDsj7kwzG7jnERNqnWxZ48AWkskmdHaVDP4BcelrTI3rMXdXF5D
@@ -121,6 +124,7 @@ openpgpkey.example. 3600 IN OPENPGPKEY AQMFD5raczCJHViKtLYhWGz8hMY9UGRuniJDBzC7w
 ptr01.example. 3600 IN PTR example.
 px01.example. 3600 IN PX 65535 foo. bar.
 px02.example. 3600 IN PX 65535 . .
+resinfo.example. 3600 IN RESINFO "qnamemin" "exterr=15,16,17" "infourl=https://resolver.example.com/guide"
 rkey01.example. 3600 IN TYPE57 \# 111 0000ff010103050f9ada7330891d588a b4b621586cfc84c63d50646e9e224307 30bbc34691cb3599ae23ba8b6a1d1965 9056e719a8a56c10d5bdd48396e2faae 76780f66c6371af43fc5503cffba7216 3e9bec4b206bad33c865ba2c57bdafc9 faa5a1eb946e688ea7f405aa874fef
 rp01.example. 3600 IN RP mbox-dname.example. txt-dname.example.
 rp02.example. 3600 IN RP . .
@@ -164,6 +168,10 @@ unspec01.example. 3600 IN UNSPEC \# 1 04
 uri01.example. 3600 IN URI 10 20 "https://www.isc.org/"
 uri02.example. 3600 IN URI 30 40 "https://www.isc.org/HolyCowThisSureIsAVeryLongURIRecordIDontEvenKnowWhatSomeoneWouldEverWantWithSuchAThingButTheSpecificationRequiresThatWesupportItSoHereWeGoTestingItLaLaLaLaLaLaLaSeriouslyThoughWhyWouldYouEvenConsiderUsingAURIThisLongItSeemsLikeASillyIdeaButEnhWhatAreYouGonnaDo/"
 uri03.example. 3600 IN URI 30 40 " "
+wallet.example. 3600 IN WALLET "currency-identifer" "wallet-identifier"
+wallet-multiple.example. 3600 IN WALLET "currency-identifer1" "wallet-identifier1"
+wallet-multiple.example. 3600 IN WALLET "currency-identifer1" "wallet-identifier2"
+wallet-multiple.example. 3600 IN WALLET "currency-identifer2" "wallet-identifier3"
 wks01.example. 3600 IN WKS 10.0.0.1 6 0 1 2 21 23
 wks02.example. 3600 IN WKS 10.0.0.1 17 0 1 2 53
 wks03.example. 3600 IN WKS 10.0.0.2 6 65535

@@ -521,7 +521,7 @@ class AsyncDnsServer(_AsyncServer):
     def _load_zone_file_with_origin(
         self, zone_file_path: pathlib.Path
     ) -> dns.zone.Zone:
-        zone = dns.zone.from_file(str(zone_file_path), origin=None, relativize=False)
+        zone = dns.zone.from_file(zone_file_path, origin=None, relativize=False)
         if zone.origin != dns.name.root:
             error = "only the root zone may use $ORIGIN in the zone file; "
             error += "for every other zone, its origin is determined by "
@@ -533,7 +533,7 @@ class AsyncDnsServer(_AsyncServer):
         self, zone_file_path: pathlib.Path
     ) -> dns.zone.Zone:
         origin = zone_file_path.name.removesuffix(".signed").removesuffix(".db")
-        return dns.zone.from_file(str(zone_file_path), origin=origin, relativize=False)
+        return dns.zone.from_file(zone_file_path, origin=origin, relativize=False)
 
     def _abort_if_dname_found_unless_acknowledged(self, zone: dns.zone.Zone) -> None:
         if self._acknowledge_manual_dname_handling:

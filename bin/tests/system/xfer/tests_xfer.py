@@ -469,7 +469,7 @@ def test_tcp_message_compression_makes_difference(named_port, ns8):
         fqdn = name.derelativize(zone.origin).to_text()
         for rdataset in node.rdatasets:
             xfr_size += len(f"{fqdn} {rdataset}")
-    assert xfr_size >= 452172, f"XFR size {xfr_size} seems too small"
+    assert xfr_size >= 449922, f"XFR size {xfr_size} seems too small"
 
     assert len(ns8.log.grep("sending TCP message of")) > 300
 

@@ -40,12 +40,18 @@ def sig_rdata(covers: dns.rdatatype.RdataType) -> dns.rdata.Rdata:
     """
     dnspython cannot parse the legacy SIG (24) type from text; parse the
     text as RRSIG (46), which shares its wire format, and re-wrap as SIG.
+
+    The rdata is kept opaque (GenericRdata): since dnspython 2.9.0 has a
+    typed SIG class, re-wrapping via from_wire() would yield rdatas whose
+    covers() differ, and dns.rdataset.Rdataset.add() would then reject the
+    rrset with DifferingCovers.  The test needs both rdatas in a single
+    opaque rdataset, so the raw wire bytes are wrapped as-is.
     """
     covered = dns.rdatatype.to_text(covers)
     text = f"{covered} 6 2 600 20260331170000 20260318160000 21831 . 0000"
     rrsig = dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.RRSIG, text)
     wire = rrsig.to_digestable()
-    return dns.rdata.from_wire(dns.rdataclass.IN, dns.rdatatype.SIG, wire, 0, len(wire))
+    return dns.rdata.GenericRdata(dns.rdataclass.IN, dns.rdatatype.SIG, wire)
 
 
 def sig() -> dns.rrset.RRset:

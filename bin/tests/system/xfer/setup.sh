@@ -18,18 +18,10 @@ dnspython_genzone() (
   # Drop unusual RR sets and RR types (AMTRELAY, GPOS, apl02) that dnspython
   # can't handle. For more information see
   # https://github.com/rthalley/dnspython/issues/1034#issuecomment-1896541899.
-  # - BRID and HHIT are not supported by dnspython at all.
-  # - dnspython v2.8.0 adds support for DSYNC RR type
-  # - dnspython v2.7.0 adds support for RESINFO and WALLET RR types
   $SHELL "${TOP_SRCDIR}/bin/tests/system/genzone.sh" $servers \
     | sed \
       -e '/AMTRELAY.*\# 2 0004/d' \
-      -e '/BRID/d' \
-      -e '/DSYNC/d' \
       -e '/GPOS.*"" "" ""/d' \
-      -e '/HHIT/d' \
-      -e '/RESINFO/d' \
-      -e '/WALLET/d' \
       -e '/apl02/d' \
     | tr "\t" " "
 )
