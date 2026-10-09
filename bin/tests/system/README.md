@@ -72,7 +72,7 @@ compiled build directory.
 
 To run system tests, make sure you have the following dependencies installed:
 
-- python3 (3.10 and newer)
+- python3 (3.11 and newer)
 - pytest (7.0 and newer)
 - pytest-xdist
 - perl (still needed by the test runner internals; some legacy tests
