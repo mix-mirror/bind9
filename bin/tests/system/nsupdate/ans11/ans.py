@@ -64,8 +64,8 @@ class SigAxfrHandler(AxfrHandler):
     zone_contents = [
         rrset(ZONE, dns.rdatatype.NS, NS_NAME),
         rrset(NS_NAME, dns.rdatatype.A, "10.53.0.11"),
-        # dnspython groups SIG rdatas by their covered type, so each one
-        # needs its own RRset; on the wire they are separate RRs anyway.
+        # dnspython rejects SIG rdatas with different covered types in one
+        # RRset, so each gets its own; on the wire they are separate RRs anyway.
         sig(dns.rdatatype.A),
         sig(dns.rdatatype.MX),
     ]
