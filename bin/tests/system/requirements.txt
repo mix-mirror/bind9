@@ -1,8 +1,8 @@
 ### Test requirements
 
-dnspython>=2.8.0
+dnspython>=2.9.0
 
-cryptography
+cryptography>=50
 gssapi
 h2
 hypothesis>=4.41.2
