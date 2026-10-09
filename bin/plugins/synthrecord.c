@@ -439,7 +439,7 @@ synthrecord_parseparams(const char *const *parameters, const char *cfgfile,
 			redefined = params->has_ttl;
 			params->has_ttl = true;
 			CHECK(cfg_tokens_getstring(tok, &value));
-			if (isc_parse_uint32(&params->ttl, value, 10) !=
+			if (isc_parse_uint32(&params->ttl, value, 0) !=
 			    ISC_R_SUCCESS)
 			{
 				cfg_tokens_log(tok, ISC_LOG_ERROR,
