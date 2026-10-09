@@ -79,7 +79,7 @@ def bootstrap():
         zone.render()
 
         # read the rendered zone
-        zoneobj = dns.zone.from_file(str(zone.path_unsigned), origin=f"{name}.")
+        zoneobj = dns.zone.from_file(zone.path_unsigned, origin=f"{name}.")
         lifetime = 30 * 86400
 
         # sign the zone
@@ -131,7 +131,7 @@ def bootstrap():
             nsec3_rrsig.ttl = 300
             nsec3_rrsig.add(nsec3_sigdata)
 
-        zoneobj.to_file(str(zone.path_signed))
+        zoneobj.to_file(zone.path_signed)
 
         return zone
 
