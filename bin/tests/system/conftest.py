@@ -12,6 +12,7 @@
 from pathlib import Path
 from re import compile as Re
 
+import contextlib
 import errno
 import filecmp
 import os
@@ -509,14 +510,12 @@ def system_test_dir(
     )
 
     # System tests are meant to be executed from their directory - switch to it.
-    old_cwd = os.getcwd()
-    os.chdir(testdir)
-    isctest.log.info("switching to tmpdir: %s", testdir)
     try:
-        yield testdir  # other fixtures / tests will execute here
+        with contextlib.chdir(testdir):
+            isctest.log.info("switching to tmpdir: %s", testdir)
+            yield testdir  # other fixtures / tests will execute here
     finally:
-        os.chdir(old_cwd)
-        isctest.log.debug("changed workdir to: %s", old_cwd)
+        isctest.log.debug("changed workdir to: %s", os.getcwd())
 
         result = get_test_result()
 

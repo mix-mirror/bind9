@@ -13,7 +13,7 @@
 This module implements the RNDC control protocol.
 """
 
-from typing import Any
+from typing import Any, Self
 
 import base64
 import hashlib
@@ -104,7 +104,7 @@ class RNDCClient:
             self.socket.close()
             raise
 
-    def __enter__(self) -> "RNDCClient":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_: Any) -> None:

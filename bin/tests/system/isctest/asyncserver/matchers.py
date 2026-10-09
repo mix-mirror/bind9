@@ -10,7 +10,7 @@
 # information regarding copyright ownership.
 
 from collections.abc import Callable, Iterator
-from typing import TypeVar
+from typing import Self, TypeVar
 
 import abc
 
@@ -37,13 +37,13 @@ class Matcher(abc.ABC):
         """
         raise NotImplementedError
 
-    def __and__(self, other: "Matcher") -> "Matcher":
+    def __and__(self, other: "Matcher") -> Self:
         return AllOf(self, other)
 
-    def __or__(self, other: "Matcher") -> "Matcher":
+    def __or__(self, other: "Matcher") -> Self:
         return AnyOf(self, other)
 
-    def __invert__(self) -> "Matcher":
+    def __invert__(self) -> Self:
         return Not(self)
 
     def of(self, cls: type[M]) -> M:

@@ -10,7 +10,7 @@
 # information regarding copyright ownership.
 
 from dataclasses import dataclass
-from typing import ClassVar, final
+from typing import ClassVar, Self, final
 
 import abc
 import bisect
@@ -64,7 +64,7 @@ class NonExistenceProver(abc.ABC):
         qname: dns.name.Name,
         qclass: dns.rdataclass.RdataClass,
         response: dns.message.Message,
-    ) -> "NonExistenceProver":
+    ) -> Self:
         for proof_rdatatype, prover_class in cls._provers.items():
             if next(zone.iterate_rdatasets(proof_rdatatype), None):
                 return prover_class(zone, qname, qclass, response)
