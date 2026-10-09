@@ -2104,7 +2104,8 @@ static cfg_tuplefielddef_t rpz_fields[] = {
 	{ "nsip-enable", &cfg_type_boolean, 0 },
 	{ "nsdname-enable", &cfg_type_boolean, 0 },
 	{ "dnsrps-enable", &cfg_type_boolean, CFG_CLAUSEFLAG_OBSOLETE },
-	{ "dnsrps-options", &cfg_type_bracketed_tokens, CFG_CLAUSEFLAG_OBSOLETE },
+	{ "dnsrps-options", &cfg_type_bracketed_tokens,
+	  CFG_CLAUSEFLAG_OBSOLETE },
 	{ NULL, NULL, 0 }
 };
 static cfg_type_t cfg_type_rpz = { "rpz",

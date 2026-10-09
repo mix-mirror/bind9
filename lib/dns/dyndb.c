@@ -197,7 +197,8 @@ unload_library(dyndb_implementation_t **impp) {
 isc_result_t
 dns_dyndb_load(const char *libname, const char *name,
 	       const char *const *parameters, const char *file,
-	       unsigned long line, isc_mem_t *mctx, const dns_dyndbctx_t *dctx) {
+	       unsigned long line, isc_mem_t *mctx,
+	       const dns_dyndbctx_t *dctx) {
 	isc_result_t result;
 	dyndb_implementation_t *implementation = NULL;
 

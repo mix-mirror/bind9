@@ -161,7 +161,7 @@ install_hooks(ns_hooktable_t *hooktable, isc_mem_t *mctx,
  * Support for parsing of parameters.
  */
 typedef struct filter_params {
-	cfg_obj_t    *aclobj;
+	cfg_obj_t *aclobj;
 	filter_aaaa_t v4_aaaa;
 	filter_aaaa_t v6_aaaa;
 } filter_params_t;
