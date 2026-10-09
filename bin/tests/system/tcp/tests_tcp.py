@@ -145,7 +145,7 @@ class TcpConnectionPool:
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=self.OPEN_TIMEOUT,
             )
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             for task in tasks:
                 task.cancel()
             results = await asyncio.gather(*tasks, return_exceptions=True)
