@@ -88,29 +88,18 @@ dns_rdatasetmethods_t dns_rdataslab_rdatasetmethods = {
 	.clearprefetch = rdataset_clearprefetch,
 };
 
-static void
-slabheader_proof_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG);
-static isc_result_t
-slabheader_proof_first(dns_rdataset_t *rdataset);
-static isc_result_t
-slabheader_proof_next(dns_rdataset_t *rdataset);
-static void
-slabheader_proof_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata);
-static void
-slabheader_proof_clone(const dns_rdataset_t *source,
-		       dns_rdataset_t *target DNS__DB_FLARG);
-static unsigned int
-slabheader_proof_count(dns_rdataset_t *rdataset);
-static dns_slabheader_t *
-slabheader_proof_getheader(const dns_rdataset_t *rdataset);
-
-dns_rdatasetmethods_t dns_rdataslab_proof_rdatasetmethods = {
-	.disassociate = slabheader_proof_disassociate,
-	.first = slabheader_proof_first,
-	.next = slabheader_proof_next,
-	.current = slabheader_proof_current,
-	.clone = slabheader_proof_clone,
-	.count = slabheader_proof_count,
+/*
+ * The NSEC/NSEC3 and RRSIG rdatasets handed out by getnoqname() are
+ * ordinary slab rdatasets bound to the proof's own slabheaders; they
+ * only differ in which operations are permitted on them.
+ */
+static dns_rdatasetmethods_t dns_rdataslab_proof_rdatasetmethods = {
+	.disassociate = rdataset_disassociate,
+	.first = rdataset_first,
+	.next = rdataset_next,
+	.current = rdataset_current,
+	.clone = rdataset_clone,
+	.count = rdataset_count,
 	.getnoqname = NULL,
 	.settrust = NULL,
 	.expire = NULL,
@@ -548,16 +537,10 @@ dns_slabheader_freeproof(isc_mem_t *mctx, dns_slabheader_proof_t **proofp) {
 		dns_name_free(&proof->name, mctx);
 	}
 	if (proof->neg != NULL) {
-		dns_slabheader_t *header =
-			(dns_slabheader_t *)((uint8_t *)proof->neg -
-					     sizeof(dns_slabheader_t));
-		dns_slabheader_detach(&header);
+		dns_slabheader_detach(&proof->neg);
 	}
 	if (proof->negsig != NULL) {
-		dns_slabheader_t *header =
-			(dns_slabheader_t *)((uint8_t *)proof->negsig -
-					     sizeof(dns_slabheader_t));
-		dns_slabheader_detach(&header);
+		dns_slabheader_detach(&proof->negsig);
 	}
 	isc_mem_put(mctx, proof, sizeof(*proof));
 }
@@ -684,14 +667,18 @@ rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 		    dns_rdataset_t *nsec,
 		    dns_rdataset_t *nsecsig DNS__DB_FLARG) {
 	dns_dbnode_t *node = rdataset->slab.node;
-	dns_slabheader_t *header = rdataset_getheader(rdataset);
 	const dns_slabheader_proof_t *noqname = rdataset->slab.noqname;
+	dns_rdatatype_t type = DNS_TYPEPAIR_TYPE(noqname->neg->typepair);
 
 	/*
-	 * Normally, rdataset->slab.raw points to the data immediately
-	 * following a dns_slabheader in memory. Here, though, it will
-	 * point to a bare rdataslab, a pointer to which is stored in
-	 * the dns_slabheader's `noqname` field.
+	 * The proof is stored as two slabheaders of their own, owned by
+	 * the `noqname` field of the header this rdataset is bound to.
+	 * The returned rdatasets are bound to those headers exactly like
+	 * any other slab rdataset, and hold their own references to
+	 * them, so they stay valid even if the owning header is replaced
+	 * in the meantime.  The owner name is only cloned, though: it is
+	 * stored in the proof and freed with the owning header, so it is
+	 * only valid while 'rdataset' remains associated.
 	 *
 	 * The 'keepcase' attribute is set to prevent setownercase and
 	 * getownercase methods from affecting the case of NSEC/NSEC3
@@ -700,33 +687,31 @@ rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
 	*nsec = (dns_rdataset_t){
 		.methods = &dns_rdataslab_proof_rdatasetmethods,
 		.rdclass = rdataset->rdclass,
-		.type = noqname->type,
+		.type = type,
 		.ttl = rdataset->ttl,
 		.trust = rdataset->trust,
-		.proof.header = dns_slabheader_ref(header),
-		.proof.raw = noqname->neg,
+		.slab.raw = dns_slabheader_ref(noqname->neg)->raw,
 		.link = nsec->link,
 		.attributes = nsec->attributes,
 		.magic = nsec->magic,
 	};
 	nsec->attributes.keepcase = true;
-	dns__db_attachnode(node, &nsec->proof.node DNS__DB_FLARG_PASS);
+	dns__db_attachnode(node, &nsec->slab.node DNS__DB_FLARG_PASS);
 
 	*nsecsig = (dns_rdataset_t){
 		.methods = &dns_rdataslab_proof_rdatasetmethods,
 		.rdclass = rdataset->rdclass,
 		.type = dns_rdatatype_rrsig,
-		.covers = noqname->type,
+		.covers = type,
 		.ttl = rdataset->ttl,
 		.trust = rdataset->trust,
-		.proof.header = dns_slabheader_ref(header),
-		.proof.raw = noqname->negsig,
+		.slab.raw = dns_slabheader_ref(noqname->negsig)->raw,
 		.link = nsecsig->link,
 		.attributes = nsecsig->attributes,
 		.magic = nsecsig->magic,
 	};
 	nsecsig->attributes.keepcase = true;
-	dns__db_attachnode(node, &nsecsig->proof.node DNS__DB_FLARG_PASS);
+	dns__db_attachnode(node, &nsecsig->slab.node DNS__DB_FLARG_PASS);
 
 	dns_name_clone(&noqname->name, name);
 
@@ -758,118 +743,5 @@ rdataset_clearprefetch(dns_rdataset_t *rdataset) {
 static dns_slabheader_t *
 rdataset_getheader(const dns_rdataset_t *rdataset) {
 	uint8_t *rawbuf = rdataset->slab.raw;
-	return (dns_slabheader_t *)(rawbuf - offsetof(dns_slabheader_t, raw));
-}
-
-/* Fixed Proof helper macros */
-
-static void
-slabheader_proof_disassociate(dns_rdataset_t *rdataset DNS__DB_FLARG) {
-	dns_slabheader_detach(&rdataset->proof.header);
-	dns__db_detachnode(&rdataset->proof.node DNS__DB_FLARG_PASS);
-}
-
-static isc_result_t
-slabheader_proof_first(dns_rdataset_t *rdataset) {
-	unsigned char *raw = rdataset->proof.raw;
-	uint16_t count = slabheader_proof_count(rdataset);
-
-	if (count == 0) {
-		rdataset->proof.iter_pos = NULL;
-		rdataset->proof.iter_count = 0;
-		return ISC_R_NOMORE;
-	}
-
-	/*
-	 * iter_count is the number of rdata beyond the cursor
-	 * position, so we decrement the total count by one before
-	 * storing it.
-	 *
-	 * 'raw' points to the first record.
-	 */
-	rdataset->proof.iter_pos = raw;
-	rdataset->proof.iter_count = count - 1;
-
-	return ISC_R_SUCCESS;
-}
-
-static isc_result_t
-slabheader_proof_next(dns_rdataset_t *rdataset) {
-	uint16_t count = rdataset->proof.iter_count;
-	if (count == 0) {
-		rdataset->proof.iter_pos = NULL;
-		return ISC_R_NOMORE;
-	}
-	rdataset->proof.iter_count = count - 1;
-
-	/*
-	 * Skip forward one record (length + 4) or one offset (4).
-	 */
-	unsigned char *raw = rdataset->proof.iter_pos;
-	uint16_t length = peek_uint16(raw);
-	raw += length;
-	rdataset->proof.iter_pos = raw + sizeof(uint16_t);
-
-	return ISC_R_SUCCESS;
-}
-
-static void
-slabheader_proof_current(dns_rdataset_t *rdataset, dns_rdata_t *rdata) {
-	unsigned char *raw = NULL;
-	unsigned int length;
-	isc_region_t r;
-	unsigned int flags = 0;
-
-	raw = rdataset->proof.iter_pos;
-	REQUIRE(raw != NULL);
-
-	/*
-	 * Find the start of the record if not already in iter_pos
-	 * then skip the length and order fields.
-	 */
-	length = get_uint16(raw);
-
-	if (rdataset->type == dns_rdatatype_rrsig) {
-		if (*raw & DNS_RDATASLAB_OFFLINE) {
-			flags |= DNS_RDATA_OFFLINE;
-		}
-		length--;
-		raw++;
-	}
-	r.length = length;
-	r.base = raw;
-	dns_rdata_fromregion(rdata, rdataset->rdclass, rdataset->type, &r);
-	rdata->flags |= flags;
-}
-
-static void
-slabheader_proof_clone(const dns_rdataset_t *source,
-		       dns_rdataset_t *target DNS__DB_FLARG) {
-	INSIST(!ISC_LINK_LINKED(target, link));
-	INSIST(target->proof.node == NULL);
-	INSIST(target->proof.header == NULL);
-
-	*target = *source;
-
-	ISC_LINK_INIT(target, link);
-	target->proof.node = NULL;
-	dns__db_attachnode(source->proof.node,
-			   &target->proof.node DNS__DB_FLARG_PASS);
-	dns_slabheader_ref(target->proof.header);
-
-	target->proof.iter_pos = NULL;
-	target->proof.iter_count = 0;
-}
-
-static unsigned int
-slabheader_proof_count(dns_rdataset_t *rdataset) {
-	dns_slabheader_t *header = slabheader_proof_getheader(rdataset);
-
-	return header->nitems;
-}
-
-static dns_slabheader_t *
-slabheader_proof_getheader(const dns_rdataset_t *rdataset) {
-	uint8_t *rawbuf = rdataset->proof.raw;
 	return (dns_slabheader_t *)(rawbuf - offsetof(dns_slabheader_t, raw));
 }

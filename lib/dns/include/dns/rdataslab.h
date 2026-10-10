@@ -60,10 +60,9 @@
 #define DNS_RDATASLAB_OFFLINE 0x01 /* RRSIG is for offline DNSKEY */
 
 struct dns_slabheader_proof {
-	dns_name_t	name;
-	void	       *neg;
-	void	       *negsig;
-	dns_rdatatype_t type;
+	dns_name_t	  name;
+	dns_slabheader_t *neg;
+	dns_slabheader_t *negsig;
 };
 
 #define DNS_SLABHEADER_FOREACH(pos, head)                 \

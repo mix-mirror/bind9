@@ -2579,9 +2579,8 @@ addnoqname(isc_mem_t *mctx, dns_slabheader_t *newheader, uint32_t maxrrperset,
 
 	noqname = isc_mem_get(mctx, sizeof(*noqname));
 	*noqname = (dns_slabheader_proof_t){
-		.neg = ((dns_slabheader_t *)r1.base)->raw,
-		.negsig = ((dns_slabheader_t *)r2.base)->raw,
-		.type = neg.type,
+		.neg = (dns_slabheader_t *)r1.base,
+		.negsig = (dns_slabheader_t *)r2.base,
 		.name = DNS_NAME_INITEMPTY,
 	};
 	dns_name_dup(&name, mctx, &noqname->name);

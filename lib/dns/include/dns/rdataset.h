@@ -182,12 +182,11 @@ struct dns_rdataset {
 		} ncache;
 
 		/*
-		 * A slab rdataset provides access to an rdataslab. In
-		 * a QP database, 'raw' will generally point to the
-		 * memory immediately following a slabheader. (There
-		 * is an exception in the case of rdatasets returned by
-		 * the `getnoqname` method; see comments in
-		 * rdataslab.c for details.)
+		 * A slab rdataset provides access to an rdataslab. 'raw'
+		 * points to the memory immediately following the owning
+		 * slabheader. Rdatasets returned by the `getnoqname`
+		 * method are bound to the proof's own slabheaders in the
+		 * same way.
 		 */
 		struct {
 			dns_dbnode_t	       *node;
@@ -196,22 +195,6 @@ struct dns_rdataset {
 			unsigned int		iter_count;
 			dns_slabheader_proof_t *noqname;
 		} slab;
-
-		/*
-		 * A slab rdataset provides access to an rdataslab. In
-		 * a QP database, 'raw' will generally point to the
-		 * memory immediately following a slabheader. (There
-		 * is an exception in the case of rdatasets returned by
-		 * the `getnoqname` and `getclosest` methods; see
-		 * comments in rdataslab.c for details.)
-		 */
-		struct {
-			dns_dbnode_t	 *node;
-			dns_slabheader_t *header;
-			unsigned char	 *raw;
-			unsigned char	 *iter_pos;
-			unsigned int	  iter_count;
-		} proof;
 
 		/*
 		 * A vec rdataset provides access to an rdatavec. In
@@ -544,6 +527,13 @@ dns__rdataset_getnoqname(dns_rdataset_t *rdataset, dns_name_t *name,
  *\li	'rdataset' to be valid and 'noqname' attribute to be set.
  *\li	'name' to be valid.
  *\li	'neg' and 'negsig' to be valid and not associated.
+ *
+ * Ensures:
+ *\li	On success, 'neg' and 'negsig' are associated with the NSEC/NSEC3
+ *	rdataset and its RRSIG rdataset.
+ *\li	'name' is cloned, not copied. It aliases the proof's owner name
+ *	as referenced by 'rdataset'; that storage must remain valid while
+ *	'name' is used.
  */
 
 isc_result_t
