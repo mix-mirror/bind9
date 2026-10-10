@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from dns.rdtypes.dnskeybase import Flag
 
 import dns.dnssec
+import dns.name
 import dns.rdataclass
 import dns.rdatatype
 import dns.rrset
@@ -261,6 +262,28 @@ def test_cname_at_insecure_delegation_is_accepted(servers, resolver):
 
     assert not ns.log.grep(Re(r"deadlock found resolving 'insecure\.parent"))
     assert not ns.log.grep(Re(r"fetch loop detected resolving 'insecure\.parent"))
+
+
+@pytest.mark.parametrize("resolver", RESOLVERS)
+@pytest.mark.parametrize("qname", ["alias.parent.", "alias.insecure.parent."])
+def test_ds_query_at_cname_is_answered_from_cache(servers, resolver, qname):
+    """
+    A DS query for an ordinary CNAME owner is answered by the CNAME like any
+    other type, so repeating it must not fetch the DS again (GL#6455).
+    """
+    ns = servers[resolver]
+    msg = isctest.query.create(qname, "DS")
+    name = qname.rstrip(".").replace(".", r"\.")
+    fetch = Re(f"fetch: {name}/DS")
+
+    for _ in range(2):
+        res = isctest.query.tcp(msg, ns.ip)
+        isctest.check.noerror(res)
+        assert res.answer, res
+        assert res.answer[0].rdtype == dns.rdatatype.CNAME, res
+        assert res.answer[0].name == dns.name.from_text(qname), res
+
+    assert len(ns.log.grep(fetch)) == 1, f"{qname}/DS was fetched more than once"
 
 
 def test_apex_cname_coexists_with_other_types(ns3):

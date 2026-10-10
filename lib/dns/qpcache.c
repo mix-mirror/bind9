@@ -1494,11 +1494,14 @@ qpcache_find(dns_db_t *db, const dns_name_t *name, dns_dbversion_t *version,
 
 	/*
 	 * NSEC and RRSIG can coexist with CNAME (RFC 4035, section 2.5).
-	 * At-parent data also shares the cache node with a child's apex CNAME
-	 * but belongs to the parent zone and must be looked up independently.
+	 * Every other type, DS included, is answered by a CNAME unless the
+	 * cache holds something at least as fresh of the requested type: a
+	 * DS or its denial beside a child's apex CNAME wins below at equal
+	 * rank, while an ordinary CNAME keeps answering DS queries from the
+	 * cache (GL #6455).
 	 */
 	if (type == dns_rdatatype_nsec || type == dns_rdatatype_rrsig ||
-	    dns_rdatatype_atparent(type) || type == dns_rdatatype_any)
+	    type == dns_rdatatype_any)
 	{
 		cname_ok = false;
 	}
