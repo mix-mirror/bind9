@@ -983,6 +983,60 @@ find_free_name(dns_incctx_t *incctx) {
 	return i;
 }
 
+typedef enum {
+	directive_none,
+	directive_origin,
+	directive_ttl,
+	directive_include,
+	directive_date,
+	directive_generate,
+	directive_unknown,
+} directive_t;
+
+static directive_t
+parse_directive(const char *text) {
+	if (text[0] != '$') {
+		return directive_none;
+	}
+
+	switch (text[1]) {
+	case 'o':
+	case 'O':
+		if (strcasecmp(text, "$ORIGIN") == 0) {
+			return directive_origin;
+		}
+		break;
+	case 't':
+	case 'T':
+		if (strcasecmp(text, "$TTL") == 0) {
+			return directive_ttl;
+		}
+		break;
+	case 'i':
+	case 'I':
+		if (strcasecmp(text, "$INCLUDE") == 0) {
+			return directive_include;
+		}
+		break;
+	case 'd':
+	case 'D':
+		if (strcasecmp(text, "$DATE") == 0) {
+			return directive_date;
+		}
+		break;
+	case 'g':
+	case 'G':
+		if (strcasecmp(text, "$GENERATE") == 0) {
+			return directive_generate;
+		}
+		break;
+	default:
+		break;
+	}
+
+	return directive_unknown;
+}
+
 static isc_result_t
 load_ttl(dns_loadctx_t *lctx, isc_token_t *token, const char *source,
 	 unsigned long line) {
@@ -1245,10 +1299,12 @@ load_text(dns_loadctx_t *lctx) {
 			 * across the normal domain name processing.
 			 */
 
-			if (strcasecmp(DNS_AS_STR(token), "$ORIGIN") == 0) {
+			switch (parse_directive(DNS_AS_STR(token))) {
+			case directive_origin:
 				GETTOKEN(lctx->lex, 0, &token, false);
 				finish_origin = true;
-			} else if (strcasecmp(DNS_AS_STR(token), "$TTL") == 0) {
+				break;
+			case directive_ttl:
 				GETTOKENERR(lctx->lex, 0, &token, false,
 					    lctx->ttl = 0;
 					    lctx->default_ttl_known = true;);
@@ -1258,9 +1314,7 @@ load_text(dns_loadctx_t *lctx) {
 				}
 				EXPECTEOL;
 				continue;
-			} else if (strcasecmp(DNS_AS_STR(token), "$INCLUDE") ==
-				   0)
-			{
+			case directive_include:
 				COMMITALL;
 				if (ttl_offset != 0) {
 					(callbacks->error)(callbacks,
@@ -1313,8 +1367,8 @@ load_text(dns_loadctx_t *lctx) {
 				 * the actual inclusion later.
 				 */
 				finish_include = true;
-			} else if (strcasecmp(DNS_AS_STR(token), "$DATE") == 0)
-			{
+				break;
+			case directive_date:
 				GETTOKEN(lctx->lex, 0, &token, false);
 				result = load_date(lctx, &token, source, line,
 						   &ttl_offset);
@@ -1323,9 +1377,7 @@ load_text(dns_loadctx_t *lctx) {
 				}
 				EXPECTEOL;
 				continue;
-			} else if (strcasecmp(DNS_AS_STR(token), "$GENERATE") ==
-				   0)
-			{
+			case directive_generate:
 				/*
 				 * Lazy cleanup.
 				 */
@@ -1399,9 +1451,7 @@ load_text(dns_loadctx_t *lctx) {
 				}
 				EXPECTEOL;
 				continue;
-			} else if (isc_string_casehasprefix(DNS_AS_STR(token),
-							    "$"))
-			{
+			case directive_unknown:
 				(callbacks->error)(callbacks,
 						   "%s: %s:%lu: "
 						   "unknown $ directive '%s'",
@@ -1413,6 +1463,9 @@ load_text(dns_loadctx_t *lctx) {
 				} else {
 					goto insist_and_cleanup;
 				}
+				break;
+			case directive_none:
+				break;
 			}
 
 			/*
