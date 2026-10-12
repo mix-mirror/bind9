@@ -471,10 +471,18 @@ isc_quic_conn_client_create(isc_mem_t *mctx, isc_quic_router_t *router,
  * \par Requires
  * \li `mctx` is a valid memory context
  * \li `router` is a valid QUIC router
- * \li `options != NULL`
+ * \li `options != NULL` and is valid
+ * \li `version` is a valid and defined QUIC version
+ * \li `sni` points to a valid SNI string
+ * \li `local != NULL`
+ * \li `peer != NULL`
  * \li `connp != NULL` and `*connp == NULL`
  *
  * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_NOTIMPLEMENTED if the given QUIC version is not supported
+ * \retval ISC_R_TLSERROR on internal TLS failure
+ * \retval ISC_R_NOMEMORY on allocation failure
+ * \retval ISC_R_FAILURE on unknown failure
  */
 
 isc_result_t
@@ -492,10 +500,19 @@ isc_quic_conn_server_create(
  * \par Requires
  * \li `mctx` is a valid memory context
  * \li `router` is a valid QUIC router
- * \li `options != NULL`
+ * \li `options != NULL` and is valid
+ * \li `initial_version` is a valid and defined QUIC version
+ * \li `initial_dcid.base != NULL` and `initial_dcid.length` ∈ [1, 20]
+ * \li `initial_scid.base != NULL` and `initial_scid.length` ∈ [1, 20]
+ * \li `local != NULL`
+ * \li `peer != NULL`
  * \li `connp != NULL` and `*connp == NULL`
  *
  * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_NOTIMPLEMENTED if the given QUIC version is not supported
+ * \retval ISC_R_TLSERROR on internal TLS failure
+ * \retval ISC_R_NOMEMORY on allocation failure
+ * \retval ISC_R_FAILURE on unknown failure
  */
 
 ISC_REFCOUNT_DECL(isc_quic_conn);
