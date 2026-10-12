@@ -373,7 +373,8 @@ dns_private_totext(dns_rdata_t *private, isc_buffer_t *buf) {
 		}
 
 		dst_algorithm_format(alg, algbuf, sizeof(algbuf));
-		CHECK(isc_buffer_printf(buf, "key %d/%s", keyid, algbuf));
+		INSIST(isc_buffer_printf(buf, "key %d/%s", keyid, algbuf) ==
+		       ISC_R_SUCCESS);
 	} else {
 		return ISC_R_NOTFOUND;
 	}
