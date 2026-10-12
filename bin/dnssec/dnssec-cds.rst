@@ -21,7 +21,7 @@ dnssec-cds - change DS records for a child zone based on CDS/CDNSKEY
 Synopsis
 ~~~~~~~~
 
-:program:`dnssec-cds` [**-a** alg...] [**-c** class] [**-D**] {**-d** dsset-file} {**-f** child-file} [**-i**[extension]] [**-s** start-time] [**-T** ttl] [**-u**] [**-v** level] [**-V**] {domain}
+:program:`dnssec-cds` [**-a** alg...] [**-c** class] [**-D**] {**-d** dsset-file} {**-f** child-file} [**-i**[extension]] [**-o** one-type] [**-s** start-time] [**-T** ttl] [**-u**] [**-v** level] [**-V**] {domain}
 
 Description
 ~~~~~~~~~~~
@@ -138,6 +138,11 @@ Options
    ``dsset-`` file is set to match the signature inception time of the
    child records, provided that it is later than the file's current
    modification time.
+
+.. option:: -o one-type
+
+   This option is used to tell :program:`dnssec-cds` that only one of
+   CDNSKEY or CDS was looked for.  Valid values are CDNSKEY and CDS.
 
 .. option:: -s start-time
 
