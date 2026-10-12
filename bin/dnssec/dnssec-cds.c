@@ -155,6 +155,7 @@ static dns_db_t *update_db = NULL;
 static dns_dbnode_t *update_node = NULL;
 static dns_dbversion_t *update_version = NULL;
 static bool print_mem_stats = false;
+static dns_rdatatype_t one_type = dns_rdatatype_none;
 
 static void
 verbose_time(int level, const char *msg, isc_stdtime_t time) {
@@ -353,19 +354,31 @@ cleanup:
 
 static void
 load_child_sets(size_t i) {
+	bool need_non_existence = false;
+
 	load_db(child_paths[i], &child_db, &child_node);
 	findset(child_db, child_node, dns_rdatatype_dnskey, &dnskey_sets[i],
 		&dnskey_sigs[i]);
-	findset(child_db, child_node, dns_rdatatype_cdnskey, &cdnskey_sets[i],
-		&cdnskey_sigs[i]);
-	findset(child_db, child_node, dns_rdatatype_cds, &cds_sets[i],
-		&cds_sigs[i]);
+
+	if (one_type != dns_rdatatype_cds) {
+		findset(child_db, child_node, dns_rdatatype_cdnskey,
+			&cdnskey_sets[i], &cdnskey_sigs[i]);
+		if (!dns_rdataset_isassociated(&cdnskey_sets[i])) {
+			need_non_existence = true;
+		}
+	}
+	if (one_type != dns_rdatatype_cdnskey) {
+		findset(child_db, child_node, dns_rdatatype_cds, &cds_sets[i],
+			&cds_sigs[i]);
+		if (!dns_rdataset_isassociated(&cds_sets[i])) {
+			need_non_existence = true;
+		}
+	}
+
 	/*
 	 * Do we need to prove non-existence?
 	 */
-	if (!dns_rdataset_isassociated(&cds_sets[i]) ||
-	    !dns_rdataset_isassociated(&cdnskey_sets[i]))
-	{
+	if (need_non_existence) {
 		dns_name_t *nsec3name = dns_fixedname_initname(&nsec3fixed[i]);
 		findset(child_db, child_node, dns_rdatatype_nsec, &nsec_sets[i],
 			&nsec_sigs[i]);
@@ -1219,8 +1232,8 @@ usage(void) {
 			"of CDS\n"
 			"    -d <file|dir>      where to find parent dsset- "
 			"file\n"
-			"    -f <file>          child DNSKEY+CDNSKEY+CDS+RRSIG "
-			"records\n"
+			"    -f <file>          child DNSKEY+CDNSKEY+CDS+NSEC+"
+			"NSEC3+RRSIG records\n"
 			"    -i[extension]      update dsset- file in place\n"
 			"    -s <start-time>    oldest permitted child "
 			"signatures\n"
@@ -1303,6 +1316,8 @@ main(int argc, char *argv[]) {
 	size_t nchild_paths = 0;
 	dns_rdata_rrsig_t oldestsig = { 0 };
 	dns_rdata_rrsig_t *oldest;
+	isc_textregion_t tr;
+	isc_result_t result;
 
 	orig_argc = argc;
 
@@ -1316,7 +1331,7 @@ main(int argc, char *argv[]) {
 	/*
 	 * Extract memory debugging option first.
 	 */
-#define OPTIONS "a:c:Dd:f:i:ms:T:uv:V"
+#define OPTIONS "a:c:Dd:f:i:mo:s:T:uv:V"
 	while ((ch = isc_commandline_parse(argc, argv, OPTIONS)) != -1) {
 		switch (ch) {
 		case 'i':
@@ -1408,6 +1423,21 @@ main(int argc, char *argv[]) {
 			}
 			break;
 		case 'm':
+			break;
+		case 'o':
+			if (one_type != dns_rdatatype_none) {
+				fatal("Cannot respecify one type");
+			}
+			tr.base = isc_commandline_argument;
+			tr.length = strlen(isc_commandline_argument);
+			result = dns_rdatatype_fromtext(&one_type, &tr);
+			if (result != ISC_R_SUCCESS ||
+			    (one_type != dns_rdatatype_cds &&
+			     one_type != dns_rdatatype_cdnskey))
+			{
+				fatal("Invalid one type: %s",
+				      isc_commandline_argument);
+			}
 			break;
 		case 's':
 			startstr = isc_commandline_argument;
@@ -1544,10 +1574,19 @@ main(int argc, char *argv[]) {
 
 		/*
 		 * We only need the signing time for NSEC and NSEC3 if we
-		 * don't have both CDS and CDNSKEY sets.
+		 * don't have both CDS and CDNSKEY sets or we don't have
+		 * the specified one type.
 		 */
-		if (dns_rdataset_isassociated(&cds_sets[i]) &&
-		    dns_rdataset_isassociated(&cdnskey_sets[i]))
+		if (!dns_rdataset_isassociated(&cds_sets[i]) &&
+		    !dns_rdataset_isassociated(&cdnskey_sets[i]))
+		{
+			oldest = &oldestsig;
+		} else if (one_type == dns_rdatatype_cds &&
+			   !dns_rdataset_isassociated(&cds_sets[i]))
+		{
+			oldest = &oldestsig;
+		} else if (one_type == dns_rdatatype_cdnskey &&
+			   !dns_rdataset_isassociated(&cdnskey_sets[i]))
 		{
 			oldest = &oldestsig;
 		} else {
@@ -1590,7 +1629,7 @@ main(int argc, char *argv[]) {
 				      "for %s",
 				      namestr);
 			}
-		} else {
+		} else if (!(one_type == dns_rdatatype_cds)) {
 			vbprintf(1, "%s doesn't have CDNSKEY records\n",
 				 namestr);
 			if (dns_rdataset_isassociated(&nsec_sets[i])) {
@@ -1621,7 +1660,7 @@ main(int argc, char *argv[]) {
 				      "%s",
 				      namestr);
 			}
-		} else {
+		} else if (!(one_type == dns_rdatatype_cdnskey)) {
 			vbprintf(1, "%s doesn't have CDS records\n", namestr);
 			if (dns_rdataset_isassociated(&nsec_sets[i])) {
 				if (has_type(&nsec_sets[i], dns_rdatatype_cds))
