@@ -98,7 +98,7 @@ set_read_secret_cb(isc_tls_t *tls, enum ssl_encryption_level_t level,
 
 	if (isc__quic_setup_read_key(
 		    conn, is_server, libssl_to_ngtcp2_level_lut[level],
-		    (isc_constregion_t){ secret, len }) != ISC_R_SUCCESS)
+		    (isc_constregion_t){ len, secret }) != ISC_R_SUCCESS)
 	{
 		return 0;
 	}
@@ -121,7 +121,7 @@ set_write_secret_cb(isc_tls_t *tls, enum ssl_encryption_level_t level,
 
 	if (isc__quic_setup_write_key(
 		    conn, is_server, libssl_to_ngtcp2_level_lut[level],
-		    (isc_constregion_t){ secret, len }) != ISC_R_SUCCESS)
+		    (isc_constregion_t){ len, secret }) != ISC_R_SUCCESS)
 	{
 		return 0;
 	}
