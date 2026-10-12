@@ -124,8 +124,6 @@ struct isc_quic_conn_callbacks {
 	/**
 	 * \brief
 	 * Callback function for when handshake has been completed
-	 *
-	 * \param cbarg connection-specific callback argument.
 	 */
 	void (*handshake_completed)(void *cbarg);
 
@@ -133,9 +131,6 @@ struct isc_quic_conn_callbacks {
 	 * \brief
 	 * Callback function for when the remote endpoint has opened a new
 	 * stream.
-	 *
-	 * \param cbarg **connection**-specific callback argument
-	 * \param stream_id ID of the newly opened stream.
 	 */
 	isc_result_t (*stream_opened)(isc_quic_conn_t *conn, void *cbarg,
 				      void **stream_data, int64_t stream_id);
@@ -144,10 +139,11 @@ struct isc_quic_conn_callbacks {
 	 * \brief
 	 * Callback function for when a stream has been closed.
 	 *
-	 * \param cbarg **connection**-specific callback argument
-	 * \param stream_id ID of the closed stream
-	 * \param has_application_error if the stream has closed with a failure
-	 * \param application_error_code if `has_application_error` is true.
+	 * If the application error kind is unknown, both RX and TX application
+	 * errors codes will be set as the unknown side's error code.
+	 *
+	 * Returning anything other than `ISC_R_SUCCESS` will cause the
+	 * connection to fail and require closing.
 	 */
 	isc_result_t (*stream_closed)(isc_quic_conn_t *conn, void *cbarg,
 				      int64_t stream_id, void *stream_data,
@@ -162,9 +158,8 @@ struct isc_quic_conn_callbacks {
 	 * Called by isc_quic_conn_push_packet when there is data to be read
 	 * in a stream.
 	 *
-	 * \param cbarg User-specified callback argument.
-	 * \param info Frame-relevant information.
-	 * \param data Contents of the stream.
+	 * Returning anything other than `ISC_R_SUCCESS` will cause the
+	 * connection to fail and require closing.
 	 */
 	isc_result_t (*data_read)(isc_quic_conn_t *conn, void *cbarg,
 				  isc_quic_stream_data_info_t info,
