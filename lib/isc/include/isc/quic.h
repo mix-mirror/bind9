@@ -534,10 +534,16 @@ isc_result_t
 isc_quic_conn_shutdown(isc_quic_conn_t *conn);
 /**<
  * \brief
- * asd
+ * Start shutting down the connection gracefully.
+ *
+ * The connection should still be pulled for packets until the graceful shutdown
+ * period has passed for this connection.
+ *
+ * \note
+ * This will disassociate all relevant CIDs from the router.
  *
  * \retval ISC_R_SUCCESS on success
- * \retval ISC_R_SHUTTINGDOWN
+ * \retval ISC_R_SHUTTINGDOWN if the connection was already down.
  */
 
 isc_result_t
@@ -548,12 +554,28 @@ isc_quic_conn_pull_packet(isc_quic_conn_t *conn, isc_region_t out,
  * \brief
  * Consume a packet produced by the state machine if there is any.
  *
+ * If `from` and `to` are not-NULL, the source and destination addresses will be
+ * written to upon success.
  *
- * Upon failure, the connection should be closed via `isc_quic_conn_shutdown`
- * and the a packet should be pulled again for the shutdown.
+ * \note
+ * Upon failure except for `ISC_R_IGNORE` and `ISC_R_UNEXPECTEDEND`, the
+ * connection should be closed via `isc_quic_conn_shutdown` and the a packet
+ * should be pulled again for the shutdown.
+ *
+ * \par Requires
+ * \li `conn` is a valid QUIC connection
+ * \li `out.base != NULL` and `out.length != 0`
+ * \li `written != NULL`
  *
  * \retval ISC_R_SUCCESS on success
+ * \retval ISC_R_UNEXPECTEDEND if the packet is limited congestion control
+ * \retval ISC_R_NOMEMORY on allocation failure
  * \retval ISC_R_TERMINATED if the connection has been terminated
+ * \retval ISC_R_NOMORE on QUIC packet number exhaustion
+ * \retval ISC_R_NOSPACE on insufficient buffer size from `out`
+ * \retval ISC_R_IOERROR on stream data block due to flow control
+ * \retval ISC_R_FAILURE on opaque internal failure
+ * \retval ISC_R_IGNORE if there are no stream data written for a packet
  */
 
 isc_result_t
